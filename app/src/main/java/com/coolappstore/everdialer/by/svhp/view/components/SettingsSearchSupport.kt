@@ -218,10 +218,6 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
     listOf(
         // ── Rows that live directly on the main Settings screen ─────────────────
         GlobalSettingsSearchEntry("Check For Updates", "Current version: v$APP_VERSION", "check_for_updates", Icons.Default.SystemUpdate, GsColorAmber),
-        GlobalSettingsSearchEntry("Rate and Review", "Share your feedback about Ever Dialer", "rate_and_review", Icons.Default.Star, GsColorCyan),
-        GlobalSettingsSearchEntry("Check Ratings and Reviews", "See what others are saying about Ever Dialer", "check_ratings", Icons.Default.Reviews, GsColorGreen),
-        GlobalSettingsSearchEntry("More Apps", "Check out other apps from the developer", "more_apps", Icons.Default.Apps, GsColorIndigo),
-        GlobalSettingsSearchEntry("Donate", "Support this open source project", "donate", Icons.Default.Favorite, GsColorRed),
         GlobalSettingsSearchEntry("Interface", "Themes, colors, and layout", "interface", Icons.Outlined.Palette, GsColorPurple),
         GlobalSettingsSearchEntry("Tap Haptics", "Vibration on taps across the app", "tap_haptics", Icons.Outlined.Vibration, GsColorPurple),
         GlobalSettingsSearchEntry("Scroll Haptics", "Vibrate on scroll gestures across the app", "scroll_haptics", Icons.Outlined.SwipeVertical, GsColorIndigo),
@@ -346,7 +342,6 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Icon-Only Bottom Bar", "Hide labels on the bottom navigation bar", "icon_only_bottom_bar", Icons.Outlined.Palette, GsColorIndigo) { it.navigate(InterfaceScreenDestination(highlightKey = "icon_only_bottom_bar")) },
         GlobalSettingsSearchEntry("Open Dialpad by Default", "Launch straight into the dialpad", "open_dialpad_default", Icons.Outlined.Palette, GsColorBlue) { it.navigate(InterfaceScreenDestination(highlightKey = "open_dialpad_default")) },
         GlobalSettingsSearchEntry("Show favourites in list", "Display favourites in a vertical list instead of grid", "favorites_in_list", Icons.Outlined.Palette, GsColorPink) { it.navigate(InterfaceScreenDestination(highlightKey = "favorites_in_list")) },
-        GlobalSettingsSearchEntry("Hide Rate and Review", "Hide Rate and Review tile in settings", "hide_rate_and_review", Icons.Outlined.Palette, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "hide_rate_and_review")) },
         GlobalSettingsSearchEntry("Show First Letter in Avatar", "Fallback avatar shows a contact's initial", "avatar_first_letter", Icons.Outlined.Palette, GsColorAmber) { it.navigate(InterfaceScreenDestination(highlightKey = "avatar_first_letter")) },
         GlobalSettingsSearchEntry("Solid Icons", "Use solid background behind icons without colors", "solid_icons", Icons.Outlined.Palette, GsColorBluGrey) { it.navigate(InterfaceScreenDestination(highlightKey = "solid_icons")) },
         GlobalSettingsSearchEntry("Circle Icons", "Use circle shapes for icons across the app", "circle_icons", Icons.Outlined.Palette, GsColorCyan) { it.navigate(InterfaceScreenDestination(highlightKey = "circle_icons")) },
