@@ -110,20 +110,31 @@ fun LiquidGlassElementsScreen(navigator: DestinationsNavigator) {
                 }
             }
 
-            item {
+                        item {
                 RivoAnimatedSection(delayMs = 40L) {
                     RivoExpressiveCard {
                         LG_ELEMENTS.forEachIndexed { index, element ->
                             val checked by states[element.key]!!
+                            
+                            // 1. Identify buggy elements
+                            val isBuggy = element.key == PreferenceManager.KEY_LG_CONTACTS_FAB || element.key == PreferenceManager.KEY_LG_RECENTS_FAB
+
                             RivoSwitchListItem(
-                                headline = element.headline,
-                                supporting = element.supporting,
-                                leadingIcon = element.icon,
-                                iconContainerColor = element.iconColor,
-                                checked = checked,
+                                // 2. Add visual badge and change descriptions for buggy items
+                                headline = if (isBuggy) "${element.headline} 🚫" else element.headline,
+                                supporting = if (isBuggy) "[Temporarily Disabled] App crash bug detected" else element.supporting,
+                                leadingIcon = if (isBuggy) Icons.Outlined.Block else element.icon,
+                                iconContainerColor = if (isBuggy) Color(0xFFE57373) else element.iconColor,
+                                
+                                // 3. Force toggle to visually stay OFF if buggy
+                                checked = if (isBuggy) false else checked,
+                                
+                                // 4. Block the click action completely for buggy items
                                 onCheckedChange = { newValue ->
-                                    states[element.key]!!.value = newValue
-                                    prefs.setBoolean(element.key, newValue)
+                                    if (!isBuggy) {
+                                        states[element.key]!!.value = newValue
+                                        prefs.setBoolean(element.key, newValue)
+                                    }
                                 }
                             )
                             if (index < LG_ELEMENTS.lastIndex) {
@@ -139,3 +150,4 @@ fun LiquidGlassElementsScreen(navigator: DestinationsNavigator) {
         }
     }
 }
+                        
