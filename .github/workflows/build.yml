@@ -23,12 +23,18 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug
+    - name: Build Release APK
+      run: ./gradlew assembleRelease
+
+    - name: Sign Release APK
+      run: |
+        keytool -genkey -v -keystore temp.keystore -alias tempkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=EverDialer"
+        APKSIGNER=$(find $ANDROID_HOME/build-tools -name "apksigner" | sort | tail -1)
+        $APKSIGNER sign --ks temp.keystore --ks-pass pass:android --key-pass pass:android app/build/outputs/apk/release/*-unsigned.apk
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: Ever-Dialer-App
-        path: app/build/outputs/apk/debug/*.apk
+        name: Ever-Dialer-Fast-Release
+        path: app/build/outputs/apk/release/*.apk
         
