@@ -1812,60 +1812,6 @@ fun SettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                 }
             }
 
-            // ── Rate And Review ───────────────────────────────────────────────
-            if (!hideRateAndReview) item {
-                RivoAnimatedSection(delayMs = 30L) {
-                    Column {
-                        SectionLabel("Rate And Review")
-                        RivoExpressiveCard {
-                            RivoListItem(
-                                headline = "Rate and Review",
-                                supporting = "Share your feedback about Ever Dialer",
-                                leadingIcon = Icons.Default.Star,
-                                iconContainerColor = ColorCyan,
-                                trailingIcon = Icons.Default.ChevronRight,
-                                modifier = Modifier.settingsSearchHighlight("rate_and_review", highlightedSettingKey) { highlightedSettingKey = null },
-                                onClick = {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://docs.google.com/forms/d/e/1FAIpQLSdY2WYWDFfvLScsBBxfCWzozyA_4sHUCzfR1JycfzJKASvbfQ/viewform?usp=header"))
-                                    context.startActivity(intent)
-                                }
-                            )
-                            CardDivider()
-                            RivoListItem(
-                                headline = "Check Ratings and Reviews",
-                                supporting = "See what others are saying about Ever Dialer",
-                                leadingIcon = Icons.Default.Reviews,
-                                iconContainerColor = ColorGreen,
-                                trailingIcon = Icons.Default.ChevronRight,
-                                modifier = Modifier.settingsSearchHighlight("check_ratings", highlightedSettingKey) { highlightedSettingKey = null },
-                                onClick = { navigator.navigate(RatingsWebViewScreenDestination) }
-                            )
-                            CardDivider()
-                            RivoListItem(
-                                headline = "More Apps",
-                                supporting = "Check out other apps from the developer",
-                                leadingIcon = Icons.Default.Apps,
-                                iconContainerColor = ColorIndigo,
-                                trailingIcon = Icons.Default.ChevronRight,
-                                modifier = Modifier.settingsSearchHighlight("more_apps", highlightedSettingKey) { highlightedSettingKey = null },
-                                onClick = { navigator.navigate(com.ramcosta.composedestinations.generated.destinations.MoreAppsWebViewScreenDestination) }
-                            )
-                            CardDivider()
-                            RivoListItem(
-                                headline = "Donate",
-                                supporting = "Support this open source project",
-                                leadingIcon = Icons.Default.Favorite,
-                                iconContainerColor = ColorRed,
-                                trailingIcon = Icons.Default.OpenInNew,
-                                modifier = Modifier.settingsSearchHighlight("donate", highlightedSettingKey) { highlightedSettingKey = null },
-                                onClick = { showDonateDialog = true }
-                            )
-                        }
-                    }
-                }
-            }
-
-
             // ── Appearance ───────────────────────────────────────────────────
             item {
                 RivoAnimatedSection(delayMs = 60L) {
