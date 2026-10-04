@@ -131,29 +131,6 @@ fun HomeScreen(
                 actions = {
                     AnimatedVisibility(visible = !isSelectionMode, enter = fadeIn(), exit = fadeOut()) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (!isLandscape) {
-                                if (everDialerSettingsButton != null) {
-                                    everDialerSettingsButton()
-                                } else {
-                                    // Same size/shape as the Settings button on the Calls / Favourites /
-                                    // Contacts tabs in Ever Dialer (TopBar.kt: 52.dp, 16.dp corner, 22.dp icon).
-                                    Surface(
-                                        onClick = onEverDialerSettingsClick,
-                                        modifier = Modifier.padding(end = 8.dp).size(52.dp),
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                Icons.Default.Tune,
-                                                contentDescription = "Ever Dialer Settings",
-                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
                             IconButton(onClick = onSettingsClick, modifier = Modifier.size(52.dp)) {
                                 Icon(Icons.Outlined.Settings, contentDescription = "Settings")
                             }
