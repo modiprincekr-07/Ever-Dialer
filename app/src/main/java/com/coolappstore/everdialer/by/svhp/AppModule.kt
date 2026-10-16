@@ -30,5 +30,5 @@ val appModule = module {
     }
     viewModel { ContactsViewModel(androidApplication(), get(), get()) }
     viewModel { CallLogViewModel(androidApplication(), get(), get()) }
-    viewModel { SmsViewModel(androidApplication(), get()) }
+    viewModel { SmsViewModel(androidApplication(), get(), get()) }
 }

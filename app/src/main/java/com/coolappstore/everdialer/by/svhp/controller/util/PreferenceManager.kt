@@ -2,6 +2,7 @@ package com.coolappstore.everdialer.by.svhp.controller.util
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.coolappstore.everdialer.by.svhp.modal.data.SmsFilterTab
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -126,6 +127,20 @@ class PreferenceManager(context: Context) {
      *  page-switching transition logic derive their order from this, so reordering tabs in
      *  settings never gets out of sync with the slide-animation direction on the main screen. */
     fun getTabOrder(): List<String> = parseTabOrder(getString(KEY_TAB_ORDER, null))
+
+    fun getSmsFilterOrder(): List<SmsFilterTab> =
+        SmsFilterTab.parseOrder(getString(KEY_SMS_FILTER_ORDER, null))
+
+    fun setSmsFilterOrder(order: List<SmsFilterTab>) =
+        setString(KEY_SMS_FILTER_ORDER, SmsFilterTab.serializeOrder(order))
+
+    fun getSmsSelectedFilter(): SmsFilterTab {
+        val id = getString(KEY_SMS_SELECTED_FILTER, SmsFilterTab.ALL.id) ?: SmsFilterTab.ALL.id
+        return SmsFilterTab.fromId(id)
+    }
+
+    fun setSmsSelectedFilter(tab: SmsFilterTab) =
+        setString(KEY_SMS_SELECTED_FILTER, tab.id)
 
     fun getContactInfoOrder(): List<String> = parseContactInfoOrder(getString(KEY_CONTACT_INFO_ORDER, null))
 
@@ -649,6 +664,7 @@ class PreferenceManager(context: Context) {
         const val KEY_SMS_SWIPE_RIGHT_ACTION        = "sms_swipe_right_action" // "call", "read", "delete", "none" (default: "none")
         const val KEY_SMS_SWIPE_LEFT_ACTION         = "sms_swipe_left_action" // "delete", "read", "none" (default: "none")
         const val KEY_SMS_SELECTED_FILTER          = "sms_selected_filter" // "all", "contacts", "unknown"
+        const val KEY_SMS_FILTER_ORDER             = "sms_filter_order"
         const val KEY_SCHEDULED_SMS                 = "scheduled_sms_list"
         const val KEY_SMS_FLOATING_BUBBLE           = "sms_floating_bubble"
 

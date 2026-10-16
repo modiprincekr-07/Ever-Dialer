@@ -9,9 +9,12 @@ import android.provider.Telephony
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.coolappstore.everdialer.by.svhp.modal.data.SmsConversation
+import com.coolappstore.everdialer.by.svhp.modal.data.SmsFilterTab
 import com.coolappstore.everdialer.by.svhp.modal.data.SmsMessage
 import com.coolappstore.everdialer.by.svhp.modal.`interface`.ISmsRepository
 import com.coolappstore.everdialer.by.svhp.controller.sms.SmsEventBus
+import com.coolappstore.everdialer.by.svhp.controller.util.PreferenceManager
+import com.coolappstore.everdialer.by.svhp.controller.util.numbersLikelyMatch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -25,7 +28,8 @@ import kotlinx.coroutines.launch
 
 class SmsViewModel(
     application: Application,
-    private val smsRepository: ISmsRepository
+    private val smsRepository: ISmsRepository,
+    private val prefs: PreferenceManager? = null
 ) : AndroidViewModel(application) {
 
     private val _conversations = MutableStateFlow<List<SmsConversation>>(emptyList())
@@ -35,6 +39,16 @@ class SmsViewModel(
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     val searchQuery = MutableStateFlow("")
+
+    private val _selectedFilter = MutableStateFlow<SmsFilterTab>(
+        prefs?.getSmsSelectedFilter() ?: SmsFilterTab.ALL
+    )
+    val selectedFilter: StateFlow<SmsFilterTab> = _selectedFilter.asStateFlow()
+
+    private val _filterOrder = MutableStateFlow<List<SmsFilterTab>>(
+        prefs?.getSmsFilterOrder() ?: SmsFilterTab.DEFAULT_ORDER
+    )
+    val filterOrder: StateFlow<List<SmsFilterTab>> = _filterOrder.asStateFlow()
 
     val filteredConversations: StateFlow<List<SmsConversation>> = combine(
         _conversations,
@@ -82,6 +96,14 @@ class SmsViewModel(
     init {
         registerObservers()
         refreshConversations()
+        prefs?.let { p ->
+            viewModelScope.launch {
+                p.settingsChanged.collect {
+                    _filterOrder.value = p.getSmsFilterOrder()
+                    _selectedFilter.value = p.getSmsSelectedFilter()
+                }
+            }
+        }
         viewModelScope.launch(Dispatchers.IO) {
             SmsEventBus.newSmsEvent.collect { eventThreadId ->
                 activeThreadId?.let { tid ->
@@ -193,6 +215,77 @@ class SmsViewModel(
             smsRepository.markThreadAsRead(threadId)
             fetchConversations()
         }
+    }
+
+    fun setFilter(tab: SmsFilterTab) {
+        _selectedFilter.value = tab
+        prefs?.setSmsSelectedFilter(tab)
+    }
+
+    fun setFilterOrder(newOrder: List<SmsFilterTab>) {
+        _filterOrder.value = newOrder
+        prefs?.setSmsFilterOrder(newOrder)
+    }
+
+    fun moveFilterTab(fromIndex: Int, toIndex: Int) {
+        val current = _filterOrder.value
+        if (fromIndex !in current.indices || toIndex !in current.indices || fromIndex == toIndex) return
+        val updated = current.toMutableList()
+        val item = updated.removeAt(fromIndex)
+        updated.add(toIndex, item)
+        setFilterOrder(updated)
+    }
+
+    fun resetFilterOrder() {
+        setFilterOrder(SmsFilterTab.DEFAULT_ORDER)
+    }
+
+    fun filterConversations(
+        conversations: List<SmsConversation>,
+        filter: SmsFilterTab,
+        favoriteNumbers: Set<String> = emptySet(),
+        favoriteNames: Set<String> = emptySet()
+    ): List<SmsConversation> {
+        val filtered = when (filter) {
+            SmsFilterTab.ALL -> conversations
+            SmsFilterTab.FAVOURITES -> conversations.filter { conv ->
+                favoriteNames.contains(conv.contactName?.trim()?.lowercase()) ||
+                favoriteNumbers.any { numbersLikelyMatch(conv.address, it) }
+            }
+            SmsFilterTab.CONTACTS -> conversations.filter { !it.contactName.isNullOrBlank() }
+            SmsFilterTab.UNKNOWN -> conversations.filter { it.contactName.isNullOrBlank() }
+            SmsFilterTab.PAYMENTS -> conversations.filter { conv ->
+                isPaymentMessage(conv.snippet)
+            }
+            SmsFilterTab.RECHARGE -> conversations.filter { conv ->
+                isRechargeMessage(conv.snippet)
+            }
+            SmsFilterTab.OTP -> conversations.filter { conv ->
+                isOtpMessage(conv.snippet)
+            }
+        }
+        return filtered.sortedByDescending { it.date }
+    }
+
+    companion object {
+        val OTP_REGEX = Regex(
+            """\b(otp|passcode|one[- ]time (?:password|passcode|code)|(?:verification|authentication|auth|security|secret|login|access|confirmation)[- ](?:code|pin|password)|your\s+(?:\w+\s+)?code\s+is|is\s+your\s+(?:\w+\s+)?(?:code|pin)|\d{4,8}\s+is\s+your|use\s+code\s+\d{4,8}|enter\s+(?:this\s+)?otp)\b|(?:\b(?:code|pin|otp)\s*[:=]\s*\d{4,8}\b)""",
+            RegexOption.IGNORE_CASE
+        )
+
+        val PAYMENTS_REGEX = Regex(
+            """\b(debited|credited|upi|account|spent|paid|received|balance|inr)\b|\ba/c\b|\brs(?:\.|\b)|₹""",
+            RegexOption.IGNORE_CASE
+        )
+
+        val RECHARGE_REGEX = Regex(
+            """\b(recharge[s|d]?|validity|plan[s]?|expire[ds]?|quota|renewal|renew)\b|\bdata\s*pack\b|\b\d*(?:\.\d+)?\s*gb\s*/\s*day\b|gb/day""",
+            RegexOption.IGNORE_CASE
+        )
+
+        fun isPaymentMessage(text: String): Boolean = PAYMENTS_REGEX.containsMatchIn(text)
+        fun isRechargeMessage(text: String): Boolean = RECHARGE_REGEX.containsMatchIn(text)
+        fun isOtpMessage(text: String): Boolean = OTP_REGEX.containsMatchIn(text)
     }
 
     override fun onCleared() {

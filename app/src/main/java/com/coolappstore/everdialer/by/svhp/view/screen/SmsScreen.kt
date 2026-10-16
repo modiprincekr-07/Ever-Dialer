@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.SpeakerNotes
 import androidx.compose.material.icons.filled.*
@@ -62,6 +64,8 @@ import com.coolappstore.everdialer.by.svhp.controller.FloatingSmsService
 import com.coolappstore.everdialer.by.svhp.controller.util.SwipeActionHelper
 import com.coolappstore.everdialer.by.svhp.modal.data.Contact
 import com.coolappstore.everdialer.by.svhp.modal.data.SmsConversation
+import com.coolappstore.everdialer.by.svhp.modal.data.SmsFilterTab
+import com.coolappstore.everdialer.by.svhp.view.components.ReorderSmsTabsDialog
 import com.coolappstore.everdialer.by.svhp.view.components.RivoAvatar
 import com.coolappstore.everdialer.by.svhp.view.components.RivoDropdownMenu
 import com.coolappstore.everdialer.by.svhp.view.components.RivoDropdownMenuItem
@@ -83,11 +87,6 @@ import com.coolappstore.everdialer.by.svhp.controller.util.numbersLikelyMatch
 import com.coolappstore.everdialer.by.svhp.view.components.RivoSectionHeader
 import java.text.SimpleDateFormat
 import java.util.*
-
-private val OTP_REGEX = Regex(
-    """\b(otp|passcode|one[- ]time (?:password|passcode|code)|(?:verification|authentication|auth|security|secret|login|access|confirmation)[- ](?:code|pin|password)|your\s+(?:\w+\s+)?code\s+is|is\s+your\s+(?:\w+\s+)?(?:code|pin)|\d{4,8}\s+is\s+your|use\s+code\s+\d{4,8}|enter\s+(?:this\s+)?otp)\b|(?:\b(?:code|pin|otp)\s*[:=]\s*\d{4,8}\b)""",
-    RegexOption.IGNORE_CASE
-)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Destination<RootGraph>(style = TabTransitionStyle::class)
@@ -166,38 +165,19 @@ fun SmsScreen(
 
     val haptic = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
-    val listStates = remember { mutableMapOf<String, LazyListState>() }
+    val listStates = remember { mutableMapOf<SmsFilterTab, LazyListState>() }
     val chipRowState = rememberLazyListState()
 
-    var selectedFilter by remember {
-        mutableStateOf(prefs.getString(PreferenceManager.KEY_SMS_SELECTED_FILTER, "all") ?: "all")
-    }
+    val selectedFilter by smsVM.selectedFilter.collectAsState()
+    val filterOrder by smsVM.filterOrder.collectAsState()
+    var menuExpandedForTab by remember { mutableStateOf<SmsFilterTab?>(null) }
+    var showReorderDialog by remember { mutableStateOf(false) }
 
     val favoriteNumbers = remember(allContacts) {
         allContacts.filter { it.isFavorite }.flatMap { it.phoneNumbers }.toSet()
     }
     val favoriteNames = remember(allContacts) {
         allContacts.filter { it.isFavorite }.map { it.name.trim().lowercase() }.toSet()
-    }
-
-    val filterConversations: (String) -> List<SmsConversation> = remember(rawConversations, favoriteNumbers, favoriteNames) {
-        { filter ->
-            val byFilter = when (filter) {
-                "favourites" -> {
-                    rawConversations.filter { conv ->
-                        favoriteNames.contains(conv.contactName?.trim()?.lowercase()) ||
-                        favoriteNumbers.any { numbersLikelyMatch(conv.address, it) }
-                    }
-                }
-                "contacts" -> rawConversations.filter { !it.contactName.isNullOrBlank() }
-                "unknown" -> rawConversations.filter { it.contactName.isNullOrBlank() }
-                "otp" -> rawConversations.filter { conv ->
-                    OTP_REGEX.containsMatchIn(conv.snippet)
-                }
-                else -> rawConversations
-            }
-            byFilter.sortedByDescending { it.date }
-        }
     }
 
     val groupConversations: (List<SmsConversation>) -> Map<String, List<SmsConversation>> = remember(unreadAtTop) {
@@ -217,7 +197,7 @@ fun SmsScreen(
     }
 
     val conversations = remember(rawConversations, selectedFilter, favoriteNumbers, favoriteNames) {
-        filterConversations(selectedFilter)
+        smsVM.filterConversations(rawConversations, selectedFilter, favoriteNumbers, favoriteNames)
     }
 
     val use24HourTime = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_CALL_TIME_FORMAT_24H, false) }
@@ -419,7 +399,7 @@ fun SmsScreen(
                             }
                         }
 
-                        // Filter Pills: All, Favourites, Contacts, Unknown, OTP
+                        // Filter Pills: All, Favourites, Contacts, Unknown, Payments, Recharge, OTP
                         val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
                         val isSaturatedActive = remember(settingsVer, isDark) { prefs.isSaturatedForTheme(isDark) }
                         val isDynamic = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_DYNAMIC_COLORS, true) }
@@ -432,46 +412,131 @@ fun SmsScreen(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val filterOptions = listOf(
-                                "all" to "All",
-                                "favourites" to "Favourites",
-                                "contacts" to "Contacts",
-                                "unknown" to "Unknown",
-                                "otp" to "OTP"
-                            )
-                            itemsIndexed(filterOptions, key = { _, it -> it.first }) { index, (key, label) ->
-                                val isSelected = selectedFilter == key
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = {
-                                        if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        }
-                                        if (selectedFilter == key) {
-                                            coroutineScope.launch {
-                                                listStates[key]?.animateScrollToItem(0)
-                                            }
-                                        } else {
-                                            selectedFilter = key
-                                            prefs.setString(PreferenceManager.KEY_SMS_SELECTED_FILTER, key)
-                                            coroutineScope.launch {
-                                                listStates.getOrPut(key) { LazyListState() }.scrollToItem(0)
-                                            }
-                                        }
-                                        coroutineScope.launch {
-                                            chipRowState.animateScrollToItem(index)
-                                        }
+                            itemsIndexed(filterOrder, key = { _, tab -> tab.id }) { index, tab ->
+                                val isSelected = selectedFilter == tab
+                                val chipContainerColor by animateColorAsState(
+                                    targetValue = if (isSelected) {
+                                        if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
                                     },
-                                    label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-                                    shape = RoundedCornerShape(50.dp),
-                                    border = null,
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
-                                        selectedLabelColor = if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer,
-                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
-                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                                    label = "chipBg"
                                 )
+                                val chipLabelColor by animateColorAsState(
+                                    targetValue = if (isSelected) {
+                                        if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                                    label = "chipFg"
+                                )
+
+                                Box(
+                                    modifier = Modifier.animateItem(
+                                        fadeInSpec = tween(220, easing = FastOutSlowInEasing),
+                                        placementSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioLowBouncy),
+                                        fadeOutSpec = tween(180, easing = FastOutLinearInEasing)
+                                    )
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(50.dp),
+                                        color = chipContainerColor,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(50.dp))
+                                            .combinedClickable(
+                                                onClick = {
+                                                    if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    }
+                                                    if (selectedFilter == tab) {
+                                                        coroutineScope.launch {
+                                                            listStates[tab]?.animateScrollToItem(0)
+                                                        }
+                                                    } else {
+                                                        smsVM.setFilter(tab)
+                                                        coroutineScope.launch {
+                                                            listStates.getOrPut(tab) { LazyListState() }.scrollToItem(0)
+                                                        }
+                                                    }
+                                                    coroutineScope.launch {
+                                                        chipRowState.animateScrollToItem(index)
+                                                    }
+                                                },
+                                                onLongClick = {
+                                                    if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    }
+                                                    menuExpandedForTab = tab
+                                                }
+                                            )
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .height(32.dp)
+                                                .padding(horizontal = 16.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = tab.displayName,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = chipLabelColor
+                                            )
+                                        }
+                                    }
+
+                                    RivoDropdownMenu(
+                                        expanded = menuExpandedForTab == tab,
+                                        onDismissRequest = { menuExpandedForTab = null }
+                                    ) {
+                                        if (index > 0) {
+                                            RivoDropdownMenuItem(
+                                                text = "Move Left",
+                                                icon = Icons.AutoMirrored.Outlined.ArrowBack,
+                                                onClick = {
+                                                    menuExpandedForTab = null
+                                                    smsVM.moveFilterTab(index, index - 1)
+                                                    coroutineScope.launch {
+                                                        chipRowState.animateScrollToItem((index - 1).coerceAtLeast(0))
+                                                    }
+                                                }
+                                            )
+                                        }
+                                        if (index < filterOrder.lastIndex) {
+                                            RivoDropdownMenuItem(
+                                                text = "Move Right",
+                                                icon = Icons.AutoMirrored.Outlined.ArrowForward,
+                                                onClick = {
+                                                    menuExpandedForTab = null
+                                                    smsVM.moveFilterTab(index, index + 1)
+                                                    coroutineScope.launch {
+                                                        chipRowState.animateScrollToItem((index + 1).coerceAtMost(filterOrder.lastIndex))
+                                                    }
+                                                }
+                                            )
+                                        }
+                                        RivoDropdownMenuItem(
+                                            text = "Reorder All Tabs…",
+                                            icon = Icons.Outlined.FilterList,
+                                            onClick = {
+                                                menuExpandedForTab = null
+                                                showReorderDialog = true
+                                            }
+                                        )
+                                        RivoDropdownMenuItem(
+                                            text = "Reset Order",
+                                            icon = Icons.Default.Refresh,
+                                            onClick = {
+                                                menuExpandedForTab = null
+                                                smsVM.resetFilterOrder()
+                                                coroutineScope.launch {
+                                                    chipRowState.animateScrollToItem(0)
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -524,9 +589,8 @@ fun SmsScreen(
         AnimatedContent(
             targetState = selectedFilter,
             transitionSpec = {
-                val filterKeys = listOf("all", "favourites", "contacts", "unknown", "otp")
-                val fromIdx = filterKeys.indexOf(initialState).let { if (it == -1) 0 else it }
-                val toIdx = filterKeys.indexOf(targetState).let { if (it == -1) 0 else it }
+                val fromIdx = filterOrder.indexOf(initialState).let { if (it == -1) 0 else it }
+                val toIdx = filterOrder.indexOf(targetState).let { if (it == -1) 0 else it }
                 val isForward = toIdx >= fromIdx
                 val slideOffset = 240
 
@@ -564,7 +628,7 @@ fun SmsScreen(
             val currentListState = listStates.getOrPut(currentFilter) { LazyListState() }
             ScrollHapticsEffect(currentListState)
             val currentConversations = remember(rawConversations, currentFilter, favoriteNumbers, favoriteNames) {
-                filterConversations(currentFilter)
+                smsVM.filterConversations(rawConversations, currentFilter, favoriteNumbers, favoriteNames)
             }
             val currentGrouped = remember(currentConversations, unreadAtTop) {
                 groupConversations(currentConversations)
@@ -682,7 +746,7 @@ fun SmsScreen(
 
                 // Empty state
                 if (currentConversations.isEmpty() && !isLoading) {
-                    item(key = "empty_state_$currentFilter") {
+                    item(key = "empty_state_${currentFilter.id}") {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -731,7 +795,7 @@ fun SmsScreen(
                 // Conversation items grouped by date header
                 currentGrouped.forEach { (header, convsInGroup) ->
                     if (header.isNotBlank()) {
-                        item(key = "header_${currentFilter}_$header", contentType = "sectionHeader") {
+                        item(key = "header_${currentFilter.id}_$header", contentType = "sectionHeader") {
                             Box(
                                 modifier = Modifier
                                     .padding(horizontal = 4.dp, vertical = 4.dp)
@@ -905,6 +969,13 @@ fun SmsScreen(
                     Text("Cancel")
                 }
             }
+        )
+    }
+
+    if (showReorderDialog) {
+        ReorderSmsTabsDialog(
+            onDismissRequest = { showReorderDialog = false },
+            smsVM = smsVM
         )
     }
 }

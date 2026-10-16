@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.coolappstore.everdialer.by.svhp.controller.SmsViewModel
 import com.coolappstore.everdialer.by.svhp.controller.util.DefaultSmsManager
 import com.coolappstore.everdialer.by.svhp.controller.util.PreferenceManager
+import com.coolappstore.everdialer.by.svhp.view.components.ReorderSmsTabsDialog
 import com.coolappstore.everdialer.by.svhp.view.components.RivoAnimatedSection
 import com.coolappstore.everdialer.by.svhp.view.components.RivoExpressiveCard
 import com.coolappstore.everdialer.by.svhp.view.components.RivoListItem
@@ -129,6 +130,7 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
     var showMmsSizeDialog by remember { mutableStateOf(false) }
     var showSwipeRightDialog by remember { mutableStateOf(false) }
     var showSwipeLeftDialog by remember { mutableStateOf(false) }
+    var showReorderFilterDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = Modifier.settingsMotionBlur(),
@@ -231,6 +233,17 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                                     iconContainerColor = ColorGreen,
                                     checked = autoColorAvatars,
                                     onCheckedChange = { prefs.setBoolean(PreferenceManager.KEY_SMS_AUTO_COLOR_AVATARS, it) }
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                                // Filter Tabs Order
+                                RivoListItem(
+                                    headline = "Filter tabs order",
+                                    supporting = "Customize and reorder filter pills on the messages screen",
+                                    leadingIcon = Icons.Outlined.FilterList,
+                                    iconContainerColor = ColorTeal,
+                                    trailingIcon = Icons.Default.ChevronRight,
+                                    onClick = { showReorderFilterDialog = true }
                                 )
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
@@ -674,6 +687,13 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
             confirmButton = {
                 TextButton(onClick = { showSwipeLeftDialog = false }) { Text("Cancel") }
             }
+        )
+    }
+
+    if (showReorderFilterDialog) {
+        ReorderSmsTabsDialog(
+            onDismissRequest = { showReorderFilterDialog = false },
+            smsVM = smsVM
         )
     }
 }
