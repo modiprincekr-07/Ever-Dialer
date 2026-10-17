@@ -238,8 +238,8 @@ class CallActivity : FragmentActivity() {
                     // effect only needs to worry about auto-closing the call screen.
                     if (session == null || callState == Call.STATE_DISCONNECTED) {
                         delay(800)
-                        // Wait for any pending auto-redial dialog or job or calling card popup to complete before closing
-                        while (keepAliveForRedial.value || keepAliveForCallingCard.value) {
+                        // Wait for any pending auto-redial loop, dialog, or calling card popup to complete before closing
+                        while (CallService.isAutoRedialActive.value || keepAliveForRedial.value || keepAliveForCallingCard.value) {
                             delay(300)
                         }
                         finishAndRemoveTask()
@@ -856,6 +856,7 @@ fun ExpressiveCallScreen(
     val isMuted = audioState?.isMuted ?: false
     val isSpeakerOn = audioState?.route == CallAudioState.ROUTE_SPEAKER
     val isBluetoothActive = audioState?.route == CallAudioState.ROUTE_BLUETOOTH
+    val isAutoRedialActive by CallService.isAutoRedialActive.collectAsState()
 
     // Bluetooth availability detection
     var isBluetoothConnected by remember { mutableStateOf(false) }
@@ -948,7 +949,7 @@ fun ExpressiveCallScreen(
             wasOutgoingCall = true
         } else if (callState == Call.STATE_ACTIVE) {
             callWasConnected = true
-        } else if (callState == Call.STATE_DISCONNECTED && autoRedialEnabled && wasOutgoingCall &&
+        } else if (callState == Call.STATE_DISCONNECTED && !isAutoRedialActive && autoRedialEnabled && wasOutgoingCall &&
                    !callWasConnected && !redialJobActive) {
             val dc = call.details?.disconnectCause?.code ?: DisconnectCause.UNKNOWN
             // REJECTED=5, BUSY=4, REMOTE=2 (unanswered/remote end), MISSED=7
@@ -1011,15 +1012,32 @@ fun ExpressiveCallScreen(
         prefs?.let { CallButtonPrefs.getActiveActionIds(it) } ?: listOf(
             CallButtonPrefs.ID_HOLD, CallButtonPrefs.ID_ADD, CallButtonPrefs.ID_DIALPAD,
             CallButtonPrefs.ID_NOTE, CallButtonPrefs.ID_MUTE, CallButtonPrefs.ID_SPEAKER,
+            CallButtonPrefs.ID_AUTO_REDIAL,
             CallButtonPrefs.ID_BLUETOOTH
         )
     }
     // Bluetooth is only actually shown while a headset is connected for this call — otherwise
     // it's dropped from the grid entirely (not just hidden in an empty slot), so the remaining
     // buttons reflow to fill the freed-up space instead of leaving a blank row/column behind.
+    // Unlike Bluetooth, Auto Redial MUST be persistently visible at all times right before Bluetooth.
     val displayedButtonIds = remember(activeButtonIds, isBluetoothConnected) {
-        if (isBluetoothConnected) activeButtonIds
+        val base = if (isBluetoothConnected) activeButtonIds
         else activeButtonIds.filter { it != CallButtonPrefs.ID_BLUETOOTH }
+        if (CallButtonPrefs.ID_AUTO_REDIAL !in base) {
+            val btIdx = base.indexOf(CallButtonPrefs.ID_BLUETOOTH)
+            if (btIdx != -1) {
+                base.toMutableList().apply { add(btIdx, CallButtonPrefs.ID_AUTO_REDIAL) }
+            } else {
+                val spkIdx = base.indexOf(CallButtonPrefs.ID_SPEAKER)
+                if (spkIdx != -1) {
+                    base.toMutableList().apply { add(spkIdx + 1, CallButtonPrefs.ID_AUTO_REDIAL) }
+                } else {
+                    base + CallButtonPrefs.ID_AUTO_REDIAL
+                }
+            }
+        } else {
+            base
+        }
     }
     // Freeform layout — when enabled in Settings → Appearance → Caller UI, buttons are rendered
     // at the exact custom positions configured there instead of the fixed 3-per-row grid. The
@@ -1421,6 +1439,17 @@ fun ExpressiveCallScreen(
             ) {
                 CallService.setAudioRoute(if (isSpeakerOn) CallAudioState.ROUTE_EARPIECE else CallAudioState.ROUTE_SPEAKER)
             }
+            CallButtonPrefs.ID_AUTO_REDIAL -> AnimatedCallButton(
+                icon = Icons.AutoMirrored.Filled.PhoneCallback,
+                label = "Auto Redial",
+                isActive = isAutoRedialActive,
+                btnColor = controlBtnColor,
+                activeBtnColor = MaterialTheme.colorScheme.primaryContainer,
+                fgColor = controlBtnFg,
+                activeFgColor = MaterialTheme.colorScheme.onPrimaryContainer
+            ) {
+                CallService.toggleAutoRedial()
+            }
             // displayedButtonIds already excludes Bluetooth entirely while no headset is
             // connected, so this branch only ever runs while it actually is connected — no
             // reserved blank slot needed anymore, the grid simply reflows around its absence.
@@ -1465,6 +1494,7 @@ fun ExpressiveCallScreen(
                 fgColor = Color.White, activeFgColor = Color.White,
                 labelColor = controlBtnFg
             ) {
+                CallService.cancelAutoRedial()
                 if (noteText.isNotBlank() && phoneNumber.isNotEmpty()) {
                     NoteManager.writeNote(context, contactName, phoneNumber, noteText)
                 }
@@ -1719,7 +1749,7 @@ fun ExpressiveCallScreen(
                                         callState == Call.STATE_RINGING -> "Incoming"
                                         callState == Call.STATE_CONNECTING -> "Calling"
                                         callState == Call.STATE_DISCONNECTING || isDisconnecting || callState == Call.STATE_DISCONNECTED -> {
-                                            if (isIncomingMode) "Declined" else "Hanging up..."
+                                            if (isAutoRedialActive) "Redialing..." else if (isIncomingMode) "Declined" else "Hanging up..."
                                         }
                                         else -> if (isIncomingMode) "Connecting..." else "Calling"
                                     },
@@ -1805,7 +1835,11 @@ fun ExpressiveCallScreen(
                                     val endPressed2 by endInteraction2.collectIsPressedAsState()
                                     val endRadius2 by animateDpAsState(if (endPressed2) 16.dp else 32.dp, spring(stiffness = Spring.StiffnessMedium), label = "endRadius2")
                                     Surface(
-                                        onClick = { if (noteText.isNotBlank() && phoneNumber.isNotEmpty()) NoteManager.writeNote(context, contactName, phoneNumber, noteText); try { call.disconnect() } catch (_: Exception) {} },
+                                        onClick = {
+                                            CallService.cancelAutoRedial()
+                                            if (noteText.isNotBlank() && phoneNumber.isNotEmpty()) NoteManager.writeNote(context, contactName, phoneNumber, noteText)
+                                            try { call.disconnect() } catch (_: Exception) {}
+                                        },
                                         modifier = Modifier.fillMaxWidth(0.8f).heightIn(min = 56.dp).scale(if (endPressed2) 0.96f else 1f),
                                         shape = RoundedCornerShape(endRadius2), color = Color(0xFFD32F2F), interactionSource = endInteraction2
                                     ) { Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 12.dp)) { Icon(Icons.Default.CallEnd, null, tint = Color.White, modifier = Modifier.size(28.dp)) } }
@@ -2074,7 +2108,7 @@ fun ExpressiveCallScreen(
                                         callState == Call.STATE_RINGING -> com.coolappstore.everdialer.by.svhp.controller.util.tr("Incoming")
                                         callState == Call.STATE_CONNECTING -> com.coolappstore.everdialer.by.svhp.controller.util.tr("Calling")
                                         callState == Call.STATE_DISCONNECTING || isDisconnecting || callState == Call.STATE_DISCONNECTED -> {
-                                            if (isIncomingMode) com.coolappstore.everdialer.by.svhp.controller.util.tr("Declined") else com.coolappstore.everdialer.by.svhp.controller.util.tr("Hanging up...")
+                                            if (isAutoRedialActive) "Redialing..." else if (isIncomingMode) com.coolappstore.everdialer.by.svhp.controller.util.tr("Declined") else com.coolappstore.everdialer.by.svhp.controller.util.tr("Hanging up...")
                                         }
                                         else -> if (isIncomingMode) com.coolappstore.everdialer.by.svhp.controller.util.tr("Connecting...") else com.coolappstore.everdialer.by.svhp.controller.util.tr("Calling")
                                     },
@@ -2112,8 +2146,8 @@ fun ExpressiveCallScreen(
                         ) {
                             Column(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 20.dp, vertical = containerVerticalPadding),
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = containerVerticalPadding),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
@@ -2143,6 +2177,7 @@ fun ExpressiveCallScreen(
                                     val isCircleHangup = hangupWidthFraction <= 0.1f
                                     Surface(
                                         onClick = {
+                                            CallService.cancelAutoRedial()
                                             if (noteText.isNotBlank() && phoneNumber.isNotEmpty()) {
                                                 NoteManager.writeNote(context, contactName, phoneNumber, noteText)
                                             }

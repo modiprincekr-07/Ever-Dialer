@@ -10,8 +10,15 @@ import org.koin.core.context.startKoin
 // Extends ShizuApplication (Ever Call Recorder's Application class) so its own
 // startup init (AppLogger, etc.) still runs now that Recorder is bundled in-app.
 class RivoApp : ShizuApplication() {
+
+    companion object {
+        lateinit var instance: RivoApp
+            private set
+    }
+
     override fun onCreate() {
         super.onCreate()
+        instance = this
         startKoin {
             androidContext(this@RivoApp)
             modules(appModule)

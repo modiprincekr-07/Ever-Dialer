@@ -39,9 +39,12 @@ import com.coolappstore.everdialer.by.svhp.modal.`interface`.IContactsRepository
 import com.coolappstore.everdialer.by.svhp.view.screen.BiometricCallActivity
 import com.coolappstore.everdialer.by.svhp.view.screen.CallActivity
 import com.coolappstore.everdialer.by.svhp.view.screen.settings.KEY_SELECTED_APP_ICON
+import android.telecom.DisconnectCause
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -246,6 +249,9 @@ class CallService : InCallService() {
         super.onDestroy()
         teardownProximityScreenOff()
         RainModeManager.stop(this)
+        if (redialJob?.isActive != true) {
+            cancelAutoRedial()
+        }
     }
 
     /**
@@ -316,6 +322,93 @@ class CallService : InCallService() {
         private val _audioState = MutableStateFlow<CallAudioState?>(null)
         val audioState = _audioState.asStateFlow()
 
+        val isAutoRedialActive = MutableStateFlow(false)
+        private var redialJob: Job? = null
+        private val redialScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+        fun toggleAutoRedial() {
+            val next = !isAutoRedialActive.value
+            isAutoRedialActive.value = next
+            if (!next) {
+                cancelAutoRedial()
+            }
+        }
+
+        fun setAutoRedialActive(active: Boolean) {
+            isAutoRedialActive.value = active
+            if (!active) {
+                cancelAutoRedial()
+            }
+        }
+
+        fun cancelAutoRedial() {
+            isAutoRedialActive.value = false
+            redialJob?.cancel()
+            redialJob = null
+        }
+
+        fun scheduleAutoRedial(context: Context, targetUri: android.net.Uri, accountHandle: PhoneAccountHandle?) {
+            redialJob?.cancel()
+            redialJob = redialScope.launch {
+                try {
+                    android.util.Log.d("EverDialerCall", "AutoRedial: waiting 3000ms delay before redialing $targetUri")
+                    delay(3000L)
+                    if (!isAutoRedialActive.value) {
+                        android.util.Log.d("EverDialerCall", "AutoRedial: cancelled during delay")
+                        return@launch
+                    }
+
+                    val ctx = instance ?: context.applicationContext ?: com.coolappstore.everdialer.by.svhp.RivoApp.instance
+                    if (androidx.core.content.ContextCompat.checkSelfPermission(
+                            ctx,
+                            android.Manifest.permission.CALL_PHONE
+                        ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        android.util.Log.w("EverDialerCall", "AutoRedial: CALL_PHONE permission not granted, cancelling redial")
+                        cancelAutoRedial()
+                        return@launch
+                    }
+
+                    val telecomManager = ctx.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+                    val extras = android.os.Bundle().apply {
+                        if (accountHandle != null) {
+                            putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, accountHandle)
+                        }
+                    }
+
+                    var placed = false
+                    if (telecomManager != null) {
+                        try {
+                            android.util.Log.d("EverDialerCall", "AutoRedial: TelecomManager.placeCall($targetUri)")
+                            telecomManager.placeCall(targetUri, extras)
+                            placed = true
+                        } catch (e: Throwable) {
+                            android.util.Log.e("EverDialerCall", "AutoRedial: placeCall threw", e)
+                        }
+                    }
+
+                    if (!placed) {
+                        try {
+                            android.util.Log.d("EverDialerCall", "AutoRedial: fallback to Intent.ACTION_CALL")
+                            val callIntent = Intent(Intent.ACTION_CALL, targetUri).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                if (accountHandle != null) {
+                                    putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, accountHandle)
+                                }
+                            }
+                            ctx.startActivity(callIntent)
+                            placed = true
+                        } catch (e: Throwable) {
+                            android.util.Log.e("EverDialerCall", "AutoRedial: ACTION_CALL failed", e)
+                            cancelAutoRedial()
+                        }
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    android.util.Log.d("EverDialerCall", "AutoRedial: coroutine cancelled")
+                }
+            }
+        }
+
         private var instance: CallService? = null
 
         @Volatile private var isMerging = false
@@ -355,6 +448,7 @@ class CallService : InCallService() {
         }
 
         fun declineCall() {
+            cancelAutoRedial()
             val incoming = _incomingCallSession.value?.call
             if (incoming != null) {
                 try {
@@ -544,6 +638,7 @@ class CallService : InCallService() {
             if (state == Call.STATE_RINGING) {
                 callRingStartTimes.getOrPut(call) { System.currentTimeMillis() }
             } else if (state == Call.STATE_ACTIVE) {
+                cancelAutoRedial()
                 callAnsweredSet.add(call)
                 callConnectTimes.getOrPut(call) { System.currentTimeMillis() }
                 com.coolappstore.evercallrecorder.by.svhp.services.call.CallSessionManager.getInstance(this@CallService)
@@ -553,11 +648,27 @@ class CallService : InCallService() {
             if (state == Call.STATE_DISCONNECTED) {
                 recordMissedCallDurationIfNeeded(call)
                 val cause = call.details?.disconnectCause
+                val causeCode = cause?.code ?: DisconnectCause.UNKNOWN
                 android.util.Log.w(
                     "EverDialerCall",
-                    "call DISCONNECTED number=${call.details?.handle} code=${cause?.code} " +
+                    "call DISCONNECTED number=${call.details?.handle} code=$causeCode " +
                         "label=${cause?.label} description=${cause?.description} reason=${cause?.reason}"
                 )
+
+                // ── Auto Redial Loop Evaluation ──
+                val isRedialCause = causeCode == DisconnectCause.BUSY ||
+                                    causeCode == DisconnectCause.REJECTED ||
+                                    causeCode == DisconnectCause.MISSED ||
+                                    causeCode == DisconnectCause.REMOTE
+                val targetUri = call.details?.handle
+                val accountHandle = call.details?.accountHandle
+
+                if (isAutoRedialActive.value && isRedialCause && targetUri != null) {
+                    scheduleAutoRedial(this@CallService, targetUri, accountHandle)
+                } else if (!isAutoRedialActive.value || !isRedialCause) {
+                    cancelAutoRedial()
+                }
+
                 if (_currentCallSession.value?.call == call) {
                     _currentCallSession.value = null
                     val incoming = _incomingCallSession.value
@@ -580,7 +691,12 @@ class CallService : InCallService() {
                 } else if (_heldCallSession.value?.call == call) {
                     _heldCallSession.value = null
                 }
-                if (_currentCallSession.value == null) { removeForeground(); cancelNotification() }
+                if (_currentCallSession.value == null) {
+                    if (!isAutoRedialActive.value) {
+                        removeForeground()
+                        cancelNotification()
+                    }
+                }
             } else {
                 updateNotification(call)
             }
@@ -603,6 +719,7 @@ class CallService : InCallService() {
             if (state == Call.STATE_RINGING) {
                 callRingStartTimes.getOrPut(call) { System.currentTimeMillis() }
             } else if (state == Call.STATE_ACTIVE) {
+                cancelAutoRedial()
                 callAnsweredSet.add(call)
                 callConnectTimes.getOrPut(call) { System.currentTimeMillis() }
             }
@@ -634,6 +751,7 @@ class CallService : InCallService() {
                 _incomingCallSession.value = CallSession(call, state)
                 updateNotification(call)
             } else if (state == Call.STATE_ACTIVE) {
+                cancelAutoRedial()
                 callAnsweredSet.add(call)
                 callConnectTimes.getOrPut(call) { System.currentTimeMillis() }
                 _incomingCallSession.value = null
@@ -687,9 +805,11 @@ class CallService : InCallService() {
         }
 
         if (_currentCallSession.value == null) {
-            instance = null
-            removeForeground()
-            cancelNotification()
+            if (!isAutoRedialActive.value) {
+                instance = null
+                removeForeground()
+                cancelNotification()
+            }
         }
 
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -976,6 +1096,13 @@ class CallService : InCallService() {
                 val number = intent.getStringExtra("phone_number") ?: ""
                 if (android.provider.Settings.canDrawOverlays(this)) {
                     FloatingNotesService.start(this, name, number)
+                }
+            }
+            "CANCEL_AUTO_REDIAL" -> {
+                cancelAutoRedial()
+                if (_currentCallSession.value == null) {
+                    removeForeground()
+                    cancelNotification()
                 }
             }
         }
