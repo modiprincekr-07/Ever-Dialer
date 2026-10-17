@@ -1013,31 +1013,44 @@ fun ExpressiveCallScreen(
             CallButtonPrefs.ID_HOLD, CallButtonPrefs.ID_ADD, CallButtonPrefs.ID_DIALPAD,
             CallButtonPrefs.ID_NOTE, CallButtonPrefs.ID_MUTE, CallButtonPrefs.ID_SPEAKER,
             CallButtonPrefs.ID_AUTO_REDIAL,
+            CallButtonPrefs.ID_WHATSAPP_VIDEO,
             CallButtonPrefs.ID_BLUETOOTH
         )
     }
     // Bluetooth is only actually shown while a headset is connected for this call — otherwise
     // it's dropped from the grid entirely (not just hidden in an empty slot), so the remaining
     // buttons reflow to fill the freed-up space instead of leaving a blank row/column behind.
-    // Unlike Bluetooth, Auto Redial MUST be persistently visible at all times right before Bluetooth.
+    // Unlike Bluetooth, Auto Redial and WhatsApp Video MUST be persistently visible at all times.
     val displayedButtonIds = remember(activeButtonIds, isBluetoothConnected) {
-        val base = if (isBluetoothConnected) activeButtonIds
+        var base = if (isBluetoothConnected) activeButtonIds
         else activeButtonIds.filter { it != CallButtonPrefs.ID_BLUETOOTH }
         if (CallButtonPrefs.ID_AUTO_REDIAL !in base) {
             val btIdx = base.indexOf(CallButtonPrefs.ID_BLUETOOTH)
             if (btIdx != -1) {
-                base.toMutableList().apply { add(btIdx, CallButtonPrefs.ID_AUTO_REDIAL) }
+                base = base.toMutableList().apply { add(btIdx, CallButtonPrefs.ID_AUTO_REDIAL) }
             } else {
                 val spkIdx = base.indexOf(CallButtonPrefs.ID_SPEAKER)
                 if (spkIdx != -1) {
-                    base.toMutableList().apply { add(spkIdx + 1, CallButtonPrefs.ID_AUTO_REDIAL) }
+                    base = base.toMutableList().apply { add(spkIdx + 1, CallButtonPrefs.ID_AUTO_REDIAL) }
                 } else {
-                    base + CallButtonPrefs.ID_AUTO_REDIAL
+                    base = base + CallButtonPrefs.ID_AUTO_REDIAL
                 }
             }
-        } else {
-            base
         }
+        if (CallButtonPrefs.ID_WHATSAPP_VIDEO !in base) {
+            val autoIdx = base.indexOf(CallButtonPrefs.ID_AUTO_REDIAL)
+            if (autoIdx != -1) {
+                base = base.toMutableList().apply { add(autoIdx + 1, CallButtonPrefs.ID_WHATSAPP_VIDEO) }
+            } else {
+                val btIdx = base.indexOf(CallButtonPrefs.ID_BLUETOOTH)
+                if (btIdx != -1) {
+                    base = base.toMutableList().apply { add(btIdx, CallButtonPrefs.ID_WHATSAPP_VIDEO) }
+                } else {
+                    base = base + CallButtonPrefs.ID_WHATSAPP_VIDEO
+                }
+            }
+        }
+        base
     }
     // Freeform layout — when enabled in Settings → Appearance → Caller UI, buttons are rendered
     // at the exact custom positions configured there instead of the fixed 3-per-row grid. The
@@ -1449,6 +1462,20 @@ fun ExpressiveCallScreen(
                 activeFgColor = MaterialTheme.colorScheme.onPrimaryContainer
             ) {
                 CallService.toggleAutoRedial()
+            }
+            CallButtonPrefs.ID_WHATSAPP_VIDEO -> AnimatedCallButton(
+                icon = Icons.Default.Videocam,
+                label = "WA Video",
+                isActive = false,
+                btnColor = controlBtnColor,
+                activeBtnColor = controlBtnActiveColor,
+                fgColor = controlBtnFg,
+                activeFgColor = controlBtnActiveFg
+            ) {
+                if (noteText.isNotBlank() && phoneNumber.isNotEmpty()) {
+                    NoteManager.writeNote(context, contactName, phoneNumber, noteText)
+                }
+                CallService.switchToWhatsAppVideo(context, phoneNumber)
             }
             // displayedButtonIds already excludes Bluetooth entirely while no headset is
             // connected, so this branch only ever runs while it actually is connected — no

@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VolumeDown
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -33,38 +34,40 @@ data class CallButtonSpec(
 
 object CallButtonPrefs {
 
-    const val ID_HOLD        = "hold"
-    const val ID_ADD         = "add"
-    const val ID_DIALPAD     = "dialpad"
-    const val ID_NOTE        = "note"
-    const val ID_MUTE        = "mute"
-    const val ID_SPEAKER     = "speaker"
-    const val ID_AUTO_REDIAL = "auto_redial"
-    const val ID_BLUETOOTH   = "bluetooth"
-    const val ID_MORE        = "more"
-    const val ID_RECORD      = "record"
-    const val ID_HANGUP      = "hangup"
+    const val ID_HOLD           = "hold"
+    const val ID_ADD            = "add"
+    const val ID_DIALPAD        = "dialpad"
+    const val ID_NOTE           = "note"
+    const val ID_MUTE           = "mute"
+    const val ID_SPEAKER        = "speaker"
+    const val ID_AUTO_REDIAL    = "auto_redial"
+    const val ID_WHATSAPP_VIDEO = "whatsapp_video"
+    const val ID_BLUETOOTH      = "bluetooth"
+    const val ID_MORE           = "more"
+    const val ID_RECORD         = "record"
+    const val ID_HANGUP         = "hangup"
 
     /** Buttons that can never be hidden by the user. */
-    val ALWAYS_ENABLED = setOf(ID_HANGUP, ID_AUTO_REDIAL)
+    val ALWAYS_ENABLED = setOf(ID_HANGUP, ID_AUTO_REDIAL, ID_WHATSAPP_VIDEO)
 
     val SPECS: List<CallButtonSpec> = listOf(
-        CallButtonSpec(ID_HOLD,        "Hold",        Icons.Default.Pause,             Color(0xFFFFA000)),
-        CallButtonSpec(ID_ADD,         "Add Person",  Icons.Default.PersonAdd,         Color(0xFF009688)),
-        CallButtonSpec(ID_DIALPAD,     "Dialpad",     Icons.Default.Dialpad,           Color(0xFF3F51B5)),
-        CallButtonSpec(ID_NOTE,        "Note",        Icons.Default.EditNote,          Color(0xFF2196F3)),
-        CallButtonSpec(ID_MUTE,        "Mute",        Icons.Default.Mic,               Color(0xFFE53935)),
-        CallButtonSpec(ID_SPEAKER,     "Speaker",     Icons.Default.VolumeDown,        Color(0xFF4CAF50)),
-        CallButtonSpec(ID_AUTO_REDIAL, "Auto Redial", Icons.AutoMirrored.Filled.PhoneCallback, Color(0xFF00ACC1)),
-        CallButtonSpec(ID_BLUETOOTH,   "Bluetooth",   Icons.Default.Bluetooth,         Color(0xFF1976D2)),
-        CallButtonSpec(ID_MORE,        "More",        Icons.Default.MoreHoriz,         Color(0xFF757575)),
-        CallButtonSpec(ID_RECORD,      "Record",      Icons.Default.FiberManualRecord, Color(0xFFE53935)),
-        CallButtonSpec(ID_HANGUP,      "Hang Up",     Icons.Default.CallEnd,           Color(0xFFD32F2F))
+        CallButtonSpec(ID_HOLD,           "Hold",           Icons.Default.Pause,                      Color(0xFFFFA000)),
+        CallButtonSpec(ID_ADD,            "Add Person",     Icons.Default.PersonAdd,                  Color(0xFF009688)),
+        CallButtonSpec(ID_DIALPAD,        "Dialpad",        Icons.Default.Dialpad,                    Color(0xFF3F51B5)),
+        CallButtonSpec(ID_NOTE,           "Note",           Icons.Default.EditNote,                   Color(0xFF2196F3)),
+        CallButtonSpec(ID_MUTE,           "Mute",           Icons.Default.Mic,                        Color(0xFFE53935)),
+        CallButtonSpec(ID_SPEAKER,        "Speaker",        Icons.Default.VolumeDown,                 Color(0xFF4CAF50)),
+        CallButtonSpec(ID_AUTO_REDIAL,    "Auto Redial",    Icons.AutoMirrored.Filled.PhoneCallback,  Color(0xFF00ACC1)),
+        CallButtonSpec(ID_WHATSAPP_VIDEO, "WA Video",       Icons.Default.Videocam,                   Color(0xFF25D366)),
+        CallButtonSpec(ID_BLUETOOTH,      "Bluetooth",      Icons.Default.Bluetooth,                  Color(0xFF1976D2)),
+        CallButtonSpec(ID_MORE,           "More",           Icons.Default.MoreHoriz,                  Color(0xFF757575)),
+        CallButtonSpec(ID_RECORD,         "Record",         Icons.Default.FiberManualRecord,          Color(0xFFE53935)),
+        CallButtonSpec(ID_HANGUP,         "Hang Up",        Icons.Default.CallEnd,                    Color(0xFFD32F2F))
     )
 
     val ALL_IDS: List<String> = SPECS.map { it.id }
 
-    const val DEFAULT_ORDER = "hold,add,dialpad,note,mute,speaker,auto_redial,bluetooth,more,record,hangup"
+    const val DEFAULT_ORDER = "hold,add,dialpad,note,mute,speaker,auto_redial,whatsapp_video,bluetooth,more,record,hangup"
     // "more" and "record" are new — both off by default (unticked in the 3-dot menu) so
     // existing users see the same buttons as before until they opt in.
     const val DEFAULT_DISABLED = "more,record"
@@ -80,6 +83,16 @@ object CallButtonPrefs {
             val btIdx = stored.indexOf(ID_BLUETOOTH)
             if (btIdx != -1) stored.add(btIdx, ID_AUTO_REDIAL)
             else stored.add(ID_AUTO_REDIAL)
+        }
+        // Ensure ID_WHATSAPP_VIDEO is present right after ID_AUTO_REDIAL or before ID_BLUETOOTH
+        if (ID_WHATSAPP_VIDEO !in stored) {
+            val autoIdx = stored.indexOf(ID_AUTO_REDIAL)
+            if (autoIdx != -1) stored.add(autoIdx + 1, ID_WHATSAPP_VIDEO)
+            else {
+                val btIdx = stored.indexOf(ID_BLUETOOTH)
+                if (btIdx != -1) stored.add(btIdx, ID_WHATSAPP_VIDEO)
+                else stored.add(ID_WHATSAPP_VIDEO)
+            }
         }
         val missing = ALL_IDS.filter { it !in stored }
         val combined = (stored + missing).toMutableList()

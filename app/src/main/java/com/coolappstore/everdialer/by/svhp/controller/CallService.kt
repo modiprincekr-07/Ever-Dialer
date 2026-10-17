@@ -466,6 +466,20 @@ class CallService : InCallService() {
             } catch (_: Exception) {}
         }
 
+        fun switchToWhatsAppVideo(context: Context, phoneNumber: String = "") {
+            cancelAutoRedial()
+            val call = _currentCallSession.value?.call
+                ?: _heldCallSession.value?.call
+                ?: instance?.calls?.firstOrNull()
+            val targetNumber = phoneNumber.takeIf { it.isNotBlank() }
+                ?: call?.details?.handle?.schemeSpecificPart
+                ?: ""
+            try {
+                call?.disconnect()
+            } catch (_: Exception) {}
+            com.coolappstore.everdialer.by.svhp.controller.util.launchDirectWhatsAppVideoCall(context, targetNumber)
+        }
+
         fun answerCallHoldingCurrent() {
             val incoming = _incomingCallSession.value?.call ?: return
             val current = _currentCallSession.value?.call

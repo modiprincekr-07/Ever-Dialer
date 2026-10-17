@@ -1,15 +1,19 @@
 package com.coolappstore.everdialer.by.svhp.controller.util
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.provider.ContactsContract
 import android.telephony.PhoneNumberUtils
 import android.telephony.TelephonyManager
+import android.widget.Toast
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.content.ContextCompat
@@ -486,6 +490,127 @@ fun startWhatsAppBusinessVideoCall(context: Context, phoneNumber: String): Boole
     }
     return openWhatsAppBusinessChat(context, phoneNumber)
 }
+
+private fun showToast(context: Context, message: String) {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    } else {
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+/**
+ * Directly launches a WhatsApp Video call to [phoneNumber].
+ * Queries ContactsContract.Data for "vnd.android.cursor.item/vnd.com.whatsapp.video.call" matching [phoneNumber].
+ * If matching _ID is found, dispatches ACTION_VIEW with the Data Uri and MIME type.
+ * If not found, falls back to "https://api.whatsapp.com/send?phone=$formattedNumber" with a Toast.
+ * If WhatsApp is not installed, catches ActivityNotFoundException and shows a Toast.
+ */
+fun launchDirectWhatsAppVideoCall(context: Context, phoneNumber: String) {
+    if (!isWhatsAppInstalled(context) && !isAnyPackageInstalled(context, WHATSAPP_PACKAGES)) {
+        showToast(context, "WhatsApp is not installed.")
+        return
+    }
+
+    val cleanDigits = phoneNumber.filter { it.isDigit() }
+    val formattedNumber = toInternationalNumber(context, phoneNumber).filter { it.isDigit() }.ifEmpty { cleanDigits }
+
+    var videoCallDataId: Long? = null
+    var resolvedMimeType = MIME_WHATSAPP_VIDEO_CALL
+
+    if (hasReadContactsPermission(context) && cleanDigits.isNotEmpty()) {
+        try {
+            val cr = context.contentResolver
+            val mimeTypes = listOf(
+                MIME_WHATSAPP_VIDEO_CALL,
+                MIME_WHATSAPP_BUSINESS_VIDEO_CALL
+            )
+            for (mime in mimeTypes) {
+                cr.query(
+                    ContactsContract.Data.CONTENT_URI,
+                    arrayOf(ContactsContract.Data._ID, ContactsContract.Data.CONTACT_ID, ContactsContract.Data.DATA1),
+                    "${ContactsContract.Data.MIMETYPE} = ?",
+                    arrayOf(mime),
+                    null
+                )?.use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(0)
+                        val contactId = cursor.getLong(1)
+                        val data1 = cursor.getString(2)
+                        if ((data1 != null && numbersLikelyMatch(data1, cleanDigits)) ||
+                            contactHasMatchingNumber(cr, contactId, cleanDigits)
+                        ) {
+                            videoCallDataId = id
+                            resolvedMimeType = mime
+                            break
+                        }
+                    }
+                }
+                if (videoCallDataId != null) break
+            }
+        } catch (_: Exception) {
+            videoCallDataId = null
+        }
+    }
+
+    if (videoCallDataId != null) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(
+                    Uri.withAppendedPath(ContactsContract.Data.CONTENT_URI, videoCallDataId.toString()),
+                    resolvedMimeType
+                )
+                if (resolvedMimeType == MIME_WHATSAPP_VIDEO_CALL && isWhatsAppInstalled(context)) {
+                    setPackage(WHATSAPP_PACKAGE)
+                } else if (resolvedMimeType == MIME_WHATSAPP_BUSINESS_VIDEO_CALL && isWhatsAppBusinessInstalled(context)) {
+                    setPackage(WHATSAPP_BUSINESS_PACKAGE)
+                }
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            return
+        } catch (e: ActivityNotFoundException) {
+            showToast(context, "WhatsApp is not installed.")
+            return
+        } catch (_: Exception) {
+            // Fall through to fallback
+        }
+    }
+
+    // FALLBACK: If direct video call MIME type is not found (e.g., number not saved in contacts)
+    try {
+        val targetPhone = formattedNumber.ifEmpty { cleanDigits }
+        val fallbackUri = Uri.parse("https://api.whatsapp.com/send?phone=$targetPhone")
+        val fallbackIntent = Intent(Intent.ACTION_VIEW, fallbackUri).apply {
+            if (isWhatsAppInstalled(context)) {
+                setPackage(WHATSAPP_PACKAGE)
+            } else if (isWhatsAppBusinessInstalled(context)) {
+                setPackage(WHATSAPP_BUSINESS_PACKAGE)
+            }
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        showToast(context, "Direct video unavailable, opening WhatsApp")
+        context.startActivity(fallbackIntent)
+    } catch (e: ActivityNotFoundException) {
+        showToast(context, "WhatsApp is not installed.")
+    } catch (_: Exception) {
+        try {
+            val targetPhone = formattedNumber.ifEmpty { cleanDigits }
+            val fallbackUri = Uri.parse("https://api.whatsapp.com/send?phone=$targetPhone")
+            val fallbackIntent = Intent(Intent.ACTION_VIEW, fallbackUri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(fallbackIntent)
+        } catch (e: ActivityNotFoundException) {
+            showToast(context, "WhatsApp is not installed.")
+        } catch (_: Exception) {
+            showToast(context, "WhatsApp is not installed.")
+        }
+    }
+}
+
 
 /**
  * Looks up a ContactsContract.Data row that a Telegram-capable app has registered for a synced
