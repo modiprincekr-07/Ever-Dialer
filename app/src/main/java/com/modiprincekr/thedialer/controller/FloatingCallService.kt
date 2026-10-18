@@ -42,12 +42,57 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.path
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.view.screen.CallActivity
 import com.modiprincekr.thedialer.view.theme.Rivo4Theme
 import kotlinx.coroutines.*
+
+private val ReturnToCallIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "ReturnToCall",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).path(fill = SolidColor(Color.White)) {
+        // Door / square bracket open on the left
+        moveTo(19f, 3f)
+        horizontalLineTo(5f)
+        curveTo(3.9f, 3f, 3f, 3.9f, 3f, 5f)
+        verticalLineTo(9f)
+        horizontalLineTo(5f)
+        verticalLineTo(5f)
+        horizontalLineTo(19f)
+        verticalLineTo(19f)
+        horizontalLineTo(5f)
+        verticalLineTo(15f)
+        horizontalLineTo(3f)
+        verticalLineTo(19f)
+        curveTo(3f, 20.1f, 3.9f, 21f, 5f, 21f)
+        horizontalLineTo(19f)
+        curveTo(20.1f, 21f, 21f, 20.1f, 21f, 19f)
+        verticalLineTo(5f)
+        curveTo(21f, 3.9f, 20.1f, 3f, 19f, 3f)
+        close()
+
+        // Arrow pointing LEFT exiting the bracket / door
+        moveTo(9.91f, 8.41f)
+        lineTo(8.5f, 7f)
+        lineTo(3.5f, 12f)
+        lineTo(8.5f, 17f)
+        lineTo(9.91f, 15.59f)
+        lineTo(7.33f, 13f)
+        horizontalLineTo(17f)
+        verticalLineTo(11f)
+        horizontalLineTo(7.33f)
+        close()
+    }.build()
+}
 
 class FloatingCallService : Service() {
 
@@ -411,6 +456,27 @@ class FloatingCallService : Service() {
         val callSession by CallService.currentCallSession.collectAsState()
         val isRinging  = callSession?.state == Call.STATE_RINGING
 
+        var isTriggered by remember { mutableStateOf(false) }
+        var totalDragY by remember { mutableFloatStateOf(0f) }
+        val coroutineScope = rememberCoroutineScope()
+
+        val cardScale by animateFloatAsState(
+            targetValue   = if (isTriggered) 1.05f else 1f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness    = Spring.StiffnessLow
+            ),
+            label         = "cardExpandScale"
+        )
+        val cardOffsetY by animateFloatAsState(
+            targetValue   = if (isTriggered) -40f else (totalDragY * 0.25f).coerceIn(-30f, 0f),
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness    = Spring.StiffnessLow
+            ),
+            label         = "cardExpandOffsetY"
+        )
+
         // Full-screen Box – card is at BottomCenter so its background fills behind nav bar.
         // Tapping anywhere in the empty area above the sheet (i.e. not on the sheet itself,
         // since the sheet's own children consume their own taps first) dismisses the menu,
@@ -437,7 +503,7 @@ class FloatingCallService : Service() {
                 ) + fadeOut(tween(300, easing = FastOutLinearInEasing))
             ) {
                 Surface(
-                    modifier        = if (isLandscape) {
+                    modifier        = (if (isLandscape) {
                         Modifier
                             .widthIn(max = 500.dp)
                             .fillMaxWidth(0.65f)
@@ -446,6 +512,10 @@ class FloatingCallService : Service() {
                         Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp, vertical = 12.dp)
+                    }).graphicsLayer {
+                        scaleX = cardScale
+                        scaleY = cardScale
+                        translationY = cardOffsetY
                     },
                     shape           = RoundedCornerShape(if (isLandscape) 24.dp else 32.dp),
                     color           = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -459,17 +529,38 @@ class FloatingCallService : Service() {
                             .padding(top = if (isLandscape) 10.dp else 16.dp),
                         verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
-                        // Drag handle
+                        // Drag handle with targeted vertical drag gesture
                         Box(
                             modifier = Modifier
-                                .width(if (isLandscape) 32.dp else 40.dp)
-                                .height(if (isLandscape) 3.dp else 4.dp)
-                                .align(Alignment.CenterHorizontally)
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .pointerInput(Unit) {
+                                    detectVerticalDragGestures(
+                                        onDragStart = { totalDragY = 0f },
+                                        onDragEnd = { if (!isTriggered) totalDragY = 0f },
+                                        onDragCancel = { if (!isTriggered) totalDragY = 0f },
+                                        onVerticalDrag = { change, dragAmount ->
+                                            if (isTriggered) return@detectVerticalDragGestures
+                                            totalDragY += dragAmount
+                                            if (totalDragY <= -50f) {
+                                                change.consume()
+                                                isTriggered = true
+                                                coroutineScope.launch {
+                                                    delay(120)
+                                                    onAction(MenuAction.BackToCall(context))
+                                                }
+                                            }
+                                        }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
                             Surface(
-                                modifier        = Modifier.fillMaxSize(),
+                                modifier        = Modifier
+                                    .width(if (isLandscape) 32.dp else 40.dp)
+                                    .height(if (isLandscape) 3.dp else 4.dp),
                                 shape           = CircleShape,
-                                color           = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f),
+                                color           = if (isTriggered) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f),
                                 tonalElevation  = 0.dp,
                                 shadowElevation = 0.dp
                             ) {}
@@ -577,7 +668,7 @@ class FloatingCallService : Service() {
                                 ) { onAction(MenuAction.AnswerCall(context)) }
                             } else {
                                 SheetAction(3,
-                                    Icons.Default.Phone, "Back to call",
+                                    ReturnToCallIcon, "Back to call",
                                     MaterialTheme.colorScheme.onPrimaryContainer,
                                     MaterialTheme.colorScheme.primaryContainer,
                                     isLandscape = isLandscape
