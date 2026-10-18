@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Ever Dialer</string>
+    <string name="app_name">The Dialer</string>
     <string name="widget_description">விரைவு டயலுடன் சமீபத்திய அழைப்புகள்</string>
     <string name="widget_direct_call_title">நேரடி டயல்</string>
     <string name="widget_direct_call_description">ஒரு தட்டலில் தொடர்பை அழைக்கவும்</string>

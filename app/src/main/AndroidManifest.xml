@@ -1008,7 +1008,7 @@
             android:label="Recent Calls">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.coolappstore.everdialer.widget.ACTION_DIAL" />
+                <action android:name="com.modiprincekr.thedialer.widget.ACTION_DIAL" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
@@ -1134,7 +1134,7 @@
             android:name=".controller.FakeCallReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.coolappstore.everdialer.by.svhp.FAKE_CALL_TRIGGER" />
+                <action android:name="com.modiprincekr.thedialer.FAKE_CALL_TRIGGER" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
@@ -1143,7 +1143,7 @@
             android:name=".controller.sms.ScheduledSmsReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.coolappstore.everdialer.by.svhp.SCHEDULED_SMS_TRIGGER" />
+                <action android:name="com.modiprincekr.thedialer.SCHEDULED_SMS_TRIGGER" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>

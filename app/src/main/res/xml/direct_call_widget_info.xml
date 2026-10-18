@@ -6,7 +6,7 @@
     android:targetCellHeight="1"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_direct_call"
-    android:configure="com.coolappstore.everdialer.by.svhp.widget.DirectCallWidgetConfigureActivity"
+    android:configure="com.modiprincekr.thedialer.widget.DirectCallWidgetConfigureActivity"
     android:resizeMode="none"
     android:widgetCategory="home_screen"
     android:description="@string/widget_direct_call_description" />

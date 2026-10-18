@@ -143,7 +143,7 @@ android {
     defaultConfig {
         minSdk = 30
 
-        buildConfigField("String", "APPLICATION_ID", "\"com.coolappstore.everdialer.by.svhp\"")
+        buildConfigField("String", "APPLICATION_ID", "\"com.modiprincekr.thedialer\"")
         buildConfigField("String", "VERSION_NAME", "\"${ciVersionName.get()}\"")
         buildConfigField("int", "VERSION_CODE", "${ciVersionCode.get()}")
 

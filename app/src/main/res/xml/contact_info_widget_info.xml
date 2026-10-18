@@ -6,7 +6,7 @@
     android:targetCellHeight="1"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_contact_info"
-    android:configure="com.coolappstore.everdialer.by.svhp.widget.ContactInfoWidgetConfigureActivity"
+    android:configure="com.modiprincekr.thedialer.widget.ContactInfoWidgetConfigureActivity"
     android:resizeMode="none"
     android:widgetCategory="home_screen"
     android:description="@string/widget_contact_info_description" />
