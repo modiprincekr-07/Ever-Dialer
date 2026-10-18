@@ -5,25 +5,9 @@ import android.os.Build
 import android.os.Bundle
 import android.telecom.VideoProfile
 import androidx.activity.compose.setContent
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.modiprincekr.thedialer.controller.CallService
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
-import com.modiprincekr.thedialer.view.screen.settings.PasswordDialogContent
-import com.modiprincekr.thedialer.view.screen.settings.PinDialogContent
 import com.modiprincekr.thedialer.view.theme.Rivo4Theme
 import org.koin.android.ext.android.inject
 
@@ -63,12 +47,9 @@ class BiometricCallActivity : FragmentActivity() {
 
         setContent {
             Rivo4Theme {
-                val activity = this
-                BiometricFloatingUi(
-                    biometricType  = biometricType,
-                    activity       = activity,
-                    expectedPin      = prefs.getString(PreferenceManager.KEY_BIOMETRICS_PIN, "") ?: "",
-                    expectedPassword = prefs.getString(PreferenceManager.KEY_BIOMETRICS_PASSWORD, "") ?: "",
+                com.modiprincekr.thedialer.view.screen.auth.AuthLockScreen(
+                    title = "The Dialer",
+                    subtitle = "Verify your identity to access this call",
                     onSuccess = {
                         when (action) {
                             "ANSWER" -> CallService.answerCall()
@@ -78,82 +59,6 @@ class BiometricCallActivity : FragmentActivity() {
                     },
                     onDismiss = { finish() }
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun BiometricFloatingUi(
-    biometricType: String,
-    activity: FragmentActivity,
-    expectedPin: String,
-    expectedPassword: String,
-    onSuccess: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.65f))
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() }
-            ) { if (biometricType != "system") onDismiss() }
-    ) {
-        when (biometricType) {
-            "system" -> {
-                LaunchedEffect(Unit) {
-                    val executor = ContextCompat.getMainExecutor(activity)
-                    val prompt = BiometricPrompt(
-                        activity, executor,
-                        object : BiometricPrompt.AuthenticationCallback() {
-                            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) { onSuccess() }
-                            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) { onDismiss() }
-                            override fun onAuthenticationFailed() {}
-                        }
-                    )
-                    prompt.authenticate(
-                        BiometricPrompt.PromptInfo.Builder()
-                            .setTitle("The Dialer")
-                            .setSubtitle("Verify your identity to access this call")
-                            .setNegativeButtonText("Cancel")
-                            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
-                            .build()
-                    )
-                }
-            }
-            "pin", "password" -> {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(horizontal = 28.dp)
-                        .widthIn(max = 360.dp)
-                        .wrapContentHeight()
-                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {},
-                    shape = RoundedCornerShape(28.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 8.dp
-                ) {
-                    when (biometricType) {
-                        "pin" -> PinDialogContent(
-                            title          = "Enter PIN",
-                            isVerify       = true,
-                            expectedPin    = expectedPin,
-                            showCloseButton = true,
-                            onConfirm      = { onSuccess() },
-                            onDismiss      = onDismiss
-                        )
-                        "password" -> PasswordDialogContent(
-                            title            = "Enter Password",
-                            isVerify         = true,
-                            expectedPassword = expectedPassword,
-                            showCloseButton  = true,
-                            onConfirm        = { onSuccess() },
-                            onDismiss        = onDismiss
-                        )
-                    }
-                }
             }
         }
     }

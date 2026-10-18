@@ -1936,28 +1936,29 @@ fun SettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                 }
             }
 
-            // ── Authentication ───────────────────────────────────────────────
+            // ── Passwords & Security ─────────────────────────────────────────
             item {
                 RivoAnimatedSection(delayMs = 110L) {
                     Column {
-                        SectionLabel("Authentication")
+                        SectionLabel("Passwords & Security")
                         RivoExpressiveCard {
                             val biometricsType = remember(prefs.settingsChanged.collectAsState().value) {
                                 prefs.getString(PreferenceManager.KEY_BIOMETRICS_TYPE, "") ?: ""
                             }
                             val biometricsLabel = when (biometricsType) {
                                 "system"   -> "System Biometrics"
-                                "pin"      -> "Custom PIN"
-                                "password" -> "Custom Password"
+                                "pin"      -> "PIN"
+                                "password" -> "Password"
+                                "pattern"  -> "Pattern"
                                 else       -> "Not configured"
                             }
                             RivoListItem(
-                                headline   = "Authentication",
+                                headline   = "Passwords & Security",
                                 supporting = biometricsLabel,
-                                leadingIcon = Icons.Default.Fingerprint,
+                                leadingIcon = Icons.Default.Security,
                                 iconContainerColor = Color(0xFF6750A4),
                                 trailingIcon = Icons.Default.ChevronRight,
-                                modifier = Modifier.settingsSearchHighlight("authentication", highlightedSettingKey) { highlightedSettingKey = null },
+                                modifier = Modifier.settingsSearchHighlight("passwords_and_security", highlightedSettingKey) { highlightedSettingKey = null },
                                 onClick = { navigator.navigate(BiometricScreenDestination()) }
                             )
                         }

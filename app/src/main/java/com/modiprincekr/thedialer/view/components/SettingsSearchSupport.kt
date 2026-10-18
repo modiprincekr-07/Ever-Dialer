@@ -221,7 +221,7 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Interface", "Themes, colors, and layout", "interface", Icons.Outlined.Palette, GsColorPurple),
         GlobalSettingsSearchEntry("Tap Haptics", "Vibration on taps across the app", "tap_haptics", Icons.Outlined.Vibration, GsColorPurple),
         GlobalSettingsSearchEntry("Scroll Haptics", "Vibrate on scroll gestures across the app", "scroll_haptics", Icons.Outlined.SwipeVertical, GsColorIndigo),
-        GlobalSettingsSearchEntry("Authentication", "App lock, biometrics, and PIN/password", "authentication", Icons.Default.Fingerprint, Color(0xFF6750A4)),
+        GlobalSettingsSearchEntry("Passwords & Security", "App lock, biometrics, PIN, pattern, and password", "passwords_and_security", Icons.Default.Security, Color(0xFF6750A4)) { it.navigate(BiometricScreenDestination()) },
         GlobalSettingsSearchEntry("Contacts Hider", "Hide contacts behind a secret code", "contacts_hider", Icons.Outlined.Lock, Color(0xFF5E35B1)),
         GlobalSettingsSearchEntry("Fake Call", "Schedule fake incoming calls without calling the real person", "fake_call", Icons.Outlined.PhoneCallback, GsColorRed),
         GlobalSettingsSearchEntry("Call Recording", "Open Ever Call Recorder", "call_recording", Icons.Default.FiberManualRecord, Color(0xFFE53935)),
@@ -304,10 +304,10 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Ringtone Settings", "Choose your incoming call ringtone", "ringtone_settings", Icons.Outlined.VolumeUp, GsColorAmber) { it.navigate(SoundVibrationScreenDestination(highlightKey = "ringtone_settings")) },
         GlobalSettingsSearchEntry("Do Not Disturb", "Manage Do Not Disturb access", "dnd_settings", Icons.Outlined.VolumeUp, GsColorIndigo) { it.navigate(SoundVibrationScreenDestination(highlightKey = "dnd_settings")) },
 
-        // ── Authentication (Biometric) screen ────────────────────────────────────
-        GlobalSettingsSearchEntry("Authentication Method", "System biometrics, PIN, or password", "auth_method", Icons.Default.Fingerprint, Color(0xFF6750A4)) { it.navigate(BiometricScreenDestination(highlightKey = "auth_method")) },
-        GlobalSettingsSearchEntry("Lock App on Open", "Require authentication whenever the app opens", "lock_app_open", Icons.Default.Fingerprint, GsColorRed) { it.navigate(BiometricScreenDestination(highlightKey = "lock_app_open")) },
-        GlobalSettingsSearchEntry("Lock Call Actions", "Require authentication for sensitive call actions", "lock_call_actions", Icons.Default.Fingerprint, GsColorTeal) { it.navigate(BiometricScreenDestination(highlightKey = "lock_call_actions")) },
+        // ── Passwords & Security screen ────────────────────────────────────
+        GlobalSettingsSearchEntry("Unlock Methods", "System biometrics, PIN, password, or pattern", "auth_method", Icons.Default.Security, Color(0xFF6750A4)) { it.navigate(BiometricScreenDestination(highlightKey = "auth_method")) },
+        GlobalSettingsSearchEntry("Lock App on Open", "Require authentication whenever the app opens", "lock_app_open", Icons.Default.Lock, GsColorRed) { it.navigate(BiometricScreenDestination(highlightKey = "lock_app_open")) },
+        GlobalSettingsSearchEntry("Lock Call Actions", "Require authentication for sensitive call actions", "lock_call_actions", Icons.Default.PhonePaused, GsColorTeal) { it.navigate(BiometricScreenDestination(highlightKey = "lock_call_actions")) },
 
         // ── Interface screen ──────────────────────────────────────────────────────
         GlobalSettingsSearchEntry("Dynamic Colors", "Match app colors to your wallpaper (Material You)", "dynamic_colors", Icons.Outlined.Palette, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "dynamic_colors")) },

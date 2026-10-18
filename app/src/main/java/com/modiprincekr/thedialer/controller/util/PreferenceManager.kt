@@ -88,6 +88,16 @@ class PreferenceManager(context: Context) {
         return if (mode == "specified") match else !match
     }
 
+    fun isPatternVisible(): Boolean = getBoolean(KEY_BIOMETRICS_PATTERN_VISIBLE, true)
+
+    fun getBiometricsBackupType(): String {
+        val stored = getString(KEY_BIOMETRICS_BACKUP_TYPE, "") ?: ""
+        if (stored.isNotEmpty()) return stored
+        if ((getString(KEY_BIOMETRICS_PATTERN, "") ?: "").isNotEmpty()) return "pattern"
+        if ((getString(KEY_BIOMETRICS_PASSWORD, "") ?: "").isNotEmpty()) return "password"
+        return "pin"
+    }
+
     fun getContactSimChoice(contactKey: String, fallbackNumber: String? = null): String {
         val choice = getString(KEY_CONTACT_SIM_CHOICE_PREFIX + contactKey, SIM_CHOICE_SETTINGS) ?: SIM_CHOICE_SETTINGS
         if (choice != SIM_CHOICE_SETTINGS) return choice
@@ -574,10 +584,13 @@ class PreferenceManager(context: Context) {
         const val KEY_TAB_ORDER                = "tab_order"
         const val KEY_MISSED_CALL_RESET_TIME   = "missed_call_reset_time"
         const val DEFAULT_TAB_ORDER            = "favorites,calls,contacts,sms,groups,recordings,notes,dialpad"
-        // Biometrics
-        const val KEY_BIOMETRICS_TYPE          = "biometrics_type"         // "system" | "pin" | "password" | ""
+        // Passwords & Security / Biometrics
+        const val KEY_BIOMETRICS_TYPE          = "biometrics_type"         // "system" | "pin" | "password" | "pattern" | ""
         const val KEY_BIOMETRICS_PIN           = "biometrics_pin"
         const val KEY_BIOMETRICS_PASSWORD      = "biometrics_password"
+        const val KEY_BIOMETRICS_PATTERN       = "biometrics_pattern"
+        const val KEY_BIOMETRICS_PATTERN_VISIBLE = "biometrics_pattern_visible"
+        const val KEY_BIOMETRICS_BACKUP_TYPE   = "biometrics_backup_type" // "pin" | "pattern" | "password"
         const val KEY_BIOMETRICS_APP_LOCK      = "biometrics_app_lock"
         const val KEY_BIOMETRICS_CALL_LOCK     = "biometrics_call_lock"
         const val KEY_BIOMETRICS_CALL_LOCK_MODE    = "biometrics_call_lock_mode"    // "all" | "specified" | "skip_specified"
