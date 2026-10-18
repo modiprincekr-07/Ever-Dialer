@@ -139,6 +139,10 @@ class MissedCallPopupService : Service() {
             ringDurationSec: Long = 0L,
             isMissedCall: Boolean = true
         ) {
+            if (CallService.suppressPostCallPopup || CallService.isAutoRedialActive.value) {
+                CallService.suppressPostCallPopup = false
+                return
+            }
             if (!Settings.canDrawOverlays(context)) return
             val intent = Intent(context, MissedCallPopupService::class.java).apply {
                 putExtra(EXTRA_PHONE_NUMBER, number)

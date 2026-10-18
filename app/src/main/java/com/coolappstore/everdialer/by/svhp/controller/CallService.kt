@@ -99,6 +99,14 @@ class CallService : InCallService() {
                 )
             }
 
+            // Suppress popup if intentionally triggered by WhatsApp Video switch or during active Auto Redial loop
+            if (suppressPostCallPopup || isAutoRedialActive.value) {
+                // Consume the suppression flag so normal calls behave correctly next time
+                suppressPostCallPopup = false
+                handledCallEndedPopups.add(call)
+                return
+            }
+
             // Trigger Missed Call / Call End Popup if enabled and permission granted
             val missedPopupEnabled = prefs.getBoolean(PreferenceManager.KEY_MISSED_CALL_POPUP_ENABLED, false)
             val alwaysAfterCallEnds = prefs.getBoolean(PreferenceManager.KEY_ALWAYS_SHOW_MISSED_CALL_POPUP_AFTER_CALL_END, false)
@@ -122,6 +130,8 @@ class CallService : InCallService() {
                     )
                 }, 300)
             }
+        } else {
+            suppressPostCallPopup = false
         }
     }
 
@@ -252,6 +262,7 @@ class CallService : InCallService() {
         if (redialJob?.isActive != true) {
             cancelAutoRedial()
         }
+        suppressPostCallPopup = false
     }
 
     /**
@@ -323,6 +334,8 @@ class CallService : InCallService() {
         val audioState = _audioState.asStateFlow()
 
         val isAutoRedialActive = MutableStateFlow(false)
+        @Volatile
+        var suppressPostCallPopup = false
         private var redialJob: Job? = null
         private val redialScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -474,9 +487,14 @@ class CallService : InCallService() {
             val targetNumber = phoneNumber.takeIf { it.isNotBlank() }
                 ?: call?.details?.handle?.schemeSpecificPart
                 ?: ""
+            if (call != null) {
+                suppressPostCallPopup = true
+            }
             try {
                 call?.disconnect()
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                suppressPostCallPopup = false
+            }
             com.coolappstore.everdialer.by.svhp.controller.util.launchDirectWhatsAppVideoCall(context, targetNumber)
         }
 
