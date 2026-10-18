@@ -44,8 +44,16 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.hypot
@@ -362,94 +370,106 @@ fun PatternCredentialView(
         }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        // Top Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
+        if (showCloseButton) {
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(16.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.Pattern,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-                Column {
-                    Text(
-                        text = when {
-                            isVerify -> title
-                            phase == 0 -> "Draw an Unlock Pattern"
-                            else -> "Confirm Pattern"
-                        },
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            if (showCloseButton) {
-                IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.Close, null, modifier = Modifier.size(20.dp))
-                }
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Close",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-
-        // 3x3 Canvas Grid
-        Box(
+        Column(
             modifier = Modifier
-                .sizeIn(maxWidth = 320.dp, maxHeight = 320.dp)
-                .fillMaxWidth(0.85f)
-                .offset(x = shakeOffset.dp),
-            contentAlignment = Alignment.Center
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            PatternLockCanvas(
-                modifier = Modifier.fillMaxSize(),
-                isPatternVisible = isPatternVisible,
-                isError = isError,
-                enabled = !isError,
-                onPatternComplete = ::handlePattern
-            )
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Action Buttons
-        if (!isVerify && phase == 1) {
-            TextButton(
-                onClick = {
-                    phase = 0
-                    firstPattern = ""
-                    statusText = "Connect at least 4 dots"
-                }
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(56.dp)
             ) {
-                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Reset Pattern", fontWeight = FontWeight.SemiBold)
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Pattern,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            Text(
+                text = when {
+                    isVerify -> title
+                    phase == 0 -> "Draw an Unlock Pattern"
+                    else -> "Confirm Pattern"
+                },
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            Text(
+                text = statusText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(24.dp))
+
+            // 3x3 Canvas Grid
+            Box(
+                modifier = Modifier
+                    .sizeIn(maxWidth = 320.dp, maxHeight = 320.dp)
+                    .fillMaxWidth(0.85f)
+                    .aspectRatio(1f)
+                    .offset(x = shakeOffset.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                PatternLockCanvas(
+                    modifier = Modifier.fillMaxSize(),
+                    isPatternVisible = isPatternVisible,
+                    isError = isError,
+                    enabled = !isError,
+                    onPatternComplete = ::handlePattern
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Action Buttons
+            if (!isVerify && phase == 1) {
+                TextButton(
+                    onClick = {
+                        phase = 0
+                        firstPattern = ""
+                        statusText = "Connect at least 4 dots"
+                    }
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Reset Pattern", fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }
@@ -701,79 +721,97 @@ fun PinCredentialView(
         }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        // Top Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
+        if (showCloseButton) {
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(16.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.Pin,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-                Column {
-                    Text(
-                        text = when {
-                            isVerify -> title
-                            phase == 0 -> "Set PIN"
-                            else -> "Confirm PIN"
-                        },
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = subtitleText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            if (showCloseButton) {
-                IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.Close, null, modifier = Modifier.size(20.dp))
-                }
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Close",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-
-        // PIN Dots Indicator
-        Box(
-            modifier = Modifier.offset(x = shakeOffset.dp),
-            contentAlignment = Alignment.Center
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            PinDotsRow(pinLength = pin.length, isError = isError)
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(56.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Pin,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            Text(
+                text = when {
+                    isVerify -> title
+                    phase == 0 -> "Set PIN"
+                    else -> "Confirm PIN"
+                },
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            Text(
+                text = subtitleText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(20.dp))
+
+            // PIN Dots Indicator
+            Box(
+                modifier = Modifier.offset(x = shakeOffset.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                PinDotsRow(pinLength = pin.length, isError = isError)
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // Numpad
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 340.dp)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                PinNumpad(
+                    onDigit = ::onDigit,
+                    onBackspace = ::onBackspace,
+                    onSubmit = ::onSubmit
+                )
+            }
         }
-
-        Spacer(Modifier.height(12.dp))
-
-        // Numpad
-        PinNumpad(
-            onDigit = ::onDigit,
-            onBackspace = ::onBackspace,
-            onSubmit = ::onSubmit
-        )
     }
 }
 
@@ -797,6 +835,15 @@ fun PasswordCredentialView(
     var showPassword by remember { mutableStateOf(false) }
     var showConfirm by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf("") }
+
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(Unit) {
+        delay(150)
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
 
     val (shakeOffset, triggerShake) = rememberCredentialShake()
 
@@ -829,193 +876,238 @@ fun PasswordCredentialView(
         }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        // Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
+        if (showCloseButton) {
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(16.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.Key,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-                Column {
-                    Text(
-                        text = if (isVerify) title else "Set Password",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = if (isVerify) "Enter your alphanumeric password" else "Letters, numbers & symbols",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            if (showCloseButton) {
-                IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.Close, null, modifier = Modifier.size(20.dp))
-                }
-            }
-        }
-
-        // Text Fields
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .offset(x = shakeOffset.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it; errorText = "" },
-                label = { Text(if (isVerify) "Password" else "New Password") },
-                singleLine = true,
-                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = if (isVerify) ImeAction.Done else ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(onDone = { validateAndSubmit() }),
-                trailingIcon = {
-                    IconButton(onClick = { showPassword = !showPassword }) {
-                        Icon(if (showPassword) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, null)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                isError = errorText.isNotEmpty()
-            )
-
-            if (!isVerify) {
-                OutlinedTextField(
-                    value = confirmPassword,
-                    onValueChange = { confirmPassword = it; errorText = "" },
-                    label = { Text("Confirm Password") },
-                    singleLine = true,
-                    visualTransformation = if (showConfirm) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Password,
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(onDone = { validateAndSubmit() }),
-                    trailingIcon = {
-                        IconButton(onClick = { showConfirm = !showConfirm }) {
-                            Icon(if (showConfirm) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, null)
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    isError = errorText.isNotEmpty()
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Close",
+                    tint = MaterialTheme.colorScheme.onSurface
                 )
             }
         }
 
-        AnimatedVisibility(visible = errorText.isNotEmpty()) {
-            Text(
-                text = errorText,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-
-        // Action Buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .widthIn(max = 380.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            if (showCloseButton) {
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f).height(50.dp)
-                ) {
-                    Text("Cancel")
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(56.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Key,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
             }
-            Button(
-                onClick = ::validateAndSubmit,
-                modifier = Modifier.weight(1f).height(50.dp),
-                shape = RoundedCornerShape(14.dp)
+
+            Spacer(Modifier.height(14.dp))
+
+            Text(
+                text = if (isVerify) title else "Set Password",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            Text(
+                text = if (isVerify) "Enter your alphanumeric password" else "Letters, numbers & symbols",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(24.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset(x = shakeOffset.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(if (isVerify) "Unlock" else "Confirm", fontWeight = FontWeight.SemiBold)
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; errorText = "" },
+                    label = { Text(if (isVerify) "Password" else "New Password") },
+                    singleLine = true,
+                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = if (isVerify) ImeAction.Done else ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { validateAndSubmit() }),
+                    trailingIcon = {
+                        IconButton(onClick = { showPassword = !showPassword }) {
+                            Icon(if (showPassword) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, null)
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    shape = RoundedCornerShape(16.dp),
+                    isError = errorText.isNotEmpty()
+                )
+
+                if (!isVerify) {
+                    OutlinedTextField(
+                        value = confirmPassword,
+                        onValueChange = { confirmPassword = it; errorText = "" },
+                        label = { Text("Confirm Password") },
+                        singleLine = true,
+                        visualTransformation = if (showConfirm) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(onDone = { validateAndSubmit() }),
+                        trailingIcon = {
+                            IconButton(onClick = { showConfirm = !showConfirm }) {
+                                Icon(if (showConfirm) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, null)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        isError = errorText.isNotEmpty()
+                    )
+                }
+
+                AnimatedVisibility(visible = errorText.isNotEmpty()) {
+                    Text(
+                        text = errorText,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (showCloseButton) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                    Button(
+                        onClick = ::validateAndSubmit,
+                        modifier = Modifier.weight(1f).height(50.dp),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (isVerify) "Unlock" else "Confirm", fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ELEGANT MATERIAL 3 BOTTOM SHEETS FOR SETUP
+// FULL-SCREEN MATERIAL 3 CREDENTIAL SETUP DIALOG WITH BLURRED BACKGROUND
 // ─────────────────────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CredentialSetupBottomSheet(
+fun CredentialSetupDialog(
     type: String, // "pin" | "password" | "pattern"
     isPatternVisible: Boolean = true,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(
+    Dialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = {
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.72f)),
+            contentAlignment = Alignment.Center
+        ) {
+            // Blurred background overlay
             Box(
-                Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(16.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.65f))
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .systemBarsPadding(),
                 contentAlignment = Alignment.Center
             ) {
-                Surface(
-                    shape = RoundedCornerShape(3.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                    modifier = Modifier.size(width = 36.dp, height = 4.dp)
-                ) {}
-            }
-        }
-    ) {
-        Box(modifier = Modifier.navigationBarsPadding()) {
-            when (type) {
-                "pattern" -> PatternCredentialView(
-                    isVerify = false,
-                    isPatternVisible = isPatternVisible,
-                    showCloseButton = true,
-                    onConfirm = onConfirm,
-                    onDismiss = onDismiss
-                )
-                "pin" -> PinCredentialView(
-                    isVerify = false,
-                    showCloseButton = true,
-                    onConfirm = onConfirm,
-                    onDismiss = onDismiss
-                )
-                "password" -> PasswordCredentialView(
-                    isVerify = false,
-                    showCloseButton = true,
-                    onConfirm = onConfirm,
-                    onDismiss = onDismiss
-                )
+                when (type) {
+                    "pattern" -> PatternCredentialView(
+                        isVerify = false,
+                        isPatternVisible = isPatternVisible,
+                        showCloseButton = true,
+                        onConfirm = onConfirm,
+                        onDismiss = onDismiss
+                    )
+                    "pin" -> PinCredentialView(
+                        isVerify = false,
+                        showCloseButton = true,
+                        onConfirm = onConfirm,
+                        onDismiss = onDismiss
+                    )
+                    "password" -> PasswordCredentialView(
+                        isVerify = false,
+                        showCloseButton = true,
+                        onConfirm = onConfirm,
+                        onDismiss = onDismiss
+                    )
+                }
             }
         }
     }
+}
+
+// Deprecated alias for backwards compatibility
+@Composable
+fun CredentialSetupBottomSheet(
+    type: String,
+    isPatternVisible: Boolean = true,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    CredentialSetupDialog(
+        type = type,
+        isPatternVisible = isPatternVisible,
+        onConfirm = onConfirm,
+        onDismiss = onDismiss
+    )
 }

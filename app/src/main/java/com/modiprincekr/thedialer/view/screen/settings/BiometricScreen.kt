@@ -1,6 +1,7 @@
 package com.modiprincekr.thedialer.view.screen.settings
 
 import android.content.Context
+import android.widget.Toast
 import androidx.biometric.BiometricManager
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -81,7 +82,6 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
 
     // Active credential setup sheet type: "pin" | "password" | "pattern" | null
     var activeSetupType by remember { mutableStateOf<String?>(null) }
-    var isConfiguringBackup by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         allContacts = withContext(Dispatchers.IO) {
@@ -144,7 +144,7 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                 RivoListItem(
                     headline = "System Biometrics",
                     supporting = if (systemBiometricsAvailable) {
-                        "Fingerprint, face unlock, or device credentials"
+                        "Fingerprint or device credentials"
                     } else {
                         "Not available on this device"
                     },
@@ -154,20 +154,18 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                     modifier = Modifier.settingsSearchHighlight("auth_method_system", highlightedKey) { highlightedKey = null },
                     onClick = {
                         if (systemBiometricsAvailable) {
-                            biometricsType = "system"
-                            prefs.setString(PreferenceManager.KEY_BIOMETRICS_TYPE, "system")
-                            if (!appLockEnabled) {
-                                appLockEnabled = true
-                                prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_APP_LOCK, true)
-                            }
-                            // If no backup credential set, launch backup PIN setup
-                            val currentBackup = prefs.getBiometricsBackupType()
                             val hasPin = (prefs.getString(PreferenceManager.KEY_BIOMETRICS_PIN, "") ?: "").isNotEmpty()
                             val hasPattern = (prefs.getString(PreferenceManager.KEY_BIOMETRICS_PATTERN, "") ?: "").isNotEmpty()
                             val hasPassword = (prefs.getString(PreferenceManager.KEY_BIOMETRICS_PASSWORD, "") ?: "").isNotEmpty()
                             if (!hasPin && !hasPattern && !hasPassword) {
-                                isConfiguringBackup = true
-                                activeSetupType = "pin"
+                                Toast.makeText(context, "Please set a PIN, Password, or Pattern first.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                biometricsType = "system"
+                                prefs.setString(PreferenceManager.KEY_BIOMETRICS_TYPE, "system")
+                                if (!appLockEnabled) {
+                                    appLockEnabled = true
+                                    prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_APP_LOCK, true)
+                                }
                             }
                         }
                     }
@@ -187,7 +185,6 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                     trailingIcon = if (biometricsType == "pin") Icons.Default.CheckCircle else Icons.Default.ChevronRight,
                     modifier = Modifier.settingsSearchHighlight("auth_method_pin", highlightedKey) { highlightedKey = null },
                     onClick = {
-                        isConfiguringBackup = false
                         activeSetupType = "pin"
                     }
                 )
@@ -206,7 +203,6 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                     trailingIcon = if (biometricsType == "password") Icons.Default.CheckCircle else Icons.Default.ChevronRight,
                     modifier = Modifier.settingsSearchHighlight("auth_method_password", highlightedKey) { highlightedKey = null },
                     onClick = {
-                        isConfiguringBackup = false
                         activeSetupType = "password"
                     }
                 )
@@ -235,7 +231,6 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                                     prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_APP_LOCK, true)
                                 }
                             } else {
-                                isConfiguringBackup = false
                                 activeSetupType = "pattern"
                             }
                         }
@@ -274,7 +269,6 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                                 iconContainerColor = Color(0xFFFF9800).copy(alpha = 0.5f),
                                 trailingIcon = Icons.Default.ChevronRight,
                                 onClick = {
-                                    isConfiguringBackup = false
                                     activeSetupType = "pattern"
                                 }
                             )
@@ -300,66 +294,13 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                             prefs.setString(PreferenceManager.KEY_BIOMETRICS_PIN, "")
                             prefs.setString(PreferenceManager.KEY_BIOMETRICS_PASSWORD, "")
                             prefs.setString(PreferenceManager.KEY_BIOMETRICS_PATTERN, "")
+                            prefs.setString(PreferenceManager.KEY_BIOMETRICS_BACKUP_TYPE, "")
                             prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_APP_LOCK, false)
                             prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_CALL_LOCK, false)
                             appLockEnabled = false
                             callLockEnabled = false
                         }
                     )
-                }
-            }
-
-            // ── Biometric Smart Backup Configuration Row ─────────────────────
-            AnimatedVisibility(
-                visible = biometricsType == "system",
-                enter = fadeIn(tween(250)) + expandVertically(tween(250)),
-                exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Biometric Fallback",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp)
-                    )
-                    RivoExpressiveCard {
-                        val currentBackup = prefs.getBiometricsBackupType()
-                        val backupLabel = when (currentBackup) {
-                            "pattern" -> "Pattern"
-                            "password" -> "Password"
-                            else -> "PIN"
-                        }
-                        val backupIcon = when (currentBackup) {
-                            "pattern" -> Icons.Default.Pattern
-                            "password" -> Icons.Default.Key
-                            else -> Icons.Default.Pin
-                        }
-
-                        RivoListItem(
-                            headline = "Fallback Credential: $backupLabel",
-                            supporting = "Used when biometric verification cancels or fails",
-                            leadingIcon = backupIcon,
-                            iconContainerColor = Color(0xFF6750A4),
-                            trailingIcon = Icons.Default.ChevronRight,
-                            onClick = {
-                                // Cycle or configure next backup method
-                                when (currentBackup) {
-                                    "pin" -> {
-                                        isConfiguringBackup = true
-                                        activeSetupType = "pattern"
-                                    }
-                                    "pattern" -> {
-                                        isConfiguringBackup = true
-                                        activeSetupType = "password"
-                                    }
-                                    else -> {
-                                        isConfiguringBackup = true
-                                        activeSetupType = "pin"
-                                    }
-                                }
-                            }
-                        )
-                    }
                 }
             }
 
@@ -526,62 +467,57 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
         }
     }
 
-    // ── Credential Setup Modal Bottom Sheet ─────────────────────────────────
+    // ── Credential Setup Full-Screen Dialog ─────────────────────────────────
     if (activeSetupType != null) {
-        CredentialSetupBottomSheet(
+        CredentialSetupDialog(
             type = activeSetupType!!,
             isPatternVisible = patternVisible,
             onConfirm = { credential ->
                 when (activeSetupType) {
                     "pin" -> {
                         prefs.setString(PreferenceManager.KEY_BIOMETRICS_PIN, credential)
-                        if (isConfiguringBackup) {
-                            prefs.setString(PreferenceManager.KEY_BIOMETRICS_BACKUP_TYPE, "pin")
-                            backupType = "pin"
-                        } else {
+                        prefs.setString(PreferenceManager.KEY_BIOMETRICS_BACKUP_TYPE, "pin")
+                        backupType = "pin"
+                        if (biometricsType != "system") {
                             biometricsType = "pin"
                             prefs.setString(PreferenceManager.KEY_BIOMETRICS_TYPE, "pin")
-                            if (!appLockEnabled) {
-                                appLockEnabled = true
-                                prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_APP_LOCK, true)
-                            }
+                        }
+                        if (!appLockEnabled) {
+                            appLockEnabled = true
+                            prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_APP_LOCK, true)
                         }
                     }
                     "password" -> {
                         prefs.setString(PreferenceManager.KEY_BIOMETRICS_PASSWORD, credential)
-                        if (isConfiguringBackup) {
-                            prefs.setString(PreferenceManager.KEY_BIOMETRICS_BACKUP_TYPE, "password")
-                            backupType = "password"
-                        } else {
+                        prefs.setString(PreferenceManager.KEY_BIOMETRICS_BACKUP_TYPE, "password")
+                        backupType = "password"
+                        if (biometricsType != "system") {
                             biometricsType = "password"
                             prefs.setString(PreferenceManager.KEY_BIOMETRICS_TYPE, "password")
-                            if (!appLockEnabled) {
-                                appLockEnabled = true
-                                prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_APP_LOCK, true)
-                            }
+                        }
+                        if (!appLockEnabled) {
+                            appLockEnabled = true
+                            prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_APP_LOCK, true)
                         }
                     }
                     "pattern" -> {
                         prefs.setString(PreferenceManager.KEY_BIOMETRICS_PATTERN, credential)
-                        if (isConfiguringBackup) {
-                            prefs.setString(PreferenceManager.KEY_BIOMETRICS_BACKUP_TYPE, "pattern")
-                            backupType = "pattern"
-                        } else {
+                        prefs.setString(PreferenceManager.KEY_BIOMETRICS_BACKUP_TYPE, "pattern")
+                        backupType = "pattern"
+                        if (biometricsType != "system") {
                             biometricsType = "pattern"
                             prefs.setString(PreferenceManager.KEY_BIOMETRICS_TYPE, "pattern")
-                            if (!appLockEnabled) {
-                                appLockEnabled = true
-                                prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_APP_LOCK, true)
-                            }
+                        }
+                        if (!appLockEnabled) {
+                            appLockEnabled = true
+                            prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_APP_LOCK, true)
                         }
                     }
                 }
                 activeSetupType = null
-                isConfiguringBackup = false
             },
             onDismiss = {
                 activeSetupType = null
-                isConfiguringBackup = false
             }
         )
     }

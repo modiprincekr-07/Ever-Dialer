@@ -92,9 +92,13 @@ class PreferenceManager(context: Context) {
 
     fun getBiometricsBackupType(): String {
         val stored = getString(KEY_BIOMETRICS_BACKUP_TYPE, "") ?: ""
-        if (stored.isNotEmpty()) return stored
+        if (stored == "pattern" && (getString(KEY_BIOMETRICS_PATTERN, "") ?: "").isNotEmpty()) return "pattern"
+        if (stored == "password" && (getString(KEY_BIOMETRICS_PASSWORD, "") ?: "").isNotEmpty()) return "password"
+        if (stored == "pin" && (getString(KEY_BIOMETRICS_PIN, "") ?: "").isNotEmpty()) return "pin"
+
         if ((getString(KEY_BIOMETRICS_PATTERN, "") ?: "").isNotEmpty()) return "pattern"
         if ((getString(KEY_BIOMETRICS_PASSWORD, "") ?: "").isNotEmpty()) return "password"
+        if ((getString(KEY_BIOMETRICS_PIN, "") ?: "").isNotEmpty()) return "pin"
         return "pin"
     }
 

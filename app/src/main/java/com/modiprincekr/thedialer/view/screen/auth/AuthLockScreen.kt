@@ -18,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -112,31 +114,39 @@ fun AuthLockScreen(
         }
     }
 
-    Surface(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() }
             ) {},
-        color = MaterialTheme.colorScheme.surface
+        contentAlignment = Alignment.Center
     ) {
+        // Blurred translucent background overlay
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(16.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+                .background(Color.Black.copy(alpha = 0.72f))
+        )
+
         AnimatedContent(
             targetState = activeCredential,
             transitionSpec = {
                 (fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.96f, animationSpec = tween(220)))
                     .togetherWith(fadeOut(animationSpec = tween(180)) + scaleOut(targetScale = 1.02f, animationSpec = tween(180)))
             },
-            label = "authScreenState"
+            label = "authScreenState",
+            modifier = Modifier.fillMaxSize()
         ) { credential ->
             when (credential) {
                 "pin" -> {
-                    Column(
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .systemBarsPadding(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        contentAlignment = Alignment.Center
                     ) {
                         PinCredentialView(
                             isVerify = true,
@@ -158,7 +168,10 @@ fun AuthLockScreen(
                                 onClick = {
                                     activeCredential = null
                                     biometricPromptTrigger++
-                                }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 20.dp)
                             ) {
                                 Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
@@ -169,12 +182,11 @@ fun AuthLockScreen(
                 }
 
                 "pattern" -> {
-                    Column(
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .systemBarsPadding(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        contentAlignment = Alignment.Center
                     ) {
                         PatternCredentialView(
                             isVerify = true,
@@ -197,7 +209,10 @@ fun AuthLockScreen(
                                 onClick = {
                                     activeCredential = null
                                     biometricPromptTrigger++
-                                }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 20.dp)
                             ) {
                                 Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
@@ -208,12 +223,11 @@ fun AuthLockScreen(
                 }
 
                 "password" -> {
-                    Column(
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .systemBarsPadding(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        contentAlignment = Alignment.Center
                     ) {
                         PasswordCredentialView(
                             isVerify = true,
@@ -235,7 +249,10 @@ fun AuthLockScreen(
                                 onClick = {
                                     activeCredential = null
                                     biometricPromptTrigger++
-                                }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 20.dp)
                             ) {
                                 Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
