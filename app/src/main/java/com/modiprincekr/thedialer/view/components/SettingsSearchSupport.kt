@@ -80,9 +80,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.unit.dp
 import com.modiprincekr.thedialer.APP_VERSION
-import com.modiprincekr.thedialer.view.screen.settings.CardDivider
+import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.outlined.PhonePaused
+import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PhonePaused
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Mic
@@ -92,7 +97,6 @@ import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.SignalCellularAlt
 import androidx.compose.material.icons.outlined.AutoMode
-import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.ViewStream
 import androidx.compose.material.icons.outlined.PictureInPicture
@@ -221,7 +225,7 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Interface", "Themes, colors, and layout", "interface", Icons.Outlined.Palette, GsColorPurple),
         GlobalSettingsSearchEntry("Tap Haptics", "Vibration on taps across the app", "tap_haptics", Icons.Outlined.Vibration, GsColorPurple),
         GlobalSettingsSearchEntry("Scroll Haptics", "Vibrate on scroll gestures across the app", "scroll_haptics", Icons.Outlined.SwipeVertical, GsColorIndigo),
-        GlobalSettingsSearchEntry("Passwords & Security", "App lock, biometrics, PIN, pattern, and password", "passwords_and_security", Icons.Default.Security, Color(0xFF6750A4)) { it.navigate(BiometricScreenDestination()) },
+        GlobalSettingsSearchEntry("Passwords & Security", "App lock, biometrics, PIN, pattern, and password", "passwords_and_security", Icons.Outlined.Security, Color(0xFF6750A4)) { it.navigate(BiometricScreenDestination()) },
         GlobalSettingsSearchEntry("Contacts Hider", "Hide contacts behind a secret code", "contacts_hider", Icons.Outlined.Lock, Color(0xFF5E35B1)),
         GlobalSettingsSearchEntry("Fake Call", "Schedule fake incoming calls without calling the real person", "fake_call", Icons.Outlined.PhoneCallback, GsColorRed),
         GlobalSettingsSearchEntry("Call Recording", "Open Ever Call Recorder", "call_recording", Icons.Default.FiberManualRecord, Color(0xFFE53935)),
@@ -305,9 +309,9 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Do Not Disturb", "Manage Do Not Disturb access", "dnd_settings", Icons.Outlined.VolumeUp, GsColorIndigo) { it.navigate(SoundVibrationScreenDestination(highlightKey = "dnd_settings")) },
 
         // ── Passwords & Security screen ────────────────────────────────────
-        GlobalSettingsSearchEntry("Unlock Methods", "System biometrics, PIN, password, or pattern", "auth_method", Icons.Default.Security, Color(0xFF6750A4)) { it.navigate(BiometricScreenDestination(highlightKey = "auth_method")) },
-        GlobalSettingsSearchEntry("Lock App on Open", "Require authentication whenever the app opens", "lock_app_open", Icons.Default.Lock, GsColorRed) { it.navigate(BiometricScreenDestination(highlightKey = "lock_app_open")) },
-        GlobalSettingsSearchEntry("Lock Call Actions", "Require authentication for sensitive call actions", "lock_call_actions", Icons.Default.PhonePaused, GsColorTeal) { it.navigate(BiometricScreenDestination(highlightKey = "lock_call_actions")) },
+        GlobalSettingsSearchEntry("Unlock Methods", "System biometrics, PIN, password, or pattern", "auth_method", Icons.Outlined.Security, Color(0xFF6750A4)) { it.navigate(BiometricScreenDestination(highlightKey = "auth_method")) },
+        GlobalSettingsSearchEntry("Lock App on Open", "Require authentication whenever the app opens", "lock_app_open", Icons.Outlined.Lock, GsColorRed) { it.navigate(BiometricScreenDestination(highlightKey = "lock_app_open")) },
+        GlobalSettingsSearchEntry("Lock Call Actions", "Require authentication for sensitive call actions", "lock_call_actions", Icons.Outlined.PhonePaused, GsColorTeal) { it.navigate(BiometricScreenDestination(highlightKey = "lock_call_actions")) },
 
         // ── Interface screen ──────────────────────────────────────────────────────
         GlobalSettingsSearchEntry("Dynamic Colors", "Match app colors to your wallpaper (Material You)", "dynamic_colors", Icons.Outlined.Palette, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "dynamic_colors")) },
@@ -545,7 +549,12 @@ fun SettingsSearchEntryPoint(navigator: DestinationsNavigator, modifier: Modifie
                                 }
                             }
                         )
-                        if (index < filtered.size - 1) CardDivider()
+                        if (index < filtered.size - 1) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                        }
                     }
                 }
             }

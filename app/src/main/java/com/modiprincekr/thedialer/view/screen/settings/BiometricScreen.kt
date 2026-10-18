@@ -27,12 +27,14 @@ import androidx.compose.ui.window.DialogProperties
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.modal.`interface`.IContactsRepository
 import com.modiprincekr.thedialer.modal.data.Contact
-import com.modiprincekr.thedialer.view.components.CardDivider
+import androidx.compose.material.icons.filled.PhonePaused
+import androidx.compose.material.icons.filled.Pin
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Pattern
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.RivoExpressiveCard
 import com.modiprincekr.thedialer.view.components.RivoListItem
 import com.modiprincekr.thedialer.view.components.RivoSwitchListItem
-import com.modiprincekr.thedialer.view.components.SectionLabel
 import com.modiprincekr.thedialer.view.components.settingsSearchHighlight
 import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
 import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
@@ -131,7 +133,12 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
             com.modiprincekr.thedialer.view.components.SettingsSearchEntryPoint(navigator = navigator)
 
             // ── DIRECT UNLOCK METHODS LIST (Flattened hierarchy) ──────────────
-            SectionLabel("Unlock Methods")
+            Text(
+                text = "Unlock Methods",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp)
+            )
             RivoExpressiveCard {
                 // 1. System Biometrics Option
                 RivoListItem(
@@ -166,7 +173,10 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                     }
                 )
 
-                CardDivider()
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
 
                 // 2. PIN Option
                 RivoListItem(
@@ -182,7 +192,10 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                     }
                 )
 
-                CardDivider()
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
 
                 // 3. Password Option
                 RivoListItem(
@@ -198,7 +211,10 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                     }
                 )
 
-                CardDivider()
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
 
                 // 4. Pattern Option (with expandable visibility toggle)
                 Column(modifier = Modifier.animateContentSize()) {
@@ -232,7 +248,10 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                         exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
                     ) {
                         Column {
-                            CardDivider()
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
                             RivoSwitchListItem(
                                 headline = "Visible Pattern",
                                 supporting = "Make pattern line visible when drawing",
@@ -244,7 +263,10 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                                     prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_PATTERN_VISIBLE, isChecked)
                                 }
                             )
-                            CardDivider()
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
                             RivoListItem(
                                 headline = "Change Pattern",
                                 supporting = "Redraw a new unlock pattern",
@@ -262,7 +284,10 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
 
                 // Option to Remove Lock when one is set
                 if (biometricsType.isNotEmpty()) {
-                    CardDivider()
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
                     RivoListItem(
                         headline = "Remove Lock",
                         supporting = "Turn off app lock and passwords",
@@ -291,7 +316,12 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                 exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SectionLabel("Biometric Fallback")
+                    Text(
+                        text = "Biometric Fallback",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp)
+                    )
                     RivoExpressiveCard {
                         val currentBackup = prefs.getBiometricsBackupType()
                         val backupLabel = when (currentBackup) {
@@ -340,7 +370,12 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                 exit  = fadeOut(tween(200)) + shrinkVertically(tween(200))
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    SectionLabel("Protection Scope")
+                    Text(
+                        text = "Protection Scope",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp)
+                    )
                     RivoExpressiveCard {
                         RivoSwitchListItem(
                             headline = "Lock App on Open",
@@ -354,7 +389,10 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                                 prefs.setBoolean(PreferenceManager.KEY_BIOMETRICS_APP_LOCK, it)
                             }
                         )
-                        CardDivider()
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
                         RivoSwitchListItem(
                             headline = "Lock Call Actions",
                             supporting = "Require authentication to answer or reject incoming calls",
@@ -376,7 +414,12 @@ fun BiometricScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                         exit  = fadeOut(tween(200)) + shrinkVertically(tween(200))
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            SectionLabel("Lock Scope")
+                            Text(
+                                text = "Lock Scope",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp)
+                            )
 
                             // Segmented control
                             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
