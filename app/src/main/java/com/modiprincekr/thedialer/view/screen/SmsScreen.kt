@@ -437,7 +437,6 @@ fun SmsScreen(
                                         if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
                                     } else {
                                         MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
-                                    }
                                     },
                                     animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                                     label = "chipBg"

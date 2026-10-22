@@ -422,7 +422,6 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                                     trailingIcon = Icons.Default.ChevronRight,
                                     onClick = { showReorderFilterDialog = true }
                                 )
-                                )
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
                                 // Speech to text button
