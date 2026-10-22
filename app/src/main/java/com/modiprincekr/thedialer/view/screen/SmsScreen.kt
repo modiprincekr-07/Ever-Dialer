@@ -258,7 +258,7 @@ fun SmsScreen(
     LaunchedEffect(Unit) {
         SmsEventBus.newSmsEvent.collect {
             smsVM.refreshConversations()
-            if (selectedFilter == "starred") {
+            if (selectedFilter == SmsFilterTab.STARRED || selectedFilter.id == "starred") {
                 smsVM.refreshStarredMessages(prefs.getStarredSmsMessages())
             }
         }

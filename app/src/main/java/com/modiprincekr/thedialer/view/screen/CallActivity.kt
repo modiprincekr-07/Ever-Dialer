@@ -2842,7 +2842,6 @@ fun ExpressiveCallScreen(
             }
         }
     }
-    }
 
     if (showCallingCardPopup) {
         if (isCallEnded) {
