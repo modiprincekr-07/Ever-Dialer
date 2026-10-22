@@ -9,6 +9,10 @@ import android.os.VibratorManager
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.indication
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import kotlinx.coroutines.CancellationException
@@ -20,6 +24,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -71,6 +76,8 @@ import org.koin.compose.koinInject
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.graphics.graphicsLayer
 import com.modiprincekr.thedialer.liquidglass.drawBackdrop
 import com.modiprincekr.thedialer.liquidglass.drawPlainBackdrop
@@ -82,16 +89,32 @@ import com.modiprincekr.thedialer.liquidglass.LocalLiquidGlassBackdrop
 
 // ─── App Haptics Helper ────────────────────────────────────────────────────────
 
+private var lastAppHapticTime = 0L
+private var lastScrollHapticTime = 0L
+
 /**
  * strength: "light" | "strong" | "custom"
  * customIntensity: 0f..1f, only used when strength == "custom"
+ * fromDirectTouch: true when invoked by direct touch detection (e.g. Activity.dispatchTouchEvent)
  */
 fun performAppHaptic(
     context: android.content.Context,
     strength: String,
-    customIntensity: Float = 0.5f
+    customIntensity: Float = 0.5f,
+    fromDirectTouch: Boolean = false
 ) {
     try {
+        val prefs = try { org.koin.core.context.GlobalContext.get().get<PreferenceManager>() } catch (_: Throwable) { null }
+        val touchOnly = prefs?.getBoolean(PreferenceManager.KEY_HAPTIC_TOUCH_ONLY, false) == true
+        if (touchOnly && !fromDirectTouch) {
+            // When "Trigger only by just touching screen" is enabled, suppress component-level onClick haptics to prevent duplicates
+            return
+        }
+
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastAppHapticTime < 80L) return
+        lastAppHapticTime = now
+
         val durationMs: Long
         val amplitude: Int
         when (strength) {
@@ -119,6 +142,10 @@ fun performAppHaptic(
 
 fun performScrollHaptic(context: android.content.Context, amplitude: Int = 60) {
     try {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastScrollHapticTime < 20L) return
+        lastScrollHapticTime = now
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val vm = context.getSystemService(VibratorManager::class.java)
             val vibrator = vm?.defaultVibrator
@@ -135,6 +162,48 @@ fun performScrollHaptic(context: android.content.Context, amplitude: Int = 60) {
             }
         }
     } catch (_: Exception) {}
+}
+
+/**
+ * A composable effect that triggers scroll haptics based on physical scroll distance for ScrollState.
+ */
+@Composable
+fun ScrollHapticsScrollStateEffect(scrollState: ScrollState) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val prefs = koinInject<PreferenceManager>()
+    val settingsVersion by prefs.settingsChanged.collectAsState()
+
+    val scrollHapticsEnabled = remember(settingsVersion) { prefs.getBoolean(PreferenceManager.KEY_SCROLL_HAPTICS, false) }
+    val cmPerHaptic = remember(settingsVersion) { prefs.getFloat(PreferenceManager.KEY_SCROLL_CM_PER_HAPTIC, 1.5f) }
+    val hapticAmplitude = remember(settingsVersion) { prefs.getInt(PreferenceManager.KEY_SCROLL_HAPTIC_STRENGTH, 60) }
+
+    val pxPerCm = with(density) { (160f / 2.54f).dp.toPx() }
+    val pxThreshold = (cmPerHaptic * pxPerCm).coerceAtLeast(8f)
+
+    LaunchedEffect(scrollHapticsEnabled, pxThreshold, hapticAmplitude) {
+        if (!scrollHapticsEnabled) return@LaunchedEffect
+
+        var lastAbsolutePx = 0f
+        var hapticBucket = 0f
+        var initialized = false
+
+        snapshotFlow { scrollState.value.toFloat() }.collect { absolutePx ->
+            if (!initialized) {
+                lastAbsolutePx = absolutePx
+                initialized = true
+                return@collect
+            }
+            val delta = kotlin.math.abs(absolutePx - lastAbsolutePx)
+            lastAbsolutePx = absolutePx
+            hapticBucket += delta
+            if (hapticBucket >= pxThreshold) {
+                val count = (hapticBucket / pxThreshold).toInt()
+                hapticBucket -= count * pxThreshold
+                performScrollHaptic(context, hapticAmplitude)
+            }
+        }
+    }
 }
 
 /**
@@ -338,15 +407,39 @@ fun RivoExpressiveCard(
 // ─── Section Header ────────────────────────────────────────────────────────────
 
 @Composable
+fun rivoHeadingColor(): Color {
+    val prefs = koinInject<PreferenceManager>()
+    val settingsVer by prefs.settingsChanged.collectAsState()
+    val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
+    val isSaturatedActive = remember(settingsVer, isDark) { prefs.isSaturatedForTheme(isDark) }
+    val isBackgroundTarget = remember(settingsVer) { prefs.getSaturatedTarget() == PreferenceManager.SATURATED_TARGET_BACKGROUND }
+    return if (isSaturatedActive && isBackgroundTarget) {
+        if (isDark) Color.White else Color(0xFF111827)
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+}
+
+@Composable
 fun RivoSectionHeader(title: String, modifier: Modifier = Modifier) {
     Text(
         text = title,
         style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
+        color = rivoHeadingColor(),
         fontWeight = FontWeight.Bold,
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 4.dp)
+    )
+}
+
+@Composable
+fun RivoSettingsSectionTitle(title: String, modifier: Modifier = Modifier) {
+    Text(
+        text = com.modiprincekr.thedialer.controller.util.tr(title),
+        style = MaterialTheme.typography.labelLarge,
+        color = rivoHeadingColor(),
+        modifier = modifier.padding(start = 12.dp, bottom = 8.dp)
     )
 }
 
@@ -697,6 +790,24 @@ fun RivoListItem(
         label = "ListItemScale"
     )
 
+    var avatarCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var rowCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val recordAvatarClick: () -> Unit = {
+        avatarCoords?.let { coords ->
+            val center = coords.boundsInRoot().center
+            val rootSize = coords.findRootCoordinates().size
+            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordTap(
+                center.x, center.y, rootSize.width.toFloat(), rootSize.height.toFloat()
+            )
+        } ?: rowCoords?.let { coords ->
+            val bounds = coords.boundsInRoot()
+            val rootSize = coords.findRootCoordinates().size
+            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordTap(
+                bounds.left + 36f, bounds.center.y, rootSize.width.toFloat(), rootSize.height.toFloat()
+            )
+        } ?: com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordNormalized(0.12f, 0.5f)
+    }
+
     Surface(
         color = Color.Transparent,
         modifier = modifier
@@ -710,12 +821,13 @@ fun RivoListItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .onGloballyPositioned { coords -> rowCoords = coords }
                 .clip(RoundedCornerShape((LocalCardCornerRadius.current.value.coerceAtLeast(0f) * (16f / 28f)).dp))
                 .combinedClickable(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = {
-                        com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordTap(0f, 0f, 0f, 0f)
+                        recordAvatarClick()
                         if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
                             performAppHaptic(
                                 context,
@@ -727,6 +839,18 @@ fun RivoListItem(
                     },
                     onLongClick = onLongClick
                 )
+                .pointerInput(onLongClick) {
+                    if (onLongClick != null) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
+                                    onLongClick()
+                                }
+                            }
+                        }
+                    }
+                }
                 .padding(horizontal = 12.dp, vertical = if (compact) 6.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -739,11 +863,15 @@ fun RivoListItem(
                     size = 48.dp,
                     modifier = Modifier
                         .size(48.dp)
+                        .onGloballyPositioned { coords -> avatarCoords = coords }
                         .then(
                             if (onAvatarClick != null)
                                 Modifier
                                      .clip(CircleShape)
-                                     .combinedClickable(onClick = onAvatarClick)
+                                     .combinedClickable(onClick = {
+                                         recordAvatarClick()
+                                         onAvatarClick()
+                                     })
                             else Modifier
                         )
                 )
@@ -977,7 +1105,16 @@ fun RivoSwitchListItem(
             val isTrackBright = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.primary.toArgb()) > 0.40
             Switch(
                 checked = checked && enabled,
-                onCheckedChange = onCheckedChange,
+                onCheckedChange = {
+                    if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
+                        performAppHaptic(
+                            context,
+                            prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
+                            prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+                        )
+                    }
+                    onCheckedChange(it)
+                },
                 enabled = enabled,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = if (isSaturatedSolidBrightDark) Color.Black else if (isTrackBright) Color(0xFF1C1B1F) else Color.White,
@@ -1075,7 +1212,16 @@ fun RivoCheckboxListItem(
             val isTrackBright = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.primary.toArgb()) > 0.40
             Checkbox(
                 checked = checked,
-                onCheckedChange = { onCheckedChange(it) },
+                onCheckedChange = {
+                    if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
+                        performAppHaptic(
+                            context,
+                            prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
+                            prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+                        )
+                    }
+                    onCheckedChange(it)
+                },
                 colors = CheckboxDefaults.colors(
                     checkedColor = MaterialTheme.colorScheme.primary,
                     checkmarkColor = if (isSaturatedSolidBrightDark) Color.Black else if (isTrackBright) Color(0xFF1C1B1F) else Color.White,
@@ -1114,12 +1260,20 @@ fun RivoScrollAnimatedItem(
     }
 
     if (scrollAnimEnabled) {
-        // Use a key that changes each time this composable enters composition,
-        // ensuring LaunchedEffect(Unit) inside RivoAnimatedSection always fires
-        // fresh — both on first load and when the item scrolls back into view.
-        val animKey = remember { Any() }
-        key(animKey) {
-            RivoAnimatedSection(delayMs = delayMs, modifier = modifier, content = content)
+        val alphaAnim = remember { Animatable(0.2f) }
+        LaunchedEffect(Unit) {
+            if (delayMs > 0L) kotlinx.coroutines.delay(delayMs)
+            alphaAnim.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(120, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            )
+        }
+        Box(
+            modifier = modifier.graphicsLayer {
+                alpha = alphaAnim.value
+            }
+        ) {
+            content()
         }
     } else {
         Box(modifier = modifier) { content() }

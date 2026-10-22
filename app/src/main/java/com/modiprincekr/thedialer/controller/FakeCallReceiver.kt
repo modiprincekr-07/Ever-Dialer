@@ -49,5 +49,10 @@ class FakeCallReceiver : BroadcastReceiver() {
         FakeCallConnectionService.ensureRegistered(context)
         val prefs = GlobalContext.get().get<PreferenceManager>()
         FakeCallManager.rescheduleAll(context, prefs)
+        try {
+            if (prefs.getBoolean(PreferenceManager.KEY_PC_SYNC_BLUETOOTH_ENABLED, false)) {
+                PcSyncService.start(context)
+            }
+        } catch (_: Throwable) {}
     }
 }

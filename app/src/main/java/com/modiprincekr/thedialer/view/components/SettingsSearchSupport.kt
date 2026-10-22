@@ -21,9 +21,9 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.CallMissed
+import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.ChevronRight
@@ -107,12 +107,18 @@ import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.filled.Favorite
 import com.ramcosta.composedestinations.generated.destinations.AboutAppScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.DebugSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.LanguageSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.AnswerStyleScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.AppSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.BiometricScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.CallLogsSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.CallerUIScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.ContactInfoSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.CustomFontScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.DialpadSettingsScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.FavouritesSettingsScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.NavigationSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.DefaultMessageAppScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.IncomingCallUIScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.InterfaceScreenDestination
@@ -122,6 +128,7 @@ import com.ramcosta.composedestinations.generated.destinations.RecordingsScreenD
 import com.ramcosta.composedestinations.generated.destinations.SettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.SimAndCallPlacementScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.SoundVibrationScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.SwipeActionsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.UpdatesScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.VolumeDndScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
@@ -213,6 +220,7 @@ private val GsColorTeal    = Color(0xFF009688)
 private val GsColorIndigo  = Color(0xFF3F51B5)
 private val GsColorBluGrey = Color(0xFF607D8B)
 private val GsColorAmber   = Color(0xFFFFC107)
+private val GsColorOrange  = Color(0xFFFF9800)
 private val GsColorBrown   = Color(0xFF795548)
 private val GsColorCyan    = Color(0xFF00BCD4)
 private val GsColorRed     = Color(0xFFE53935)
@@ -236,9 +244,17 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Create Backup", "Save app configuration, settings and calling cards", "create_backup", Icons.Default.Backup, GsColorGreen),
         GlobalSettingsSearchEntry("Restore Backup", "Restore app configuration, settings and calling cards", "restore_backup", Icons.Default.Restore, GsColorBrown),
         GlobalSettingsSearchEntry("About The Dialer", "Version $APP_VERSION · Developer info", "about_app", Icons.Outlined.Info, GsColorBluGrey),
+        GlobalSettingsSearchEntry("Debug", "Developer & experimental options", "debug_settings", Icons.Outlined.BugReport, GsColorAmber) { it.navigate(DebugSettingsScreenDestination()) },
 
         // ── App Settings screen ──────────────────────────────────────────────────
         GlobalSettingsSearchEntry("Interesting Settings !", "Call features, Volume DND, network switcher, notes", "app_settings", Icons.Outlined.Tune, GsColorTeal) { it.navigate(AppSettingsScreenDestination()) },
+        GlobalSettingsSearchEntry("Swipe Actions", "Configure left and right swipe gestures for Call Logs, Contacts, Call Recordings, Notes, and Messages", "swipe_actions", Icons.Outlined.SwipeVertical, Color(0xFF673AB7)) { it.navigate(SwipeActionsScreenDestination()) },
+        GlobalSettingsSearchEntry("Favourites Swipe Actions", "Configure swipe actions for favourite contacts", "favourites_swipe_actions", Icons.Default.Favorite, Color(0xFFE91E63)) { it.navigate(SwipeActionsScreenDestination()) },
+        GlobalSettingsSearchEntry("Call Logs Swipe Actions", "Configure swipe actions for call log items", "call_logs_swipe_actions", Icons.Outlined.History, GsColorGreen) { it.navigate(SwipeActionsScreenDestination()) },
+        GlobalSettingsSearchEntry("Contacts Swipe Actions", "Configure swipe actions for contact items", "contacts_swipe_actions", Icons.Outlined.Person, GsColorBlue) { it.navigate(SwipeActionsScreenDestination()) },
+        GlobalSettingsSearchEntry("Call Recordings Swipe Actions", "Configure swipe actions for call recording items", "recordings_swipe_actions", Icons.Outlined.Mic, GsColorAmber) { it.navigate(SwipeActionsScreenDestination()) },
+        GlobalSettingsSearchEntry("Notes Swipe Actions", "Configure swipe actions for notes items", "notes_swipe_actions", Icons.Outlined.Notes, GsColorTeal) { it.navigate(SwipeActionsScreenDestination()) },
+        GlobalSettingsSearchEntry("SMS / Messages Swipe Actions", "Configure swipe actions for messages items", "sms_swipe_actions", Icons.Outlined.Message, GsColorPurple) { it.navigate(SwipeActionsScreenDestination()) },
         GlobalSettingsSearchEntry("4G/5G Switcher", "Quickly switch network mode per app", "network_switcher", Icons.Outlined.NetworkCell, GsColorBlue) { it.navigate(AppSettingsScreenDestination(highlightKey = "network_switcher")) },
         GlobalSettingsSearchEntry("Integrate Notes Section", "Show notes alongside call recordings", "integrate_notes", Icons.Outlined.Notes, GsColorGreen) { it.navigate(AppSettingsScreenDestination(highlightKey = "integrate_notes")) },
         GlobalSettingsSearchEntry("Delete Notes With Recording", "Remove the note when its recording is deleted", "delete_notes_with_recording", Icons.Outlined.NoteAlt, GsColorRed) { it.navigate(AppSettingsScreenDestination(highlightKey = "delete_notes_with_recording")) },
@@ -321,31 +337,44 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Material Blur Effects", "Blur effects across the interface", "blur_effects_toggle", Icons.Outlined.Palette, GsColorIndigo) { it.navigate(InterfaceScreenDestination(highlightKey = "blur_effects_toggle")) },
         GlobalSettingsSearchEntry("Elements to have blur effect", "Choose where blur effects apply", "blur_effects_elements_link", Icons.Outlined.Palette, GsColorIndigo) { it.navigate(InterfaceScreenDestination(highlightKey = "blur_effects_elements_link")) },
         GlobalSettingsSearchEntry("Hangup Animation", "Animate the screen when a call ends", "hangup_animation", Icons.Outlined.Palette, GsColorRed) { it.navigate(InterfaceScreenDestination(highlightKey = "hangup_animation")) },
-        GlobalSettingsSearchEntry("Incoming Call UI", "Customize the incoming call screen", "incoming_call_ui_link", Icons.Outlined.Palette, GsColorGreen) { it.navigate(InterfaceScreenDestination(highlightKey = "incoming_call_ui_link")) },
-        GlobalSettingsSearchEntry("Ongoing Call UI", "Customize the in-call screen layout", "caller_ui_link", Icons.Outlined.Palette, GsColorGreen) { it.navigate(InterfaceScreenDestination(highlightKey = "caller_ui_link")) },
-        GlobalSettingsSearchEntry("Calls Section Elements", "Choose what shows in the Calls tab", "calls_section_elements", Icons.Outlined.Palette, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "calls_section_elements")) },
-        GlobalSettingsSearchEntry("Context Menu Elements", "Choose what shows in long-press menus", "context_menu_elements", Icons.Outlined.Palette, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "context_menu_elements")) },
-        GlobalSettingsSearchEntry("Tab Sections", "Choose which bottom tabs are visible", "tab_sections", Icons.Outlined.Palette, GsColorAmber) { it.navigate(InterfaceScreenDestination(highlightKey = "tab_sections")) },
-        GlobalSettingsSearchEntry("Contact Info Elements", "Choose which elements appear in contact details", "contact_info_elements", Icons.Outlined.Palette, GsColorAmber) { it.navigate(InterfaceScreenDestination(highlightKey = "contact_info_elements")) },
-        GlobalSettingsSearchEntry("Default Tab Section", "Which tab opens when you launch the app", "default_tab_section", Icons.Outlined.Palette, GsColorAmber) { it.navigate(InterfaceScreenDestination(highlightKey = "default_tab_section")) },
+
+        // ── Call UI ──────────────────────────────────────────────────────────────
+        GlobalSettingsSearchEntry("Call UI", "Incoming Call UI and Ongoing Call UI", "call_ui_section", Icons.Outlined.Call, GsColorGreen) { it.navigate(InterfaceScreenDestination(highlightKey = "incoming_call_ui_link")) },
+        GlobalSettingsSearchEntry("Incoming Call UI", "Call UI: Customize the incoming call screen appearance", "incoming_call_ui_link", Icons.Outlined.CallReceived, GsColorGreen) { it.navigate(IncomingCallUIScreenDestination()) },
+        GlobalSettingsSearchEntry("Ongoing Call UI", "Call UI: Customize the in-call screen layout and controls", "caller_ui_link", Icons.Outlined.Person, GsColorBlue) { it.navigate(CallerUIScreenDestination()) },
+        GlobalSettingsSearchEntry("Calls Section Elements", "Call Logs: Toggle and drag to reorder Today, Missed, Outgoing, Call Time, Contacts, Groups cards", "calls_section_elements", Icons.Default.Dashboard, GsColorOrange) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "calls_section_elements")) },
+
+        // ── UI Elements ──────────────────────────────────────────────────────────
+        GlobalSettingsSearchEntry("UI Elements", "Call Logs, Dialpad, Contact info, Favourites, Navigation, Context Menu and Contact Info Elements", "ui_elements_section", Icons.Outlined.Widgets, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "call_logs_settings_link")) },
+        GlobalSettingsSearchEntry("Call Logs Settings", "UI Elements: Customize call log grouping, SIM icons, call counts, formatting and auto-deletion", "call_logs_settings_link", Icons.Outlined.Call, GsColorGreen) { it.navigate(CallLogsSettingsScreenDestination()) },
+        GlobalSettingsSearchEntry("Dialpad Settings", "UI Elements: Customize dialpad memory, search list call logs, and startup behavior", "dialpad_settings_link", Icons.Outlined.Dialpad, GsColorBlue) { it.navigate(DialpadSettingsScreenDestination()) },
+        GlobalSettingsSearchEntry("Contact info Settings", "UI Elements: Customize contact info display and duplicate numbers", "contact_info_settings_link", Icons.Outlined.Person, GsColorPurple) { it.navigate(ContactInfoSettingsScreenDestination()) },
+        GlobalSettingsSearchEntry("Favourites Settings", "UI Elements: Customize favourites layout and view mode", "favourites_settings_link", Icons.Outlined.Star, Color(0xFFE91E63)) { it.navigate(FavouritesSettingsScreenDestination()) },
+        GlobalSettingsSearchEntry("Navigation Settings", "UI Elements: Customize tab sections, default tab, and bottom bar appearance", "navigation_settings_link", Icons.Default.ViewWeek, GsColorIndigo) { it.navigate(NavigationSettingsScreenDestination()) },
+        GlobalSettingsSearchEntry("Context Menu Elements", "UI Elements: Customize Favourites, Call Logs, and Contacts context menus", "context_menu_elements", Icons.Default.MoreVert, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "context_menu_elements")) },
+        GlobalSettingsSearchEntry("Contact Info Elements", "UI Elements: Toggle and drag to reorder elements in contact details", "contact_info_elements", Icons.Default.Contacts, GsColorAmber) { it.navigate(ContactInfoSettingsScreenDestination(highlightKey = "contact_info_elements")) },
+        GlobalSettingsSearchEntry("Tab Sections", "UI Elements: Choose which bottom tabs are visible", "tab_sections", Icons.Outlined.Palette, GsColorAmber) { it.navigate(NavigationSettingsScreenDestination(highlightKey = "tab_sections")) },
+        GlobalSettingsSearchEntry("Default Tab Section", "UI Elements: Which tab opens when you launch the app", "default_tab_section", Icons.Outlined.Palette, GsColorAmber) { it.navigate(NavigationSettingsScreenDestination(highlightKey = "default_tab_section")) },
         GlobalSettingsSearchEntry("Animation Style", "Zoom (in/out) or Windows Phone transition", "animation_style", Icons.Outlined.Animation, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "animation_style")) },
         GlobalSettingsSearchEntry("Motion Blur in Animation", "Apply dynamic motion blur during page transitions", "motion_blur_animation", Icons.Outlined.BlurOn, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "motion_blur_animation")) },
         GlobalSettingsSearchEntry("Scroll Animation", "Animate list scrolling", "scroll_animation", Icons.Outlined.Palette, GsColorBlue) { it.navigate(InterfaceScreenDestination(highlightKey = "scroll_animation")) },
-        GlobalSettingsSearchEntry("Scroll Indication", "Show floating line indicator when tabs are scrollable", "scroll_indication", Icons.Outlined.Palette, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "scroll_indication")) },
-        GlobalSettingsSearchEntry("Pill Style Navigation", "Pill-shaped bottom navigation bar", "pill_style_nav", Icons.Outlined.Palette, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "pill_style_nav")) },
-        GlobalSettingsSearchEntry("Group numbers in call logs based on latest calls", "Group call logs by number and sort by latest calls", "group_calls_by_latest", Icons.Outlined.Palette, GsColorBlue) { it.navigate(InterfaceScreenDestination(highlightKey = "group_calls_by_latest")) },
-        GlobalSettingsSearchEntry("Show Sims In Call Logs", "Show which SIM a call used in the call log", "show_sims_call_logs", Icons.Outlined.Palette, GsColorGreen) { it.navigate(InterfaceScreenDestination(highlightKey = "show_sims_call_logs")) },
-        GlobalSettingsSearchEntry("Show total number of calls made", "Show total call count in call logs", "show_total_calls_made", Icons.Outlined.Palette, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "show_total_calls_made")) },
-        GlobalSettingsSearchEntry("Hide Duplicate Numbers In A Contact", "Show only one of multiple identical phone numbers", "hide_duplicate_numbers_in_contact", Icons.Outlined.Palette, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "hide_duplicate_numbers_in_contact")) },
-        GlobalSettingsSearchEntry("Name non contacts as Unknown", "Display Unknown or phone number for unsaved callers", "name_non_contacts_as_unknown", Icons.Outlined.Palette, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "name_non_contacts_as_unknown")) },
-        GlobalSettingsSearchEntry("Dialpad Memory", "Remember typed numbers when switching tabs or closing dialpad", "dialpad_memory", Icons.Outlined.Palette, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "dialpad_memory")) },
-        GlobalSettingsSearchEntry("Auto Delete Unknown No in call log", "Automatically clean up unknown-number entries", "auto_delete_unknown_calllog", Icons.Outlined.Palette, GsColorRed) { it.navigate(InterfaceScreenDestination(highlightKey = "auto_delete_unknown_calllog")) },
+        GlobalSettingsSearchEntry("Scroll Indication", "UI Elements: Show floating line indicator when tabs are scrollable", "scroll_indication", Icons.Outlined.Palette, GsColorPurple) { it.navigate(NavigationSettingsScreenDestination(highlightKey = "scroll_indication")) },
+        GlobalSettingsSearchEntry("Pill Style Navigation", "UI Elements: Pill-shaped bottom navigation bar", "pill_style_nav", Icons.Outlined.Palette, GsColorPurple) { it.navigate(NavigationSettingsScreenDestination(highlightKey = "pill_style_nav")) },
+        GlobalSettingsSearchEntry("Group numbers in call logs based on latest calls", "UI Elements: Group call logs by number and sort by latest calls", "group_calls_by_latest", Icons.Outlined.Palette, GsColorBlue) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "group_calls_by_latest")) },
+        GlobalSettingsSearchEntry("Show Sims In Call Logs", "UI Elements: Show which SIM a call used in the call log", "show_sims_call_logs", Icons.Outlined.Palette, GsColorGreen) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "show_sims_call_logs")) },
+        GlobalSettingsSearchEntry("Show total number of calls made", "UI Elements: Show total call count in call logs", "show_total_calls_made", Icons.Outlined.Palette, GsColorPurple) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "show_total_calls_made")) },
+        GlobalSettingsSearchEntry("Hide Duplicate Numbers In A Contact", "UI Elements: Show only one of multiple identical phone numbers", "hide_duplicate_numbers_in_contact", Icons.Outlined.Palette, GsColorPurple) { it.navigate(ContactInfoSettingsScreenDestination(highlightKey = "hide_duplicate_numbers_in_contact")) },
+        GlobalSettingsSearchEntry("Name non contacts as Unknown", "UI Elements: Display Unknown or phone number for unsaved callers", "name_non_contacts_as_unknown", Icons.Outlined.Palette, GsColorTeal) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "name_non_contacts_as_unknown")) },
+        GlobalSettingsSearchEntry("Dialpad Memory", "UI Elements: Remember typed numbers when switching tabs or closing dialpad", "dialpad_memory", Icons.Outlined.Palette, GsColorTeal) { it.navigate(DialpadSettingsScreenDestination(highlightKey = "dialpad_memory")) },
+        GlobalSettingsSearchEntry("Auto Delete Unknown No in call log", "UI Elements: Automatically clean up unknown-number entries", "auto_delete_unknown_calllog", Icons.Outlined.Palette, GsColorRed) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "auto_delete_unknown_calllog")) },
 
-        GlobalSettingsSearchEntry("Call Time Format in call logs", "12-hour or 24-hour time format", "call_time_format", Icons.Outlined.Palette, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "call_time_format")) },
-        GlobalSettingsSearchEntry("Talk time in call logs", "Show call duration for non-missed calls", "talk_time_in_call_logs", Icons.Outlined.Timer, GsColorGreen) { it.navigate(InterfaceScreenDestination(highlightKey = "talk_time_in_call_logs")) },
-        GlobalSettingsSearchEntry("Icon-Only Bottom Bar", "Hide labels on the bottom navigation bar", "icon_only_bottom_bar", Icons.Outlined.Palette, GsColorIndigo) { it.navigate(InterfaceScreenDestination(highlightKey = "icon_only_bottom_bar")) },
-        GlobalSettingsSearchEntry("Open Dialpad by Default", "Launch straight into the dialpad", "open_dialpad_default", Icons.Outlined.Palette, GsColorBlue) { it.navigate(InterfaceScreenDestination(highlightKey = "open_dialpad_default")) },
-        GlobalSettingsSearchEntry("Show favourites in list", "Display favourites in a vertical list instead of grid", "favorites_in_list", Icons.Outlined.Palette, GsColorPink) { it.navigate(InterfaceScreenDestination(highlightKey = "favorites_in_list")) },
+        GlobalSettingsSearchEntry("Call Time Format in call logs", "UI Elements: 12-hour or 24-hour time format", "call_time_format", Icons.Outlined.Palette, GsColorTeal) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "call_time_format")) },
+        GlobalSettingsSearchEntry("Talk time in call logs", "UI Elements: Show call duration for non-missed calls", "talk_time_in_call_logs", Icons.Outlined.Timer, GsColorGreen) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "talk_time_in_call_logs")) },
+        GlobalSettingsSearchEntry("Missed Call Duration", "UI Elements: Show duration for missed calls in call logs", "missed_call_duration", Icons.Outlined.Timer, GsColorRed) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "missed_call_duration")) },
+        GlobalSettingsSearchEntry("Icon-Only Bottom Bar", "UI Elements: Hide labels on the bottom navigation bar", "icon_only_bottom_bar", Icons.Outlined.Palette, GsColorIndigo) { it.navigate(NavigationSettingsScreenDestination(highlightKey = "icon_only_bottom_bar")) },
+        GlobalSettingsSearchEntry("Open Dialpad by Default", "UI Elements: Launch straight into the dialpad", "open_dialpad_default", Icons.Outlined.Palette, GsColorBlue) { it.navigate(DialpadSettingsScreenDestination(highlightKey = "open_dialpad_default")) },
+        GlobalSettingsSearchEntry("Show favourites in list", "UI Elements: Display favourites in a vertical list instead of grid", "favorites_in_list", Icons.Outlined.Palette, GsColorPink) { it.navigate(FavouritesSettingsScreenDestination(highlightKey = "favorites_in_list")) },
+        GlobalSettingsSearchEntry("Hide Rate and Review", "Hide Rate and Review tile in settings", "hide_rate_and_review", Icons.Outlined.Palette, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "hide_rate_and_review")) },
         GlobalSettingsSearchEntry("Show First Letter in Avatar", "Fallback avatar shows a contact's initial", "avatar_first_letter", Icons.Outlined.Palette, GsColorAmber) { it.navigate(InterfaceScreenDestination(highlightKey = "avatar_first_letter")) },
         GlobalSettingsSearchEntry("Solid Icons", "Use solid background behind icons without colors", "solid_icons", Icons.Outlined.Palette, GsColorBluGrey) { it.navigate(InterfaceScreenDestination(highlightKey = "solid_icons")) },
         GlobalSettingsSearchEntry("Circle Icons", "Use circle shapes for icons across the app", "circle_icons", Icons.Outlined.Palette, GsColorCyan) { it.navigate(InterfaceScreenDestination(highlightKey = "circle_icons")) },
@@ -355,8 +384,8 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Show Picture in Avatar", "Show a contact's photo in their avatar", "avatar_picture", Icons.Outlined.Palette, GsColorGreen) { it.navigate(InterfaceScreenDestination(highlightKey = "avatar_picture")) },
         GlobalSettingsSearchEntry("App Icon (Change)", "Choose a custom launcher icon", "app_icon_link", Icons.Outlined.Palette, GsColorRed) { it.navigate(InterfaceScreenDestination(highlightKey = "app_icon_link")) },
         GlobalSettingsSearchEntry("App Name (Change)", "Change the name shown for the app", "app_name_link", Icons.Outlined.Badge, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "app_name_link")) },
-        GlobalSettingsSearchEntry("Show call logs in the dialpad search list", "Show recent call logs in the search list when nothing is typed or searched", "show_call_logs_in_dialpad_search_list", Icons.Outlined.History, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "show_call_logs_in_dialpad_search_list")) },
-        GlobalSettingsSearchEntry("Show numbers in call logs", "Show phone numbers below contact names in call logs", "show_numbers_in_call_logs", Icons.Outlined.Numbers, GsColorBlue) { it.navigate(InterfaceScreenDestination(highlightKey = "show_numbers_in_call_logs")) },
+        GlobalSettingsSearchEntry("Show call logs in the dialpad search list", "UI Elements: Show recent call logs in the search list when nothing is typed or searched", "show_call_logs_in_dialpad_search_list", Icons.Outlined.History, GsColorTeal) { it.navigate(DialpadSettingsScreenDestination(highlightKey = "show_call_logs_in_dialpad_search_list")) },
+        GlobalSettingsSearchEntry("Show numbers in call logs", "UI Elements: Show phone numbers below contact names in call logs", "show_numbers_in_call_logs", Icons.Outlined.Numbers, GsColorBlue) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "show_numbers_in_call_logs")) },
         GlobalSettingsSearchEntry("Fonts", "Typography styles, Playwrite USA Modern, Comfortaa, Patrick Hand, Gochi Hand, and font scaling", "fonts", Icons.Outlined.TextFormat, GsColorPurple) { it.navigate(CustomFontScreenDestination()) },
 
         // ── Incoming Call UI screen ──────────────────────────────────────────────

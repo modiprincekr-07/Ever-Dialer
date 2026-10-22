@@ -57,6 +57,8 @@ object NoteManager {
         } catch (_: Exception) { "" }
     }
 
+    var onNotesChanged: (() -> Unit)? = null
+
     fun writeNote(context: Context, contactName: String, phoneNumber: String, content: String) {
         if (content.isBlank()) {
             deleteNote(context, contactName, phoneNumber)
@@ -66,15 +68,22 @@ object NoteManager {
             val file = getNoteFile(context, contactName, phoneNumber)
             file.parentFile?.mkdirs()
             file.writeText(content)
+            onNotesChanged?.invoke()
         } catch (_: Exception) {}
     }
 
     fun deleteNote(context: Context, contactName: String, phoneNumber: String) {
-        try { getNoteFile(context, contactName, phoneNumber).delete() } catch (_: Exception) {}
+        try {
+            getNoteFile(context, contactName, phoneNumber).delete()
+            onNotesChanged?.invoke()
+        } catch (_: Exception) {}
     }
 
     fun deleteNoteFile(file: File) {
-        try { file.delete() } catch (_: Exception) {}
+        try {
+            file.delete()
+            onNotesChanged?.invoke()
+        } catch (_: Exception) {}
     }
 
     fun getAllNotes(context: Context): List<NoteEntry> = try {

@@ -76,7 +76,13 @@ import org.xmlpull.v1.XmlPullParser
 import java.util.Locale
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit = {}, onOpenWebView: (url: String, enableDownloads: Boolean, extraBottomDp: Int) -> Unit = { _, _, _ -> }, modifier: Modifier = Modifier) {
+fun SettingsScreen(
+    viewModel: SettingsViewModel,
+    onBack: () -> Unit = {},
+    onOpenWebView: (url: String, enableDownloads: Boolean, extraBottomDp: Int) -> Unit = { _, _, _ -> },
+    enableBackHandler: Boolean = true,
+    modifier: Modifier = Modifier
+) {
     val context = LocalContext.current
     val updateTrigger by viewModel.updateTrigger.collectAsState()
     val contactPickerViewModel: ContactPickerViewModel = viewModel()
@@ -95,7 +101,9 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit = {}, onOpen
         if (uri != null) viewModel.exportLogs(uri)
     }
 
-    BackHandler { onBack() }
+    if (enableBackHandler) {
+        BackHandler { onBack() }
+    }
     SettingsContent(
         preferences = viewModel.preferences,
         updateTrigger = updateTrigger,

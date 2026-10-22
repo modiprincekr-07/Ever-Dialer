@@ -1,13 +1,21 @@
 package com.modiprincekr.thedialer.view.screen.settings
 
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.AdaptiveIconDrawable
+import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,18 +29,24 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.modiprincekr.thedialer.controller.SmsViewModel
+import com.modiprincekr.thedialer.controller.util.BlockedNumbersManager
 import com.modiprincekr.thedialer.controller.util.DefaultSmsManager
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.view.components.ReorderSmsTabsDialog
 import com.modiprincekr.thedialer.view.components.RivoAnimatedSection
+import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.RivoExpressiveCard
 import com.modiprincekr.thedialer.view.components.RivoListItem
 import com.modiprincekr.thedialer.view.components.RivoSectionHeader
@@ -42,6 +56,8 @@ import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
 import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
+import com.ramcosta.composedestinations.generated.destinations.BlockedSmsScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.SmsAppIconScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinActivityViewModel
@@ -55,6 +71,108 @@ private val ColorTeal     = Color(0xFF009688)
 private val ColorRed      = Color(0xFFE53935)
 private val ColorCyan     = Color(0xFF00BCD4)
 private val ColorBluGrey  = Color(0xFF607D8B)
+
+private fun loadSmsBitmapFromRes(context: android.content.Context, resId: Int): Bitmap? {
+    if (resId == 0) return null
+    return try {
+        val drawable = context.resources.getDrawable(resId, context.theme)
+        when (drawable) {
+            is BitmapDrawable -> drawable.bitmap
+            is AdaptiveIconDrawable -> {
+                val bmp = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(bmp)
+                drawable.setBounds(0, 0, 192, 192)
+                drawable.draw(canvas)
+                bmp
+            }
+            else -> drawable.toBitmap(192, 192)
+        }
+    } catch (_: Exception) { null }
+}
+
+private fun updateSmsLauncherAlias(
+    context: android.content.Context,
+    enabled: Boolean,
+    appName: String,
+    iconKey: String
+) {
+    val pm = context.packageManager
+    val nameKeyMap = mapOf(
+        "Ever SMS" to "EverSms",
+        "Ever Messages" to "EverMessages",
+        "SMS" to "Sms",
+        "Messages" to "Messages",
+        "Chats" to "Chats"
+    )
+    val appNames = listOf("Ever SMS", "Ever Messages", "SMS", "Messages", "Chats")
+    val icons = listOf("default", "google", "nothing", "lineageos", "windows_phone", "bubble_blue", "purple", "amoled", "coral", "neon_green", "yellow")
+
+    // Determine target alias
+    val nameSuffix = nameKeyMap[appName] ?: "EverSms"
+    val iconSuffix = when (iconKey) {
+        "google" -> "_Google"
+        "nothing" -> "_Nothing"
+        "lineageos" -> "_LineageOS"
+        "windows_phone" -> "_WindowsPhone"
+        "bubble_blue" -> "_BubbleBlue"
+        "purple" -> "_Purple"
+        "amoled" -> "_Amoled"
+        "coral" -> "_Coral"
+        "neon_green" -> "_NeonGreen"
+        "yellow" -> "_Yellow"
+        else -> ""
+    }
+    val targetAlias = "${context.packageName}.SmsLauncherAlias${nameSuffix}${iconSuffix}"
+
+    // Disable legacy alias if still enabled
+    val oldAlias = "${context.packageName}.SmsLauncherAlias"
+    try {
+        pm.setComponentEnabledSetting(
+            ComponentName(context.packageName, oldAlias),
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            PackageManager.DONT_KILL_APP
+        )
+    } catch (_: Exception) {}
+
+    // Update all permutations
+    for (name in appNames) {
+        val curNameSuffix = nameKeyMap[name] ?: "EverSms"
+        for (icon in icons) {
+            val curIconSuffix = when (icon) {
+                "google" -> "_Google"
+                "nothing" -> "_Nothing"
+                "lineageos" -> "_LineageOS"
+                "windows_phone" -> "_WindowsPhone"
+                "bubble_blue" -> "_BubbleBlue"
+                "purple" -> "_Purple"
+                "amoled" -> "_Amoled"
+                "coral" -> "_Coral"
+                "neon_green" -> "_NeonGreen"
+                "yellow" -> "_Yellow"
+                else -> ""
+            }
+            val aliasComponentStr = "${context.packageName}.SmsLauncherAlias${curNameSuffix}${curIconSuffix}"
+            try {
+                val shouldEnable = enabled && (aliasComponentStr == targetAlias)
+                val newState = if (shouldEnable) {
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                } else {
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                }
+                val current = pm.getComponentEnabledSetting(ComponentName(context.packageName, aliasComponentStr))
+                if (current != newState) {
+                    pm.setComponentEnabledSetting(
+                        ComponentName(context.packageName, aliasComponentStr),
+                        newState,
+                        PackageManager.DONT_KILL_APP
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Destination<RootGraph>(style = SettingsTransitionStyle::class)
@@ -74,6 +192,9 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
     }
 
     // Settings States
+    val smsEnabled = remember(settingsVer) {
+        prefs.getBoolean(PreferenceManager.KEY_SMS_ENABLED, false)
+    }
     val textSize = remember(settingsVer) {
         prefs.getFloat(PreferenceManager.KEY_SMS_CHAT_TEXT_SIZE, PreferenceManager.DEFAULT_SMS_CHAT_TEXT_SIZE)
     }
@@ -110,6 +231,9 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
     val autoColorAvatars = remember(settingsVer) {
         prefs.getBoolean(PreferenceManager.KEY_SMS_AUTO_COLOR_AVATARS, true)
     }
+    val showAvatar = remember(settingsVer) {
+        prefs.getBoolean(PreferenceManager.KEY_SMS_SHOW_AVATAR, true)
+    }
     val showStt = remember(settingsVer) {
         prefs.getBoolean(PreferenceManager.KEY_SMS_SHOW_STT, true)
     }
@@ -122,8 +246,27 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
     val floatingBubble = remember(settingsVer) {
         prefs.getBoolean(PreferenceManager.KEY_SMS_FLOATING_BUBBLE, false)
     }
+    val smsLauncherIconEnabled = remember(settingsVer) {
+        prefs.getBoolean(PreferenceManager.KEY_SMS_LAUNCHER_ICON_ENABLED, true)
+    }
+    val smsAppName = remember(settingsVer) {
+        prefs.getString(PreferenceManager.KEY_SMS_LAUNCHER_APP_NAME, "Ever SMS") ?: "Ever SMS"
+    }
+    val smsAppIcon = remember(settingsVer) {
+        prefs.getString(PreferenceManager.KEY_SMS_SELECTED_APP_ICON, "default") ?: "default"
+    }
+    var blockedCount by remember { mutableStateOf(BlockedNumbersManager.getBlockedList(prefs).size) }
+    LaunchedEffect(settingsVer) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val list = BlockedNumbersManager.getBlockedList(context, prefs)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                blockedCount = list.size
+            }
+        }
+    }
 
     // Dialog state controllers
+    var showAppNameDialog by remember { mutableStateOf(false) }
     var showTextSizeDialog by remember { mutableStateOf(false) }
     var showSendDelayDialog by remember { mutableStateOf(false) }
     var showSignatureDialog by remember { mutableStateOf(false) }
@@ -132,17 +275,18 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
     var showSwipeLeftDialog by remember { mutableStateOf(false) }
     var showReorderFilterDialog by remember { mutableStateOf(false) }
 
-    Scaffold(
-        modifier = Modifier.settingsMotionBlur(),
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            SettingsPillTopAppBar(
-                title = "SMS & Messages Settings",
-                onBackClick = { navigator.navigateUp() }
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.surface
-    ) { paddingValues ->
+    com.modiprincekr.thedialer.view.theme.ExpandingScreenContainer(onClose = { navigator.navigateUp() }) { closeWithAnimation ->
+        Scaffold(
+            modifier = Modifier.settingsMotionBlur(),
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                SettingsPillTopAppBar(
+                    title = "SMS & Messages Settings",
+                    onBackClick = { closeWithAnimation() }
+                )
+            },
+            containerColor = MaterialTheme.colorScheme.surface
+        ) { paddingValues ->
         val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         LazyColumn(
             modifier = Modifier
@@ -151,6 +295,28 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
             contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + navBarBottom),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Master Enable SMS Toggle Card
+            item {
+                RivoAnimatedSection(delayMs = 0L) {
+                    RivoExpressiveCard {
+                        RivoSwitchListItem(
+                            headline = "Enable SMS",
+                            supporting = if (smsEnabled) "SMS and messaging features are active" else "Turn on to send and receive text messages",
+                            leadingIcon = Icons.Outlined.Sms,
+                            checked = smsEnabled,
+                            onCheckedChange = { isChecked ->
+                                prefs.setBoolean(PreferenceManager.KEY_SMS_ENABLED, isChecked)
+                                if (isChecked) {
+                                    smsVM.refreshConversations()
+                                } else {
+                                    smsVM.clearConversations()
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
             // Default App Status Card (only shown when The Dialer is not default)
             if (!isDefaultSms) {
                 item {
@@ -236,6 +402,17 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                                 )
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
+                                // Show Avatar
+                                RivoSwitchListItem(
+                                    headline = "Show avatar",
+                                    supporting = "Show contact avatars in message logs",
+                                    leadingIcon = Icons.Outlined.AccountCircle,
+                                    iconContainerColor = ColorPurple,
+                                    checked = showAvatar,
+                                    onCheckedChange = { prefs.setBoolean(PreferenceManager.KEY_SMS_SHOW_AVATAR, it) }
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
                                 // Filter Tabs Order
                                 RivoListItem(
                                     headline = "Filter tabs order",
@@ -244,6 +421,7 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                                     iconContainerColor = ColorTeal,
                                     trailingIcon = Icons.Default.ChevronRight,
                                     onClick = { showReorderFilterDialog = true }
+                                )
                                 )
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
@@ -259,7 +437,7 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
                                 // Prevent Screenshots
-                                RivoSwitchListItem(
+                                 RivoSwitchListItem(
                                     headline = "Prevent screenshots",
                                     supporting = "Block screen captures and screen recording in SMS",
                                     leadingIcon = Icons.Outlined.Security,
@@ -267,13 +445,6 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                                     checked = disableScreenshots,
                                     onCheckedChange = { checked ->
                                         prefs.setBoolean(PreferenceManager.KEY_SMS_DISABLE_SCREENSHOTS, checked)
-                                        (context as? Activity)?.window?.let { window ->
-                                            if (checked) {
-                                                window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                                            } else {
-                                                window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                                            }
-                                        }
                                     }
                                 )
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
@@ -296,6 +467,65 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                                             } catch (_: Exception) {}
                                         }
                                         prefs.setBoolean(PreferenceManager.KEY_SMS_FLOATING_BUBBLE, checked)
+                                    }
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                                // Direct App Drawer Icon for SMS
+                                RivoSwitchListItem(
+                                    headline = "SMS app icon in App Drawer",
+                                    supporting = "Show a dedicated icon in your app drawer to launch SMS directly",
+                                    leadingIcon = Icons.Outlined.Apps,
+                                    iconContainerColor = ColorIndigo,
+                                    checked = smsLauncherIconEnabled,
+                                    onCheckedChange = { enabled ->
+                                        prefs.setBoolean(PreferenceManager.KEY_SMS_LAUNCHER_ICON_ENABLED, enabled)
+                                        updateSmsLauncherAlias(context, enabled, smsAppName, smsAppIcon)
+                                    }
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                                // SMS App Name
+                                RivoListItem(
+                                    headline = "App name",
+                                    supporting = smsAppName,
+                                    leadingIcon = Icons.Outlined.Badge,
+                                    iconContainerColor = if (smsLauncherIconEnabled) ColorTeal else MaterialTheme.colorScheme.surfaceVariant,
+                                    trailingIcon = Icons.Default.ChevronRight,
+                                    modifier = if (!smsLauncherIconEnabled) Modifier.alpha(0.4f) else Modifier,
+                                    onClick = {
+                                        if (smsLauncherIconEnabled) {
+                                            showAppNameDialog = true
+                                        }
+                                    }
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                                // SMS App Icon
+                                val smsAppIconLabel = when (smsAppIcon) {
+                                    "google" -> "Google"
+                                    "nothing" -> "NOTHING"
+                                    "lineageos" -> "LineageOS"
+                                    "windows_phone" -> "Windows Phone"
+                                    "bubble_blue" -> "Bubble Blue"
+                                    "purple" -> "Purple Velvet"
+                                    "amoled" -> "GrapheneOS"
+                                    "coral" -> "Coral Sunset"
+                                    "neon_green" -> "Neon Mint"
+                                    "yellow" -> "Yellow"
+                                    else -> "Default"
+                                }
+                                RivoListItem(
+                                    headline = "App icon",
+                                    supporting = smsAppIconLabel,
+                                    leadingIcon = Icons.Outlined.Palette,
+                                    iconContainerColor = if (smsLauncherIconEnabled) ColorPurple else MaterialTheme.colorScheme.surfaceVariant,
+                                    trailingIcon = Icons.Default.ChevronRight,
+                                    modifier = if (!smsLauncherIconEnabled) Modifier.alpha(0.4f) else Modifier,
+                                    onClick = {
+                                        if (smsLauncherIconEnabled) {
+                                            navigator.navigate(SmsAppIconScreenDestination)
+                                        }
                                     }
                                 )
                             }
@@ -427,6 +657,7 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                                 RivoListItem(
                                     headline = "Swipe left action",
                                     supporting = when (swipeLeftAction) {
+                                        "call" -> "Direct Call"
                                         "delete" -> "Delete Conversation"
                                         "read" -> "Mark as Read / Unread"
                                         else -> "None"
@@ -437,6 +668,28 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                                     onClick = { showSwipeLeftDialog = true }
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            // Blocked SMS Section
+            item {
+                RivoAnimatedSection(delayMs = 140L) {
+                    Column {
+                        RivoSectionHeader("Blocked SMS")
+                        RivoExpressiveCard {
+                            RivoListItem(
+                                headline = "Blocked senders & numbers",
+                                supporting = if (blockedCount == 0) "No blocked SMS senders"
+                                             else "$blockedCount blocked sender${if (blockedCount > 1) "s" else ""}",
+                                leadingIcon = Icons.Outlined.Block,
+                                iconContainerColor = ColorRed,
+                                trailingIcon = Icons.Default.ChevronRight,
+                                onClick = {
+                                    navigator.navigate(BlockedSmsScreenDestination())
+                                }
+                            )
                         }
                     }
                 }
@@ -628,7 +881,7 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    prefs.setString(PreferenceManager.KEY_SMS_SWIPE_RIGHT_ACTION, action)
+                                    prefs.setSwipeAction("sms", "right", action)
                                     showSwipeRightDialog = false
                                 }
                                 .padding(vertical = 12.dp),
@@ -637,7 +890,7 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                             RadioButton(
                                 selected = swipeRightAction == action,
                                 onClick = {
-                                    prefs.setString(PreferenceManager.KEY_SMS_SWIPE_RIGHT_ACTION, action)
+                                    prefs.setSwipeAction("sms", "right", action)
                                     showSwipeRightDialog = false
                                 }
                             )
@@ -654,7 +907,7 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
     }
 
     if (showSwipeLeftDialog) {
-        val options = listOf("delete" to "Delete Conversation", "read" to "Mark as Read / Unread", "none" to "None")
+        val options = listOf("call" to "Direct Call", "read" to "Mark as Read / Unread", "delete" to "Delete Conversation", "none" to "None")
         AlertDialog(
             onDismissRequest = { showSwipeLeftDialog = false },
             title = { Text("Swipe Left Action") },
@@ -665,7 +918,7 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    prefs.setString(PreferenceManager.KEY_SMS_SWIPE_LEFT_ACTION, action)
+                                    prefs.setSwipeAction("sms", "left", action)
                                     showSwipeLeftDialog = false
                                 }
                                 .padding(vertical = 12.dp),
@@ -674,7 +927,7 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                             RadioButton(
                                 selected = swipeLeftAction == action,
                                 onClick = {
-                                    prefs.setString(PreferenceManager.KEY_SMS_SWIPE_LEFT_ACTION, action)
+                                    prefs.setSwipeAction("sms", "left", action)
                                     showSwipeLeftDialog = false
                                 }
                             )
@@ -695,5 +948,45 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
             onDismissRequest = { showReorderFilterDialog = false },
             smsVM = smsVM
         )
+    }
+
+    if (showAppNameDialog) {
+        val appNameOptions = listOf("Ever SMS", "Ever Messages", "SMS", "Messages", "Chats")
+        AlertDialog(
+            onDismissRequest = { showAppNameDialog = false },
+            title = { Text("App Name") },
+            text = {
+                Column {
+                    appNameOptions.forEach { nameOption ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    prefs.setString(PreferenceManager.KEY_SMS_LAUNCHER_APP_NAME, nameOption)
+                                    updateSmsLauncherAlias(context, smsLauncherIconEnabled, nameOption, smsAppIcon)
+                                    showAppNameDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = smsAppName == nameOption,
+                                onClick = {
+                                    prefs.setString(PreferenceManager.KEY_SMS_LAUNCHER_APP_NAME, nameOption)
+                                    updateSmsLauncherAlias(context, smsLauncherIconEnabled, nameOption, smsAppIcon)
+                                    showAppNameDialog = false
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(nameOption, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAppNameDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
     }
 }

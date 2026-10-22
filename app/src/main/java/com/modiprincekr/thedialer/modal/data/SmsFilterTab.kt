@@ -3,6 +3,7 @@ package com.modiprincekr.thedialer.modal.data
 enum class SmsFilterTab(val id: String, val displayName: String) {
     ALL("all", "All"),
     FAVOURITES("favourites", "Favourites"),
+    STARRED("starred", "Starred"),
     CONTACTS("contacts", "Contacts"),
     UNKNOWN("unknown", "Unknown"),
     PAYMENTS("payments", "Payments"),
@@ -13,6 +14,7 @@ enum class SmsFilterTab(val id: String, val displayName: String) {
         val DEFAULT_ORDER: List<SmsFilterTab> = listOf(
             ALL,
             FAVOURITES,
+            STARRED,
             CONTACTS,
             UNKNOWN,
             PAYMENTS,

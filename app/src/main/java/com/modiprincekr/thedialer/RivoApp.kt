@@ -29,6 +29,14 @@ class RivoApp : ShizuApplication() {
             com.modiprincekr.thedialer.controller.util.AppLanguageManager.applyLocale(this, appLang, recreateActivity = false)
         } catch (_: Throwable) {}
         com.modiprincekr.thedialer.controller.FakeCallConnectionService.ensureRegistered(this)
+        try {
+            val syncManager = org.koin.core.context.GlobalContext.get().get<com.modiprincekr.thedialer.controller.util.PcBluetoothSyncManager>()
+            val prefs = PreferenceManager(this)
+            if (prefs.getBoolean(PreferenceManager.KEY_PC_SYNC_BLUETOOTH_ENABLED, false)) {
+                com.modiprincekr.thedialer.controller.PcSyncService.start(this)
+                syncManager.start()
+            }
+        } catch (_: Throwable) {}
         initMissedCallBadgeObserver()
     }
 

@@ -34,6 +34,12 @@ object NavBarVisibilityState {
     var hideForSettingsEntry by mutableStateOf(false)
 
     /**
+     * True while the dialpad overlay is open, so the bottom bar (pill or standard navigation
+     * bar) smoothly hides and doesn't overlap or show beneath the dialpad.
+     */
+    var hideForDialpad by mutableStateOf(false)
+
+    /**
      * True while a tab screen is showing a single highlighted result it was opened into from
      * unified Search (e.g. Notes opened from a "Notes" search hit) rather than as the normal
      * bottom-nav tab. The bottom pill/nav bar and that screen's own search bar pill both stay

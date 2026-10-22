@@ -28,12 +28,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -43,6 +48,11 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -119,6 +129,94 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
         selectedLogs = emptySet()
     }
 
+    var fabCenter by remember { mutableStateOf<Offset?>(null) }
+    var dialpadClosing by remember { mutableStateOf(false) }
+    val dialpadProgress = remember { Animatable(0f) }
+
+    LaunchedEffect(showDialpad) {
+        NavBarVisibilityState.hideForDialpad = showDialpad
+        if (showDialpad) {
+            dialpadClosing = false
+            dialpadProgress.snapTo(0f)
+            dialpadProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 680, easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f))
+            )
+        } else {
+            dialpadProgress.snapTo(0f)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            NavBarVisibilityState.hideForDialpad = false
+        }
+    }
+
+    val closeDialpad: ((() -> Unit)?) -> Unit = { onClosed ->
+        if (showDialpad && !dialpadClosing) {
+            dialpadClosing = true
+            NavBarVisibilityState.hideForDialpad = false
+            scope.launch {
+                dialpadProgress.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(durationMillis = 520, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f))
+                )
+                showDialpad = false
+                dialpadClosing = false
+                onClosed?.invoke()
+            }
+        }
+    }
+
+    val predictiveBackEnabled = remember(prefs.settingsChanged.collectAsState().value) {
+        prefs.getBoolean(PreferenceManager.KEY_PREDICTIVE_BACK_GESTURE, true)
+    }
+
+    if (predictiveBackEnabled) {
+        PredictiveBackHandler(enabled = showDialpad && !dialpadClosing) { progressFlow ->
+            try {
+                progressFlow.collect { backEvent ->
+                    // Interactive scrub: scale down smoothly with gesture progress
+                    val p = 1f - (backEvent.progress * 0.45f)
+                    dialpadProgress.snapTo(p)
+                }
+                // When back gesture commits, collapse back into FAB
+                dialpadClosing = true
+                NavBarVisibilityState.hideForDialpad = false
+                dialpadProgress.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(durationMillis = 520, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f))
+                )
+                showDialpad = false
+                dialpadClosing = false
+            } catch (e: CancellationException) {
+                // If user cancels back gesture, snap/animate back to full open state
+                dialpadClosing = false
+                dialpadProgress.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))
+            }
+        }
+    } else {
+        BackHandler(enabled = showDialpad && !dialpadClosing) {
+            closeDialpad(null)
+        }
+    }
+
+    val isDialpadOpen = showDialpad && !dialpadClosing
+    val dialpadExpandScale by animateFloatAsState(
+        targetValue = if (isDialpadOpen) 2.6f else 1f,
+        animationSpec = tween(
+            durationMillis = if (isDialpadOpen) 680 else 520,
+            easing = if (isDialpadOpen) CubicBezierEasing(0.16f, 1f, 0.3f, 1f) else CubicBezierEasing(0.2f, 0f, 0f, 1f)
+        ),
+        label = "dialpadExpandScale"
+    )
+    val dialpadFabElevation by animateDpAsState(
+        targetValue = if (isDialpadOpen) 12.dp else 6.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "dialpadFabElevation"
+    )
+
     val fabScale by animateFloatAsState(
         targetValue = if (fabVisible) 1f else 0f,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
@@ -131,24 +229,33 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
         }
     }
 
-    // Bug fix: the call log list previously only ever updated via the system ContentObserver
-    // (which can lag well behind the moment a call actually starts/ends) or by watching
-    // CallService's session state end-to-end — nothing re-fetched just from the user coming
-    // back to this screen/app, which is why re-opening the app right after a call, or bringing
-    // it to the foreground mid-call, could show a stale list until something else (like a
-    // scroll, which happens to trigger recomposition) forced it to catch up. Explicitly
-    // re-fetch every time this screen becomes visible again so the list is always current the
-    // instant it's looked at, with no scroll needed. Uses the same activity-scoped
-    // CallLogViewModel instance that CallLogFullContent below reads from.
     val callLogViewModel: CallLogViewModel = koinActivityViewModel()
+    val allCallLogs by callLogViewModel.allCallLogs.collectAsState()
     val contactsViewModel: ContactsViewModel = koinActivityViewModel()
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
+    var initialPermissionChecked by remember { mutableStateOf(false) }
     LaunchedEffect(permState.status) {
+        if (!initialPermissionChecked) {
+            initialPermissionChecked = true
+            return@LaunchedEffect
+        }
         if (permState.status == PermissionStatus.Granted) {
-            callLogViewModel.refreshLogs()
+            val isNewCallLogs = prefs.getBoolean(PreferenceManager.KEY_NEW_CALL_LOGS_LOGIC, false)
+            val isNewContacts = prefs.getBoolean(PreferenceManager.KEY_NEW_CONTACTS_LOGIC, false)
+            if (isNewCallLogs) {
+                callLogViewModel.refreshIfStale()
+            } else {
+                callLogViewModel.refreshLogs()
+            }
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
-                contactsViewModel.fetchContacts()
+                if (isNewContacts) {
+                    if (contactsViewModel.allContacts.value.isEmpty()) {
+                        contactsViewModel.fetchContacts()
+                    }
+                } else {
+                    contactsViewModel.fetchContacts()
+                }
             }
         }
     }
@@ -156,156 +263,26 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                callLogViewModel.refreshLogs()
+                val isNewCallLogs = prefs.getBoolean(PreferenceManager.KEY_NEW_CALL_LOGS_LOGIC, false)
+                val isNewContacts = prefs.getBoolean(PreferenceManager.KEY_NEW_CONTACTS_LOGIC, false)
+                if (isNewCallLogs) {
+                    callLogViewModel.refreshIfStale()
+                } else {
+                    callLogViewModel.refreshLogs()
+                }
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
-                    contactsViewModel.fetchContacts()
+                    if (isNewContacts) {
+                        if (contactsViewModel.allContacts.value.isEmpty()) {
+                            contactsViewModel.fetchContacts()
+                        }
+                    } else {
+                        contactsViewModel.fetchContacts()
+                    }
                 }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    if (showDialpad) {
-        val dialpadSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        val dialpadScope = rememberCoroutineScope()
-        // See DialPadContent's `closing` param doc — flipping this (rather than clearing focus
-        // from out here) is what actually reaches the search field's real focus manager, since
-        // the sheet renders in its own separate Dialog window.
-        var dialpadClosing by remember { mutableStateOf(false) }
-        // Catch a swipe-down or scrim-tap dismiss the moment the drag/tap decides to close the
-        // sheet (sheetState.targetValue flips to Hidden), not only once onDismissRequest fires
-        // after the sheet's own hide animation has already finished playing — otherwise the
-        // search field keeps its focus and the keyboard stays up for that whole animation before
-        // finally hiding. See DialPadScreen's identical fix.
-        //
-        // sheetState.targetValue actually starts at Hidden too, for the single frame before the
-        // sheet's own internal LaunchedEffect calls show() to open it — so naively treating
-        // "target == Hidden" as "closing" misfired on that very first frame and permanently
-        // blocked the search field from ever focusing (via DialPadContent's `closing`-gated
-        // focusProperties) even on a fresh open. hasOpenedOnce guards against that: we only start
-        // treating a Hidden target as a real close once the sheet has reached non-Hidden once.
-        var hasOpenedOnce by remember { mutableStateOf(false) }
-        LaunchedEffect(dialpadSheetState) {
-            snapshotFlow { dialpadSheetState.targetValue }.collect { target ->
-                if (target != SheetValue.Hidden) {
-                    hasOpenedOnce = true
-                } else if (hasOpenedOnce) {
-                    dialpadClosing = true
-                }
-            }
-        }
-        // ModalBottomSheet.animateTo(targetValue, animationSpec) is internal, so we drive our own
-        // slow, smooth slide + scrim fade over the content instead. Fading the scrim's alpha down
-        // alongside the slide (not just translating the content) avoids the dim background
-        // cutting out abruptly the instant the Dialog is torn down at the end — leaving the
-        // system's own (quicker) swipe-to-dismiss animation untouched.
-        val closeProgress = remember { Animatable(0f) }
-        val slowSlideSpec = tween<Float>(durationMillis = 650, easing = FastOutSlowInEasing)
-        // Fixed dp offsets don't clear the screen on taller devices, so the sheet gets torn down
-        // mid-slide and appears to vanish abruptly. Basing it on the actual screen height (plus a
-        // buffer for the status/nav bars) guarantees it's fully off-screen before removal.
-        val dialpadConfiguration = LocalConfiguration.current
-        val slideDistance = dialpadConfiguration.screenHeightDp.dp + 150.dp
-        var didNavigateAway by remember { mutableStateOf(false) }
-
-        fun finishDismissDialpad() {
-            if (!didNavigateAway) showDialpad = false
-        }
-
-        // Swipe-down / scrim tap / predictive back — sheetState has already played its own
-        // (quicker) hide animation by the time onDismissRequest fires, so just finish up.
-        fun animateDismissDialpad() {
-            dialpadClosing = true
-            finishDismissDialpad()
-        }
-
-        // Used by the X button — plays our own slow, smooth slide-down.
-        fun closeWithSlowAnimation() {
-            if (didNavigateAway) return
-            dialpadClosing = true
-            dialpadScope.launch {
-                closeProgress.animateTo(1f, slowSlideSpec)
-            }.invokeOnCompletion {
-                finishDismissDialpad()
-            }
-        }
-
-        ModalBottomSheet(
-            onDismissRequest = { animateDismissDialpad() },
-            sheetState = dialpadSheetState,
-            // The default containerColor/dragHandle paint their own background surface behind
-            // whatever we put in the content slot, so animating only our content left that
-            // background fixed while just the elements slid down. Making the sheet transparent
-            // and drawing our own background + handle inside the offset Surface (below) makes
-            // the background move together with the content as one unit.
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            containerColor = Color.Transparent,
-            tonalElevation = 0.dp,
-            // No dim behind the sheet.
-            scrimColor = Color.Transparent,
-            // Stop the sheet from reserving its own system-bar inset padding around the content —
-            // that reserved space stayed transparent once containerColor became Transparent,
-            // showing as a gap between the sheet's visible bottom and the actual screen edge. We
-            // apply the navigation-bar inset ourselves inside the Surface below instead, so the
-            // background extends all the way to the screen edge and only the content is padded
-            // above it.
-            contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
-            dragHandle = null
-        ) {
-            com.modiprincekr.thedialer.view.theme.ProvideScaledDensity(prefs = prefs) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .offset(y = slideDistance * closeProgress.value),
-                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 4.dp
-                ) {
-                    val predictiveBackEnabled = remember(prefs.settingsChanged.collectAsState().value) {
-                        prefs.getBoolean(PreferenceManager.KEY_PREDICTIVE_BACK_GESTURE, true)
-                    }
-                if (predictiveBackEnabled) {
-                    PredictiveBackHandler(enabled = true) { progressFlow ->
-                        try {
-                            progressFlow.collect { backEvent ->
-                                dialpadClosing = true
-                                closeProgress.snapTo(backEvent.progress * 0.45f)
-                            }
-                            closeWithSlowAnimation()
-                        } catch (e: CancellationException) {
-                            dialpadClosing = false
-                            closeProgress.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
-                        }
-                    }
-                } else {
-                    BackHandler(enabled = true) { closeWithSlowAnimation() }
-                }
-                Column(modifier = Modifier.statusBarsPadding().navigationBarsPadding()) {
-                    Box(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
-                        Surface(shape = RoundedCornerShape(3.dp), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), modifier = Modifier.size(width = 36.dp, height = 4.dp)) {}
-                    }
-                    DialPadContent(
-                        navigator = navigator,
-                        onDismiss = { closeWithSlowAnimation() },
-                        closing = dialpadClosing,
-                        // Play our own slow, smooth slide-down before navigating, same as the main
-                        // Dialpad screen does, so tapping a pfp in search results animates smoothly
-                        // into Contact Info instead of popping in instantly.
-                        onNavigateToContact = { contactId, phoneNumber ->
-                            didNavigateAway = true
-                            dialpadScope.launch {
-                                closeProgress.animateTo(1f, slowSlideSpec)
-                            }.invokeOnCompletion {
-                                showDialpad = false
-                                navigator.navigate(ContactDetailsScreenDestination(contactId = contactId, phoneNumber = phoneNumber))
-                            }
-                        }
-                    )
-                }
-            }
-        }
-    }
     }
 
     var childHScrolling by remember { mutableStateOf(false) }
@@ -321,12 +298,14 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
         }
     }
 
+    val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+
     Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(nestedScrollConnection)
-            .pointerInput(Unit) {
+            .pointerInput(isRtl) {
                 // Use PointerEventPass.Final so children (LazyColumn) get events first.
                 // Only trigger navigation when the horizontal movement clearly dominates
                 // vertical movement, preventing accidental swipes during scrolling.
@@ -358,7 +337,8 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
                                         navController = navController,
                                         currentRoute = RecentScreenDestination.route,
                                         goForward = dx < 0,
-                                        prefs = prefs
+                                        prefs = prefs,
+                                        isRtl = isRtl
                                     )
                                 }
                             }
@@ -383,13 +363,25 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
             val isDynamic = remember(settingsVer) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_DYNAMIC_COLORS, true) }
             val usePrimary = isSaturatedActive || !isDynamic
             val fabBg = if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
-            val fabFg = if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
+            val fabFg = if (isSaturatedActive && isDark) Color.Black else if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
             val fabShape = RoundedCornerShape(17.dp)
             val useLiquidGlass = liquidGlass && lgRecentsFab && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && globalBackdrop != null
             val useBlur = blurEffects && blurRecentsFab && !useLiquidGlass
+            val onOpenDialpad: () -> Unit = {
+                performAppHaptic(
+                    context,
+                    prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
+                    prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+                )
+                dialpadClosing = false
+                showDialpad = true
+            }
             val baseModifier = Modifier
-                .scale(fabScale)
-                .then(if (pillNav) Modifier.navigationBarsPadding().padding(bottom = 92.dp) else Modifier)
+                .onGloballyPositioned { coordinates ->
+                    fabCenter = coordinates.boundsInRoot().center
+                }
+                .scale(fabScale * dialpadExpandScale)
+                .then(if (pillNav) Modifier.navigationBarsPadding().padding(bottom = 92.dp) else Modifier.navigationBarsPadding().padding(bottom = 80.dp))
                 .then(if (isLandscape) Modifier.navigationBarsPadding().padding(bottom = 8.dp) else Modifier)
             if (useLiquidGlass && globalBackdrop != null) {
                 Box(
@@ -405,21 +397,21 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
                     )
                 ) {
                     FloatingActionButton(
-                        onClick = { showDialpad = true },
+                        onClick = onOpenDialpad,
                         containerColor = fabBg.copy(alpha = 0.0f),
                         contentColor = fabFg,
                         shape = fabShape,
                         elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 6.dp,
-                        pressedElevation = 6.dp,
-                        focusedElevation = 6.dp,
-                        hoveredElevation = 6.dp
-                    ),
+                            defaultElevation = dialpadFabElevation,
+                            pressedElevation = dialpadFabElevation,
+                            focusedElevation = dialpadFabElevation,
+                            hoveredElevation = dialpadFabElevation
+                        ),
                     ) { Icon(Icons.Default.Dialpad, "Dialpad") }
                 }
             } else {
                 FloatingActionButton(
-                    onClick = { showDialpad = true },
+                    onClick = onOpenDialpad,
                     containerColor = if (useBlur)
                         fabBg.copy(alpha = 0.75f)
                     else
@@ -427,10 +419,10 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
                     contentColor = fabFg,
                     shape = fabShape,
                     elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 6.dp,
-                        pressedElevation = 6.dp,
-                        focusedElevation = 6.dp,
-                        hoveredElevation = 6.dp
+                        defaultElevation = dialpadFabElevation,
+                        pressedElevation = dialpadFabElevation,
+                        focusedElevation = dialpadFabElevation,
+                        hoveredElevation = dialpadFabElevation
                     ),
                     modifier = baseModifier
                 ) { Icon(Icons.Default.Dialpad, "Dialpad") }
@@ -493,6 +485,14 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
                                 }
                                 DropdownMenu(expanded = showSelectionMenuOuter, onDismissRequest = { showSelectionMenuOuter = false }) {
                                     DropdownMenuItem(
+                                        text = { Text("Select All") },
+                                        leadingIcon = { Icon(Icons.Default.SelectAll, null) },
+                                        onClick = {
+                                            showSelectionMenuOuter = false
+                                            selectedLogs = allCallLogs.map { "${it.number}|${it.date}" }.toSet()
+                                        }
+                                    )
+                                    DropdownMenuItem(
                                         text = { Text("Delete") },
                                         leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
                                         onClick = { showSelectionMenuOuter = false; if (selectedLogs.isNotEmpty()) showSelectionDeleteConfirm = true }
@@ -519,7 +519,99 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
                 }
             }
         }
-}
+
+        val p = dialpadProgress.value
+        if (p > 0.001f || showDialpad) {
+            // Scrim
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(20f)
+                    .background(Color.Black.copy(alpha = 0.45f * p))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { closeDialpad(null) }
+            )
+
+            // Expanding Dialpad Container originating at the FAB
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(21f)
+            ) {
+                val density = LocalDensity.current
+                val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+                val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+                val pivotX = (fabCenter?.x ?: (screenWidthPx * 0.88f)) / screenWidthPx.coerceAtLeast(1f)
+                val pivotY = (fabCenter?.y ?: (screenHeightPx * 0.92f)) / screenHeightPx.coerceAtLeast(1f)
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val scale = lerp(0.10f, 1f, p)
+                            scaleX = scale
+                            scaleY = scale
+                            transformOrigin = TransformOrigin(pivotX, pivotY)
+                            this.alpha = ((p - 0.03f) / 0.97f).coerceIn(0f, 1f)
+                        },
+                    shape = RoundedCornerShape(
+                        topStart = if (p < 0.96f) 28.dp else 0.dp,
+                        topEnd = if (p < 0.96f) 28.dp else 0.dp,
+                        bottomStart = if (p < 0.96f) 28.dp else 0.dp,
+                        bottomEnd = if (p < 0.96f) 28.dp else 0.dp
+                    ),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 4.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .statusBarsPadding()
+                            .navigationBarsPadding()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp, bottom = 4.dp)
+                                .pointerInput(Unit) {
+                                    detectVerticalDragGestures { _, dragAmount ->
+                                        if (dragAmount > 15f) {
+                                            closeDialpad(null)
+                                        }
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(3.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.size(width = 36.dp, height = 4.dp)
+                            ) {}
+                        }
+                        com.modiprincekr.thedialer.view.theme.ProvideScaledDensity(prefs = prefs) {
+                            DialPadContent(
+                                navigator = navigator,
+                                onDismiss = { closeDialpad(null) },
+                                closing = dialpadClosing,
+                                onNavigateToContact = { contactId, phoneNumber ->
+                                    closeDialpad {
+                                        navigator.navigate(
+                                            ContactDetailsScreenDestination(
+                                                contactId = contactId,
+                                                phoneNumber = phoneNumber
+                                            )
+                                        )
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 
 private fun formatDuration(totalSeconds: Long): String {
     val hours = totalSeconds / 3600
@@ -563,6 +655,8 @@ fun CallLogFullContent(
         val viewModel: CallLogViewModel = koinActivityViewModel()
         val contactsViewModel: com.modiprincekr.thedialer.controller.ContactsViewModel = koinActivityViewModel()
         val logs by viewModel.allCallLogs.collectAsState()
+        val isFullHistoryLoaded by viewModel.isFullHistoryLoaded.collectAsState()
+        val isLoadingMore by viewModel.isLoadingMore.collectAsState()
         val contacts by contactsViewModel.allContacts.collectAsState()
         val selectedFilter by viewModel.selectedFilter.collectAsState()
         val context = LocalContext.current
@@ -584,14 +678,15 @@ fun CallLogFullContent(
             if (raw.isBlank()) emptySet() else raw.split(",").filter { it.isNotBlank() }.toSet()
         }
 
-        val filteredLogs = remember(logs, selectedFilter, hiddenIds, contacts) {
+        val favoriteContactIds = remember(contacts) { contacts.filter { it.isFavorite }.map { it.id }.toSet() }
+        val favoritePhoneNumbers = remember(contacts) { contacts.filter { it.isFavorite }.flatMap { it.phoneNumbers }.toSet() }
+
+        val filteredLogs = remember(logs, selectedFilter, hiddenIds, favoriteContactIds, favoritePhoneNumbers) {
             val base = if (hiddenIds.isEmpty()) logs else logs.filter { it.contactId == null || it.contactId !in hiddenIds }
             when (selectedFilter) {
                 CallLogFilter.All -> base
                 CallLogFilter.Contacts -> base.filter { it.name != null && it.name != it.number && !it.isCallerIdName }
                 CallLogFilter.Favourites -> {
-                    val favoriteContactIds = contacts.filter { it.isFavorite }.map { it.id }.toSet()
-                    val favoritePhoneNumbers = contacts.filter { it.isFavorite }.flatMap { it.phoneNumbers }.toSet()
                     base.filter { log ->
                         (log.contactId != null && log.contactId in favoriteContactIds) ||
                         log.number in favoritePhoneNumbers
@@ -601,7 +696,6 @@ fun CallLogFullContent(
                 CallLogFilter.Missed -> base.filter { it.type == CallLog.Calls.MISSED_TYPE }
                 CallLogFilter.Incoming -> base.filter { it.type == CallLog.Calls.INCOMING_TYPE }
                 CallLogFilter.Outgoing -> base.filter { it.type == CallLog.Calls.OUTGOING_TYPE }
-                CallLogFilter.Blocked -> base.filter { it.type == CallLog.Calls.BLOCKED_TYPE }
             }
         }
         val totalCallsMap = remember(logs) {
@@ -642,8 +736,35 @@ fun CallLogFullContent(
             }
         }
 
+        val contactsById = remember(contacts) {
+            contacts.associateBy { it.id }
+        }
+        val contactsByDigits = remember(contacts) {
+            val map = HashMap<String, com.modiprincekr.thedialer.modal.data.Contact>(contacts.size * 2)
+            for (c in contacts) {
+                for (n in c.phoneNumbers) {
+                    val d = com.modiprincekr.thedialer.controller.util.normalizeNumberDigits(n)
+                    if (d.isNotEmpty()) {
+                        map[d] = c
+                        if (d.length >= 7) {
+                            map[d.takeLast(7)] = c
+                        }
+                    }
+                }
+            }
+            map
+        }
+
         val avatarConfig = com.modiprincekr.thedialer.view.components.rememberAvatarDisplayConfig(prefs, settingsVersion)
-        val callLogDisplayConfig = remember(settingsVersion, groupCallsByLatest, hiddenIds) {
+        val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
+        val isSaturatedActive = remember(settingsVersion, isDark) { prefs.isSaturatedForTheme(isDark) }
+        val colorScheme = MaterialTheme.colorScheme
+        val leftSwipeKey = remember(settingsVersion) { prefs.getSwipeAction("call_logs", "left") }
+        val rightSwipeKey = remember(settingsVersion) { prefs.getSwipeAction("call_logs", "right") }
+        val leftSwipeAction = remember(leftSwipeKey, colorScheme) { com.modiprincekr.thedialer.controller.util.SwipeActionHelper.resolveActionItem(leftSwipeKey, colorScheme) }
+        val rightSwipeAction = remember(rightSwipeKey, colorScheme) { com.modiprincekr.thedialer.controller.util.SwipeActionHelper.resolveActionItem(rightSwipeKey, colorScheme) }
+
+        val callLogDisplayConfig = remember(settingsVersion, groupCallsByLatest, hiddenIds, isSaturatedActive, leftSwipeKey, rightSwipeKey, leftSwipeAction, rightSwipeAction) {
             val fakeCallInContextMenu = prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_FAKE_CALL_IN_CONTEXT_MENU, false)
             val use24HourTime = prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_CALL_TIME_FORMAT_24H, false)
             val showTalkTime = prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_SHOW_TALK_TIME_IN_CALL_LOGS, false)
@@ -656,10 +777,12 @@ fun CallLogFullContent(
             val isScrollAnimEnabled = prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_SCROLL_ANIMATION, true)
             val showAvatarsInCalls = prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_SHOW_AVATARS_CALLS, true)
             val showNumbersInCallLogs = prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_SHOW_NUMBERS_IN_CALL_LOGS, true)
+            val showMissedCallDuration = prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_SHOW_MISSED_CALL_DURATION, false)
 
             com.modiprincekr.thedialer.view.components.CallLogDisplayConfig(
                 use24HourTime = use24HourTime,
                 showTalkTime = showTalkTime,
+                showMissedCallDuration = showMissedCallDuration,
                 groupCallsByLatest = groupCallsByLatest,
                 showTotalCallsMade = showTotalCallsMade,
                 showSims = showSimsSetting,
@@ -671,7 +794,12 @@ fun CallLogFullContent(
                 sim1Color = sim1Color,
                 sim2Color = sim2Color,
                 isScrollAnimEnabled = isScrollAnimEnabled,
-                showNumbersInCallLogs = showNumbersInCallLogs
+                showNumbersInCallLogs = showNumbersInCallLogs,
+                isSaturatedActive = isSaturatedActive,
+                leftSwipeKey = leftSwipeKey,
+                rightSwipeKey = rightSwipeKey,
+                leftSwipeAction = leftSwipeAction,
+                rightSwipeAction = rightSwipeAction
             )
         }
 
@@ -717,11 +845,14 @@ fun CallLogFullContent(
             val previous = lastKnownTopEntryKey
             lastKnownTopEntryKey = topEntryKey
             if (previous != null && topEntryKey != null && topEntryKey != previous &&
-                listState.firstVisibleItemIndex <= 1
+                listState.firstVisibleItemIndex == 0 &&
+                listState.firstVisibleItemScrollOffset == 0 &&
+                !listState.isScrollInProgress
             ) {
                 listState.animateScrollToItem(0)
             }
         }
+
 
         if (showSimPicker && pendingNumber != null) {
             SimPickerDialog(
@@ -1230,6 +1361,12 @@ fun CallLogFullContent(
                                                     )
                                                 }
                                                 val contactKey = lg.contactId?.takeIf { it.isNotBlank() } ?: lg.number.filter { it.isDigit() }.ifEmpty { lg.number }
+                                                val matchedContact = if (!lg.contactId.isNullOrBlank() && lg.contactId != "0" && lg.contactId != "-1" && lg.contactId != "null") {
+                                                    contactsById[lg.contactId]
+                                                } else if (lg.number.isNotBlank()) {
+                                                    val digits = com.modiprincekr.thedialer.controller.util.normalizeNumberDigits(lg.number)
+                                                    contactsByDigits[digits] ?: if (digits.length >= 7) contactsByDigits[digits.takeLast(7)] else null
+                                                } else null
                                                 CallLogTile(
                                                     log = lg,
                                                     config = callLogDisplayConfig,
@@ -1237,6 +1374,7 @@ fun CallLogFullContent(
                                                     isSelected = selectedLogs.contains("${lg.number}|${lg.date}"),
                                                     selectionMode = selectionMode,
                                                     navigator = navigator,
+                                                    matchedContact = matchedContact,
                                                     onSelectToggle = { log ->
                                                         val key = "${log.number}|${log.date}"
                                                         onSelectedLogsChange(if (selectedLogs.contains(key)) selectedLogs - key else selectedLogs + key)

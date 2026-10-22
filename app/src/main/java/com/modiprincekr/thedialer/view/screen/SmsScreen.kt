@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,6 +41,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.graphics.Color
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
@@ -69,8 +75,11 @@ import com.modiprincekr.thedialer.view.components.ReorderSmsTabsDialog
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenu
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenuItem
+import com.modiprincekr.thedialer.view.components.RivoScrollAnimatedItem
 import com.modiprincekr.thedialer.view.components.ScrollHapticsEffect
 import com.modiprincekr.thedialer.view.components.TopBar
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.EaseInOutCubic
 import com.modiprincekr.thedialer.view.theme.TabTransitionStyle
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -102,6 +111,9 @@ fun SmsScreen(
     val contactsVM: ContactsViewModel = koinActivityViewModel()
     val allContacts by contactsVM.allContacts.collectAsState()
     val settingsVer by prefs.settingsChanged.collectAsState()
+    val isSmsEnabled = remember(settingsVer) {
+        prefs.getBoolean(PreferenceManager.KEY_SMS_ENABLED, false)
+    }
 
     var isDefaultSms by remember { mutableStateOf(DefaultSmsManager.isDefaultSms(context)) }
     var hasSmsPermissions by remember {
@@ -130,7 +142,11 @@ fun SmsScreen(
 
     val rawConversations by smsVM.filteredConversations.collectAsState()
     val isLoading by smsVM.isLoading.collectAsState()
+    val hasInitialLoaded by smsVM.hasInitialLoaded.collectAsState()
     val searchQuery by smsVM.searchQuery.collectAsState()
+    val isScrollAnimEnabled = remember(settingsVer) {
+        prefs.getBoolean(PreferenceManager.KEY_SCROLL_ANIMATION, true)
+    }
 
     // Quik preference: unread at top
     val unreadAtTop = remember(settingsVer) {
@@ -138,6 +154,9 @@ fun SmsScreen(
     }
     val autoColor = remember(settingsVer) {
         prefs.getBoolean(PreferenceManager.KEY_SMS_AUTO_COLOR_AVATARS, true)
+    }
+    val showAvatar = remember(settingsVer) {
+        prefs.getBoolean(PreferenceManager.KEY_SMS_SHOW_AVATAR, true)
     }
     val swipeRightAction = remember(settingsVer) {
         prefs.getString(PreferenceManager.KEY_SMS_SWIPE_RIGHT_ACTION, "none") ?: "none"
@@ -148,19 +167,10 @@ fun SmsScreen(
 
     val colorScheme = MaterialTheme.colorScheme
     val leftSwipeActionItem = remember(swipeLeftAction, colorScheme) {
-        when (swipeLeftAction) {
-            "delete" -> SwipeActionItem("delete", "Delete", Icons.Default.Delete, colorScheme.error, colorScheme.onError, isDestructive = true)
-            "read" -> SwipeActionItem("read", "Mark Read", Icons.Outlined.MarkChatRead, colorScheme.secondary, colorScheme.onSecondary, isDestructive = false)
-            else -> null
-        }
+        SwipeActionHelper.resolveActionItem(swipeLeftAction, colorScheme)
     }
     val rightSwipeActionItem = remember(swipeRightAction, colorScheme) {
-        when (swipeRightAction) {
-            "call" -> SwipeActionItem("call", "Call", Icons.Default.Call, colorScheme.primary, colorScheme.onPrimary, isDestructive = false)
-            "read" -> SwipeActionItem("read", "Mark Read", Icons.Outlined.MarkChatRead, colorScheme.secondary, colorScheme.onSecondary, isDestructive = false)
-            "delete" -> SwipeActionItem("delete", "Delete", Icons.Default.Delete, colorScheme.error, colorScheme.onError, isDestructive = true)
-            else -> null
-        }
+        SwipeActionHelper.resolveActionItem(swipeRightAction, colorScheme)
     }
 
     val haptic = LocalHapticFeedback.current
@@ -180,6 +190,8 @@ fun SmsScreen(
         allContacts.filter { it.isFavorite }.map { it.name.trim().lowercase() }.toSet()
     }
 
+    val pinnedThreads = remember(settingsVer) { prefs.getPinnedSmsThreads() }
+    val starredMessages by smsVM.starredMessages.collectAsState()
     val groupConversations: (List<SmsConversation>) -> Map<String, List<SmsConversation>> = remember(unreadAtTop) {
         { convList ->
             convList.groupBy { conv ->
@@ -196,13 +208,22 @@ fun SmsScreen(
         }
     }
 
-    val conversations = remember(rawConversations, selectedFilter, favoriteNumbers, favoriteNames) {
-        smsVM.filterConversations(rawConversations, selectedFilter, favoriteNumbers, favoriteNames)
+    val conversations = remember(rawConversations, selectedFilter, favoriteNumbers, favoriteNames, pinnedThreads) {
+        val filtered = smsVM.filterConversations(rawConversations, selectedFilter, favoriteNumbers, favoriteNames)
+        if (pinnedThreads.isEmpty()) {
+            filtered
+        } else {
+            val (pinned, unpinned) = filtered.partition { pinnedThreads.contains(it.threadId) }
+            pinned.sortedByDescending { it.date } + unpinned.sortedByDescending { it.date }
+        }
     }
 
     val use24HourTime = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_CALL_TIME_FORMAT_24H, false) }
 
     LaunchedEffect(selectedFilter) {
+        if (selectedFilter == SmsFilterTab.STARRED || selectedFilter.id == "starred") {
+            smsVM.refreshStarredMessages(prefs.getStarredSmsMessages())
+        }
         listStates[selectedFilter]?.scrollToItem(0)
     }
 
@@ -237,13 +258,9 @@ fun SmsScreen(
     LaunchedEffect(Unit) {
         SmsEventBus.newSmsEvent.collect {
             smsVM.refreshConversations()
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            delay(2500)
-            smsVM.refreshConversations()
+            if (selectedFilter == "starred") {
+                smsVM.refreshStarredMessages(prefs.getStarredSmsMessages())
+            }
         }
     }
 
@@ -388,6 +405,7 @@ fun SmsScreen(
                                 }
                                 // Quik Settings
                                 IconButton(onClick = {
+                                    com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordNormalized(0.92f, 0.06f)
                                     navigator.navigate(SmsSettingsScreenDestination())
                                 }) {
                                     Icon(
@@ -419,6 +437,7 @@ fun SmsScreen(
                                         if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
                                     } else {
                                         MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
+                                    }
                                     },
                                     animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                                     label = "chipBg"
@@ -545,7 +564,7 @@ fun SmsScreen(
         },
         floatingActionButton = {
             AnimatedVisibility(
-                visible = !isSelectionMode,
+                visible = !isSelectionMode && isSmsEnabled,
                 enter = fadeIn(androidx.compose.animation.core.tween(400)) + scaleIn(androidx.compose.animation.core.tween(400), initialScale = 0.8f),
                 exit = fadeOut(androidx.compose.animation.core.tween(400)) + scaleOut(androidx.compose.animation.core.tween(400), targetScale = 0.8f)
             ) {
@@ -554,26 +573,71 @@ fun SmsScreen(
                 val isDynamic = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_DYNAMIC_COLORS, true) }
                 val usePrimary = isSaturatedActive || !isDynamic
                 val fabBg = if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
-                val fabFg = if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
+                val fabFg = if (isSaturatedActive && isDark) Color.Black else if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
                 val fabShape = RoundedCornerShape(17.dp)
                 val pillNav = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_PILL_NAV, true) }
                 val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+                val navBackStackEntry by navController.currentBackStackEntryAsState()
+                val currentRoute = navBackStackEntry?.destination?.route ?: ""
+                val isNewMessageOpen = (currentRoute.contains("new_message", ignoreCase = true) || com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageOpening) && !com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageClosing
+                val newMessageExpandScale by animateFloatAsState(
+                    targetValue = if (isNewMessageOpen) 2.6f else 1f,
+                    animationSpec = androidx.compose.animation.core.tween(
+                        durationMillis = if (isNewMessageOpen) 600 else 800,
+                        easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)
+                    ),
+                    label = "newMessageExpandScale"
+                )
+                val newMessageFabElevation by animateDpAsState(
+                    targetValue = if (isNewMessageOpen) 12.dp else 6.dp,
+                    animationSpec = androidx.compose.animation.core.tween(
+                        durationMillis = if (isNewMessageOpen) 600 else 800,
+                        easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)
+                    ),
+                    label = "newMessageFabElevation"
+                )
+
+                var fabCoordinates by remember { mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null) }
                 val baseModifier = Modifier
-                    .then(if (pillNav) Modifier.navigationBarsPadding().padding(bottom = 92.dp) else Modifier)
+                    .onGloballyPositioned { coordinates ->
+                        fabCoordinates = coordinates
+                    }
+                    .scale(newMessageExpandScale)
+                    .then(if (pillNav) Modifier.navigationBarsPadding().padding(bottom = 92.dp) else Modifier.navigationBarsPadding().padding(bottom = 80.dp))
                     .then(if (isLandscape) Modifier.navigationBarsPadding().padding(bottom = 8.dp) else Modifier)
 
                 FloatingActionButton(
                     onClick = {
+                        if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
+                            com.modiprincekr.thedialer.view.components.performAppHaptic(
+                                context,
+                                prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
+                                prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+                            )
+                        }
+                        fabCoordinates?.let { coords ->
+                            val center = coords.boundsInRoot().center
+                            val rootSize = coords.findRootCoordinates().size
+                            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordTap(
+                                center.x,
+                                center.y,
+                                rootSize.width.toFloat(),
+                                rootSize.height.toFloat()
+                            )
+                        } ?: com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordNormalized(0.88f, 0.92f)
+                        com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageClosing = false
+                        com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageOpening = true
+                        com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageOpen = true
                         navigator.navigate(NewMessageScreenDestination(initialText = null))
                     },
                     containerColor = fabBg,
                     contentColor = fabFg,
                     shape = fabShape,
                     elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 6.dp,
-                        pressedElevation = 6.dp,
-                        focusedElevation = 6.dp,
-                        hoveredElevation = 6.dp
+                        defaultElevation = newMessageFabElevation,
+                        pressedElevation = newMessageFabElevation,
+                        focusedElevation = newMessageFabElevation,
+                        hoveredElevation = newMessageFabElevation
                     ),
                     modifier = baseModifier
                 ) {
@@ -638,7 +702,7 @@ fun SmsScreen(
                 state = currentListState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp + navBarBottom),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 // Default SMS App Warning Banner
                 if (!isDefaultSms) {
@@ -697,7 +761,7 @@ fun SmsScreen(
                 }
 
                 // Permissions prompt banner
-                if (!hasSmsPermissions) {
+                if (isSmsEnabled && !hasSmsPermissions) {
                     item(key = "banner_permissions") {
                         Surface(
                             onClick = {
@@ -744,23 +808,17 @@ fun SmsScreen(
                     }
                 }
 
-                // Empty state
-                if (currentConversations.isEmpty() && !isLoading) {
-                    item(key = "empty_state_${currentFilter.id}") {
+                if (!isSmsEnabled) {
+                    item(key = "sms_disabled_state") {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 60.dp)
-                                .animateItem(
-                                    fadeInSpec = tween(260, easing = FastOutSlowInEasing),
-                                    placementSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioLowBouncy),
-                                    fadeOutSpec = tween(180, easing = FastOutLinearInEasing)
-                                ),
+                                .padding(vertical = 60.dp, horizontal = 24.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 Surface(
                                     shape = CircleShape,
@@ -769,7 +827,7 @@ fun SmsScreen(
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
-                                            Icons.AutoMirrored.Outlined.Chat,
+                                            Icons.Outlined.Sms,
                                             contentDescription = null,
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(36.dp)
@@ -777,16 +835,273 @@ fun SmsScreen(
                                     }
                                 }
                                 Text(
-                                    if (searchQuery.isNotBlank()) "No conversations match '$searchQuery'" else "No messages yet",
+                                    "SMS is disabled",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    "Start a conversation by tapping the button below",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    "Turn on SMS in settings to view and send messages",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                 )
+                                Spacer(Modifier.height(4.dp))
+                                Button(
+                                    onClick = {
+                                        navigator.navigate(SmsSettingsScreenDestination())
+                                    },
+                                    shape = RoundedCornerShape(100)
+                                ) {
+                                    Text("Open SMS Settings")
+                                }
+                            }
+                        }
+                    }
+                } else if (currentFilter == SmsFilterTab.STARRED || currentFilter.id == "starred") {
+                    // Starred Messages Subsection
+                    if (starredMessages.isEmpty()) {
+                        if (isLoading || !hasInitialLoaded) {
+                            item(key = "loading_state_starred") {
+                                SmsLoadingView()
+                            }
+                        } else {
+                            item(key = "empty_state_starred") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 60.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.surfaceVariant,
+                                            modifier = Modifier.size(72.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    Icons.Default.StarOutline,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFFFB300),
+                                                    modifier = Modifier.size(36.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            "No starred messages",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            "Star important messages by long pressing them in any chat",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        itemsIndexed(
+                            items = starredMessages,
+                            key = { _, it -> "starred_${it.message.id}" }
+                        ) { index, item ->
+                            val isFirst = index == 0
+                            val isLast = index == starredMessages.size - 1
+                            val cornerRadius = 28.dp
+                            val topStart = if (isFirst) cornerRadius else 0.dp
+                            val topEnd = if (isFirst) cornerRadius else 0.dp
+                            val bottomStart = if (isLast) cornerRadius else 0.dp
+                            val bottomEnd = if (isLast) cornerRadius else 0.dp
+                            val itemShape = RoundedCornerShape(
+                                topStart = topStart,
+                                topEnd = topEnd,
+                                bottomStart = bottomStart,
+                                bottomEnd = bottomEnd
+                            )
+                            var showStarredMenu by remember { mutableStateOf(false) }
+                            RivoScrollAnimatedItem(enabled = isScrollAnimEnabled) {
+                                Box(modifier = Modifier.fillMaxWidth()) {
+                                    Surface(
+                                        shape = itemShape,
+                                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                                        contentColor = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .combinedClickable(
+                                                onClick = {
+                                                    navigator.navigate(
+                                                        SmsChatScreenDestination(
+                                                            threadId = item.message.threadId,
+                                                            address = item.message.address,
+                                                            contactName = item.contactName,
+                                                            photoUri = item.photoUri
+                                                        )
+                                                    )
+                                                },
+                                                onLongClick = {
+                                                    showStarredMenu = true
+                                                }
+                                            )
+                                    ) {
+                                        Column {
+                                            if (!isFirst) {
+                                                HorizontalDivider(
+                                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                                    thickness = 0.5.dp
+                                                )
+                                            }
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(14.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (showAvatar) {
+                                                    RivoAvatar(
+                                                        name = item.contactName ?: item.message.address,
+                                                        photoUri = item.photoUri,
+                                                        autoColorAvatars = autoColor,
+                                                        obeySolidIcons = false,
+                                                        size = 48.dp
+                                                    )
+                                                    Spacer(Modifier.width(14.dp))
+                                                }
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = item.contactName ?: item.message.address,
+                                                            style = MaterialTheme.typography.titleMedium,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = MaterialTheme.colorScheme.onSurface,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            modifier = Modifier.weight(1f, fill = false)
+                                                        )
+                                                        Spacer(Modifier.width(8.dp))
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Icon(
+                                                                Icons.Default.Star,
+                                                                contentDescription = "Starred",
+                                                                tint = Color(0xFFFFB300),
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                            Spacer(Modifier.width(4.dp))
+                                                            Text(
+                                                                text = if (item.message.date <= 0) "" else formatTimeOnly(item.message.date, use24HourTime),
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                                            )
+                                                        }
+                                                    }
+                                                    Spacer(Modifier.height(4.dp))
+                                                    Text(
+                                                        text = item.message.body.ifBlank { "MMS Message" },
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    RivoDropdownMenu(
+                                        expanded = showStarredMenu,
+                                        onDismissRequest = { showStarredMenu = false }
+                                    ) {
+                                        RivoDropdownMenuItem(
+                                            text = "Unstar message",
+                                            icon = Icons.Default.StarOutline,
+                                            iconTint = Color(0xFFFFB300),
+                                            onClick = {
+                                                showStarredMenu = false
+                                                prefs.setSmsMessageStarred(item.message.id, false)
+                                                smsVM.refreshStarredMessages(prefs.getStarredSmsMessages())
+                                            }
+                                        )
+                                        RivoDropdownMenuItem(
+                                            text = "Open in chat",
+                                            icon = Icons.AutoMirrored.Outlined.Chat,
+                                            onClick = {
+                                                showStarredMenu = false
+                                                navigator.navigate(
+                                                    SmsChatScreenDestination(
+                                                        threadId = item.message.threadId,
+                                                        address = item.message.address,
+                                                        contactName = item.contactName,
+                                                        photoUri = item.photoUri
+                                                    )
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            if (isLast) Spacer(modifier = Modifier.height(12.dp))
+                        }
+                    }
+                } else {
+                    // Empty or loading state for conversations
+                    if (currentConversations.isEmpty()) {
+                        if (isLoading || !hasInitialLoaded) {
+                            item(key = "loading_state_$currentFilter") {
+                                SmsLoadingView()
+                            }
+                        } else {
+                            item(key = "empty_state_$currentFilter") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 60.dp)
+                                        .animateItem(
+                                            fadeInSpec = tween(260, easing = FastOutSlowInEasing),
+                                            placementSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioLowBouncy),
+                                            fadeOutSpec = tween(180, easing = FastOutLinearInEasing)
+                                        ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        modifier = Modifier.size(72.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                Icons.AutoMirrored.Outlined.Chat,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(36.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        if (searchQuery.isNotBlank()) "No conversations match '$searchQuery'" else "No messages yet",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        "Start a conversation by tapping the button below",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
@@ -810,73 +1125,192 @@ fun SmsScreen(
                         }
                     }
 
-                    items(
-                        items = convsInGroup,
-                        key = { it.threadId },
-                        contentType = { "conversationItem" }
-                    ) { conv ->
-                        val isSelected = selectedThreadIds.contains(conv.threadId)
+                        itemsIndexed(
+                            items = convsInGroup,
+                            key = { _, it -> it.threadId },
+                            contentType = { _, _ -> "conversationItem" }
+                        ) { index, conv ->
+                            val isFirst = index == 0
+                            val isLast = index == convsInGroup.size - 1
+                            val cornerRadius = 28.dp
+                            val topStart = if (isFirst) cornerRadius else 0.dp
+                            val topEnd = if (isFirst) cornerRadius else 0.dp
+                            val bottomStart = if (isLast) cornerRadius else 0.dp
+                            val bottomEnd = if (isLast) cornerRadius else 0.dp
+                            val itemShape = RoundedCornerShape(
+                                topStart = topStart,
+                                topEnd = topEnd,
+                                bottomStart = bottomStart,
+                                bottomEnd = bottomEnd
+                            )
+                            val isSelected = selectedThreadIds.contains(conv.threadId)
+                            val isPinned = pinnedThreads.contains(conv.threadId)
+                            val isMuted = prefs.isSmsMuted(conv.address)
+                            var showConversationMenu by remember { mutableStateOf(false) }
 
-                        val handleSwipeAction: (String) -> Unit = { actionKey ->
-                            when (actionKey) {
-                                "call" -> makeCall(context, conv.address, null)
-                                "read" -> smsVM.markThreadAsRead(conv.threadId)
-                                "delete" -> threadToDelete = conv
+                            val handleSwipeAction: (String) -> Unit = { actionKey ->
+                                when (actionKey) {
+                                    "call" -> makeCall(context, conv.address, null)
+                                    "read" -> smsVM.markThreadAsRead(conv.threadId)
+                                    "delete" -> threadToDelete = conv
+                                }
                             }
-                        }
 
-                        SwipeableItemContainer(
-                            modifier = Modifier.animateItem(
-                                fadeInSpec = null,
-                                placementSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioLowBouncy),
-                                fadeOutSpec = tween(450, easing = FastOutLinearInEasing)
-                            ),
-                            leftAction = leftSwipeActionItem,
-                            rightAction = rightSwipeActionItem,
-                            onSwipeLeft = { handleSwipeAction(swipeLeftAction) },
-                            onSwipeRight = { handleSwipeAction(swipeRightAction) },
-                            enabled = !isSelectionMode,
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            ConversationItemRow(
-                                conversation = conv,
-                                timeStr = if (conv.date <= 0) "" else formatTimeOnly(conv.date, use24HourTime),
-                                isSelected = isSelected,
-                                isSelectionMode = isSelectionMode,
-                                autoColor = autoColor,
-                                onClick = {
-                                    if (isSelectionMode) {
-                                        if (isSelected) selectedThreadIds.remove(conv.threadId)
-                                        else selectedThreadIds.add(conv.threadId)
-                                    } else {
-                                        if (conv.threadId > 0) {
-                                            smsVM.loadThreadMessages(conv.threadId)
+                            RivoScrollAnimatedItem(enabled = isScrollAnimEnabled) {
+                                Box(modifier = Modifier.fillMaxWidth()) {
+                                    Surface(
+                                        shape = itemShape,
+                                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column {
+                                            if (!isFirst) {
+                                                HorizontalDivider(
+                                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                                    thickness = 0.5.dp
+                                                )
+                                            }
+                                            SwipeableItemContainer(
+                                                modifier = Modifier.animateItem(
+                                                    fadeInSpec = tween(400, easing = FastOutSlowInEasing),
+                                                    placementSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioLowBouncy),
+                                                    fadeOutSpec = tween(450, easing = FastOutLinearInEasing)
+                                                ),
+                                                leftAction = leftSwipeActionItem,
+                                                rightAction = rightSwipeActionItem,
+                                                onSwipeLeft = { handleSwipeAction(swipeLeftAction) },
+                                                onSwipeRight = { handleSwipeAction(swipeRightAction) },
+                                                enabled = !isSelectionMode,
+                                                shape = itemShape
+                                            ) {
+                                                ConversationItemRow(
+                                                    conversation = conv,
+                                                    timeStr = if (conv.date <= 0) "" else formatTimeOnly(conv.date, use24HourTime),
+                                                    isSelected = isSelected,
+                                                    isSelectionMode = isSelectionMode,
+                                                    autoColor = autoColor,
+                                                    showAvatar = showAvatar,
+                                                    isPinned = isPinned,
+                                                    isMuted = isMuted,
+                                                    shape = itemShape,
+                                                    onClick = {
+                                                        if (isSelectionMode) {
+                                                            if (isSelected) selectedThreadIds.remove(conv.threadId)
+                                                            else selectedThreadIds.add(conv.threadId)
+                                                        } else {
+                                                            if (conv.threadId > 0) {
+                                                                smsVM.loadThreadMessages(conv.threadId)
+                                                            }
+                                                            navigator.navigate(
+                                                                SmsChatScreenDestination(
+                                                                    threadId = conv.threadId,
+                                                                    address = conv.address,
+                                                                    contactName = conv.contactName,
+                                                                    photoUri = conv.photoUri
+                                                                )
+                                                            )
+                                                        }
+                                                    },
+                                                    onLongClick = {
+                                                        if (isSelectionMode) {
+                                                            if (isSelected) selectedThreadIds.remove(conv.threadId)
+                                                            else selectedThreadIds.add(conv.threadId)
+                                                        } else {
+                                                            showConversationMenu = true
+                                                        }
+                                                    },
+                                                    onAvatarClick = {
+                                                        if (!isSelectionMode) {
+                                                            navigator.navigate(
+                                                                ContactDetailsScreenDestination(
+                                                                    phoneNumber = conv.address
+                                                                )
+                                                            )
+                                                        }
+                                                    }
+                                                )
+                                            }
                                         }
-                                        navigator.navigate(
-                                            SmsChatScreenDestination(
-                                                threadId = conv.threadId,
-                                                address = conv.address,
-                                                contactName = conv.contactName,
-                                                photoUri = conv.photoUri
-                                            )
+                                    }
+
+                                    RivoDropdownMenu(
+                                        expanded = showConversationMenu,
+                                        onDismissRequest = { showConversationMenu = false }
+                                    ) {
+                                        RivoDropdownMenuItem(
+                                            text = if (isPinned) "Unpin chat" else "Pin chat",
+                                            icon = Icons.Default.PushPin,
+                                            iconTint = MaterialTheme.colorScheme.primary,
+                                            onClick = {
+                                                showConversationMenu = false
+                                                prefs.setSmsThreadPinned(conv.threadId, !isPinned)
+                                            }
                                         )
-                                    }
-                                },
-                                onLongClick = {
-                                    if (!isSelectionMode) {
-                                        selectedThreadIds.add(conv.threadId)
-                                    }
-                                },
-                                onAvatarClick = {
-                                    if (!isSelectionMode) {
-                                        navigator.navigate(
-                                            ContactDetailsScreenDestination(
-                                                phoneNumber = conv.address
-                                            )
+                                        RivoDropdownMenuItem(
+                                            text = if (isMuted) "Unmute notifications" else "Mute notifications",
+                                            icon = if (isMuted) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
+                                            iconTint = if (isMuted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            onClick = {
+                                                showConversationMenu = false
+                                                prefs.setSmsMuted(conv.address, !isMuted)
+                                                Toast.makeText(context, if (isMuted) "Unmuted ${conv.contactName ?: conv.address}" else "Muted notifications from ${conv.contactName ?: conv.address}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        )
+                                        RivoDropdownMenuItem(
+                                            text = "Block number",
+                                            icon = Icons.Outlined.Block,
+                                            iconTint = MaterialTheme.colorScheme.error,
+                                            isDestructive = true,
+                                            onClick = {
+                                                showConversationMenu = false
+                                                com.modiprincekr.thedialer.controller.util.BlockedNumbersManager.block(context, prefs, conv.address)
+                                                Toast.makeText(context, "Blocked ${conv.contactName ?: conv.address}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        )
+                                        RivoDropdownMenuItem(
+                                            text = if (conv.isRead) "Mark as unread" else "Mark as read",
+                                            icon = if (conv.isRead) Icons.Outlined.MarkChatUnread else Icons.Outlined.MarkChatRead,
+                                            onClick = {
+                                                showConversationMenu = false
+                                                smsVM.markThreadAsRead(conv.threadId)
+                                            }
+                                        )
+                                        RivoDropdownMenuItem(
+                                            text = "Call",
+                                            icon = Icons.Default.Call,
+                                            iconTint = Color(0xFF4CAF50),
+                                            onClick = {
+                                                showConversationMenu = false
+                                                makeCall(context, conv.address, null)
+                                            }
+                                        )
+                                        RivoDropdownMenuItem(
+                                            text = "Select",
+                                            icon = Icons.Default.CheckBox,
+                                            onClick = {
+                                                showConversationMenu = false
+                                                selectedThreadIds.add(conv.threadId)
+                                            }
+                                        )
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                        )
+                                        RivoDropdownMenuItem(
+                                            text = "Delete",
+                                            icon = Icons.Outlined.Delete,
+                                            iconTint = MaterialTheme.colorScheme.error,
+                                            isDestructive = true,
+                                            onClick = {
+                                                showConversationMenu = false
+                                                threadToDelete = conv
+                                            }
                                         )
                                     }
                                 }
-                            )
+                            }
+                            if (isLast) Spacer(modifier = Modifier.height(12.dp))
                         }
                     }
                 }
@@ -1022,6 +1456,10 @@ private fun ConversationItemRow(
     isSelected: Boolean,
     isSelectionMode: Boolean,
     autoColor: Boolean,
+    showAvatar: Boolean = true,
+    isPinned: Boolean = false,
+    isMuted: Boolean = false,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onAvatarClick: () -> Unit
@@ -1029,7 +1467,7 @@ private fun ConversationItemRow(
     val targetBgColor = when {
         isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
         !conversation.isRead -> MaterialTheme.colorScheme.surfaceContainerHigh
-        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        else -> Color.Transparent
     }
     val animatedBgColor by androidx.compose.animation.animateColorAsState(
         targetValue = targetBgColor,
@@ -1038,7 +1476,7 @@ private fun ConversationItemRow(
     )
 
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = shape,
         color = animatedBgColor,
         contentColor = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier
@@ -1068,20 +1506,22 @@ private fun ConversationItemRow(
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .clickable { onAvatarClick() }
-            ) {
-                RivoAvatar(
-                    name = conversation.contactName ?: conversation.address,
-                    photoUri = conversation.photoUri,
-                    autoColorAvatars = autoColor,
-                    obeySolidIcons = false,
-                    size = 48.dp
-                )
+            if (showAvatar) {
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onAvatarClick() }
+                ) {
+                    RivoAvatar(
+                        name = conversation.contactName ?: conversation.address,
+                        photoUri = conversation.photoUri,
+                        autoColorAvatars = autoColor,
+                        obeySolidIcons = false,
+                        size = 48.dp
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
             }
-            Spacer(Modifier.width(14.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Row(
@@ -1089,15 +1529,37 @@ private fun ConversationItemRow(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = conversation.contactName ?: conversation.address,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (!conversation.isRead) FontWeight.Bold else FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
+                    Row(
+                        modifier = Modifier.weight(1f, fill = false),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = conversation.contactName ?: conversation.address,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = if (!conversation.isRead) FontWeight.Bold else FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (isPinned) {
+                            Spacer(Modifier.width(6.dp))
+                            Icon(
+                                Icons.Default.PushPin,
+                                contentDescription = "Pinned",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                        if (isMuted) {
+                            Spacer(Modifier.width(6.dp))
+                            Icon(
+                                Icons.Default.NotificationsOff,
+                                contentDescription = "Muted",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
 
                     if (timeStr.isNotBlank()) {
                         Spacer(Modifier.width(8.dp))
@@ -1141,5 +1603,105 @@ private fun ConversationItemRow(
         }
     }
 }
+
+@Composable
+private fun SmsLoadingView() {
+    val infiniteTransition = rememberInfiniteTransition(label = "smsLoading")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "smsLoadingScale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "smsLoadingAlpha"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 60.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                modifier = Modifier
+                    .size(76.dp)
+                    .graphicsLayer {
+                        scaleX = pulseScale
+                        scaleY = pulseScale
+                        alpha = pulseAlpha
+                    }
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.Chat,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                repeat(3) { index ->
+                    val dotScale by infiniteTransition.animateFloat(
+                        initialValue = 0.5f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(900, delayMillis = index * 200, easing = EaseInOutCubic),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "dot$index"
+                    )
+                    val dotAlpha by infiniteTransition.animateFloat(
+                        initialValue = 0.35f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(900, delayMillis = index * 200, easing = EaseInOutCubic),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "dotAlpha$index"
+                    )
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .size(8.dp)
+                            .graphicsLayer {
+                                scaleX = dotScale
+                                scaleY = dotScale
+                                alpha = dotAlpha
+                            }
+                    ) {}
+                }
+            }
+
+            Text(
+                text = "Loading messages…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = pulseAlpha)
+            )
+        }
+    }
+}
+
 
 

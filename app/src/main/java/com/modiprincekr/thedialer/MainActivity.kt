@@ -268,16 +268,24 @@ class MainActivity : FragmentActivity() {
                 // Pre-warm SMS ViewModel on launch so SMS tab is instant
                 val smsVM: com.modiprincekr.thedialer.controller.SmsViewModel = org.koin.compose.viewmodel.koinActivityViewModel()
 
+                val launchedFromSmsAlias = remember {
+                    intent?.component?.className?.contains("SmsLauncherAlias") == true
+                }
+
                 // Compute start destination from prefs — done once so no flash
                 val startDestination = remember {
-                    when (prefs.getString(PreferenceManager.KEY_DEFAULT_TAB, "calls") ?: "calls") {
-                        "favorites"  -> FavoritesScreenDestination
-                        "contacts"   -> ContactScreenDestination
-                        "sms"        -> SmsScreenDestination()
-                        "groups"     -> GroupsScreenDestination
-                        "recordings" -> RecordingsScreenDestination()
-                        "notes"      -> NotesScreenDestination()
-                        else         -> RecentScreenDestination
+                    if (launchedFromSmsAlias) {
+                        SmsScreenDestination()
+                    } else {
+                        when (prefs.getString(PreferenceManager.KEY_DEFAULT_TAB, "calls") ?: "calls") {
+                            "favorites"  -> FavoritesScreenDestination
+                            "contacts"   -> ContactScreenDestination
+                            "sms"        -> SmsScreenDestination()
+                            "groups"     -> GroupsScreenDestination
+                            "recordings" -> RecordingsScreenDestination()
+                            "notes"      -> NotesScreenDestination()
+                            else         -> RecentScreenDestination
+                        }
                     }
                 }
 
@@ -575,6 +583,23 @@ class MainActivity : FragmentActivity() {
                     val navBackStack by navController.currentBackStackEntryAsState()
                     val currentDest = navBackStack?.destination
                     val prefs2 = remember { GlobalContext.get().get<PreferenceManager>() }
+                    val disableSmsScreenshots = remember(settingsVer) {
+                        prefs2.getBoolean(PreferenceManager.KEY_SMS_DISABLE_SCREENSHOTS, false)
+                    }
+                    LaunchedEffect(currentDest?.route, disableSmsScreenshots) {
+                        val route = currentDest?.route
+                        val isSmsSection = route != null && (
+                            route.startsWith("sms_screen") ||
+                            route.startsWith("sms_chat_screen") ||
+                            route.startsWith("new_message_screen") ||
+                            route.startsWith("blocked_sms_screen")
+                        )
+                        if (disableSmsScreenshots && isSmsSection) {
+                            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                        } else {
+                            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                        }
+                    }
                     val showNotesRail = remember(settingsVer) { prefs2.getBoolean(PreferenceManager.KEY_TAB_SHOW_NOTES, true) }
                     val showRecordingsRail = remember(settingsVer) { prefs2.getBoolean(PreferenceManager.KEY_TAB_SHOW_RECORDINGS, true) }
 
@@ -1156,6 +1181,14 @@ class MainActivity : FragmentActivity() {
             }
         }
 
+        if (intent.component?.className?.contains("SmsLauncherAlias") == true) {
+            navController.navigate(SmsScreenDestination().route) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+            }
+            return
+        }
+
         when (action) {
             "com.modiprincekr.thedialer.OPEN_RECENTS" -> {
                 navController.navigate(RecentScreenDestination.route) {
@@ -1317,7 +1350,26 @@ class MainActivity : FragmentActivity() {
             }
             address = Uri.decode(address).trim()
 
-            body = data.getQueryParameter("body") ?: data.getQueryParameter("sms_body")
+            if (splitIndex >= 0 && splitIndex < ssp.length - 1) {
+                val queryPart = ssp.substring(splitIndex + 1)
+                for (param in queryPart.split('&')) {
+                    val kv = param.split('=', limit = 2)
+                    if (kv.isNotEmpty()) {
+                        val key = Uri.decode(kv[0])
+                        val value = if (kv.size > 1) Uri.decode(kv[1]) else ""
+                        if (key.equals("body", ignoreCase = true) || key.equals("sms_body", ignoreCase = true)) {
+                            body = value
+                            break
+                        }
+                    }
+                }
+            }
+
+            if (body == null && data.isHierarchical) {
+                try {
+                    body = data.getQueryParameter("body") ?: data.getQueryParameter("sms_body")
+                } catch (_: Exception) {}
+            }
         }
 
         if (address.isNullOrBlank()) {
@@ -1370,6 +1422,59 @@ class MainActivity : FragmentActivity() {
                 org.koin.core.context.GlobalContext.get().getOrNull<com.modiprincekr.thedialer.controller.CallLogViewModel>()?.refreshLogs()
             } catch (_: Throwable) {}
         }
+    }
+
+    private var touchDownX = 0f
+    private var touchDownY = 0f
+    private var touchDownTime = 0L
+    private var pendingTouchHapticFired = false
+    private val touchSlop by lazy { android.view.ViewConfiguration.get(this).scaledTouchSlop }
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent?): Boolean {
+        if (ev != null) {
+            val prefs = try { org.koin.core.context.GlobalContext.get().get<PreferenceManager>() } catch (_: Throwable) { null }
+            val touchOnlyEnabled = prefs?.getBoolean(PreferenceManager.KEY_HAPTIC_TOUCH_ONLY, false) == true
+            val appHapticsEnabled = prefs?.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true) == true
+
+            if (appHapticsEnabled) {
+                when (ev.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        touchDownX = ev.x
+                        touchDownY = ev.y
+                        touchDownTime = ev.eventTime
+                        pendingTouchHapticFired = false
+                        if (touchOnlyEnabled) {
+                            val strength = prefs?.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light"
+                            val customIntensity = prefs?.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f) ?: 0.5f
+                            com.modiprincekr.thedialer.view.components.performAppHaptic(this, strength, customIntensity, fromDirectTouch = true)
+                            pendingTouchHapticFired = true
+                        }
+                    }
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        val dx = ev.x - touchDownX
+                        val dy = ev.y - touchDownY
+                        if (dx * dx + dy * dy > touchSlop * touchSlop) {
+                            pendingTouchHapticFired = true // marked moved/scrolling so tap haptic won't fire on UP
+                        }
+                    }
+                    android.view.MotionEvent.ACTION_UP -> {
+                        if (!pendingTouchHapticFired) {
+                            val dx = ev.x - touchDownX
+                            val dy = ev.y - touchDownY
+                            if (dx * dx + dy * dy <= touchSlop * touchSlop) {
+                                val strength = prefs?.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light"
+                                val customIntensity = prefs?.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f) ?: 0.5f
+                                com.modiprincekr.thedialer.view.components.performAppHaptic(this, strength, customIntensity, fromDirectTouch = true)
+                            }
+                        }
+                    }
+                    android.view.MotionEvent.ACTION_CANCEL -> {
+                        pendingTouchHapticFired = true
+                    }
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev)
     }
 }
 

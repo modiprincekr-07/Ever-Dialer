@@ -141,7 +141,8 @@ private fun applySaturatedContainers(
     seedColor: Color,
     dark: Boolean,
     themeMode: String,
-    scale: Float = 1.0f
+    scale: Float = 1.0f,
+    saturatedTarget: String = "container"
 ): ColorScheme {
     val argb = seedColor.toArgb()
     val hsl = FloatArray(3)
@@ -167,6 +168,60 @@ private fun applySaturatedContainers(
     val vibrantOnPrimaryLight = Color.White
     val vibrantPrimaryContainerLight = hslColor(hue, effectiveSat, 0.88f)
     val vibrantOnPrimaryContainerLight = hslColor(hue, effectiveSat, 0.10f)
+
+    if (saturatedTarget == "background") {
+        return if (dark) {
+            val dynamicBgDark = hslColor(containerHue, (effectiveSat * 0.85f).coerceIn(0.20f, 1.0f), 0.13f)
+            val dynamicSurfaceDark = hslColor(containerHue, (effectiveSat * 0.85f).coerceIn(0.20f, 1.0f), 0.15f)
+            val crispWhite = Color(0xFFF2F2F2)
+            val visibleGreyText = Color(0xFFCCCCCC)
+            val visibleDarkOutline = Color(0xFF6E6E73)
+            val isAmoled = themeMode == "black" || themeMode == "auto_bw"
+            scheme.copy(
+                primary = vibrantPrimaryDark,
+                onPrimary = vibrantOnPrimaryDark,
+                primaryContainer = if (isAmoled) Color(0xFF141414) else Color(0xFF1E1E1E),
+                onPrimaryContainer = Color.White,
+                background = dynamicBgDark,
+                surface = dynamicSurfaceDark,
+                onBackground = crispWhite,
+                onSurface = crispWhite,
+                onSurfaceVariant = visibleGreyText,
+                outline = visibleDarkOutline,
+                surfaceContainerLowest = Color.Black,
+                surfaceContainerLow = if (isAmoled) Color.Black else Color(0xFF0C0C0C),
+                surfaceContainer = if (isAmoled) Color(0xFF080808) else Color(0xFF121212),
+                surfaceContainerHigh = if (isAmoled) Color(0xFF121212) else Color(0xFF1A1A1A),
+                surfaceContainerHighest = if (isAmoled) Color(0xFF1A1A1A) else Color(0xFF222222),
+                surfaceVariant = if (isAmoled) Color(0xFF121212) else Color(0xFF1A1A1A)
+            )
+        } else {
+            val dynamicBgLight = hslColor(containerHue, (effectiveSat * 0.65f).coerceIn(0.25f, 0.90f), 0.86f)
+            val dynamicSurfaceLight = hslColor(containerHue, (effectiveSat * 0.65f).coerceIn(0.25f, 0.90f), 0.88f)
+            val crispDark = Color(0xFF111827)
+            val visibleDarkGreyText = Color(0xFF4B5563)
+            val visibleLightOutline = Color(0xFF757575)
+            val isPureWhite = themeMode == "white" || themeMode == "auto_bw"
+            scheme.copy(
+                primary = vibrantPrimaryLight,
+                onPrimary = vibrantOnPrimaryLight,
+                primaryContainer = Color.White,
+                onPrimaryContainer = crispDark,
+                background = dynamicBgLight,
+                surface = dynamicSurfaceLight,
+                onBackground = crispDark,
+                onSurface = crispDark,
+                onSurfaceVariant = visibleDarkGreyText,
+                outline = visibleLightOutline,
+                surfaceContainerLowest = Color.White,
+                surfaceContainerLow = Color.White,
+                surfaceContainer = if (isPureWhite) Color.White else Color(0xFFFBFBFB),
+                surfaceContainerHigh = if (isPureWhite) Color(0xFFF7F7F7) else Color(0xFFF2F2F2),
+                surfaceContainerHighest = if (isPureWhite) Color(0xFFEEEEEE) else Color(0xFFEBEBEB),
+                surfaceVariant = if (isPureWhite) Color(0xFFEEEEEE) else Color(0xFFEBEBEB)
+            )
+        }
+    }
 
     return if (dark) {
         val sat = effectiveSat
@@ -337,8 +392,17 @@ fun NetworkSwitchTheme(
         else defaultPrimary
     }
 
+    val saturatedTarget = prefs.getString("saturated_target", "container") ?: "container"
+
     if (isSaturatedActive) {
-        colorScheme = applySaturatedContainers(colorScheme, seedColor, darkTheme, themeMode, saturationScale)
+        colorScheme = applySaturatedContainers(
+            colorScheme,
+            seedColor,
+            darkTheme,
+            themeMode,
+            saturationScale,
+            saturatedTarget = saturatedTarget
+        )
     } else {
         colorScheme = when (themeMode) {
             "black" -> colorScheme.copy(

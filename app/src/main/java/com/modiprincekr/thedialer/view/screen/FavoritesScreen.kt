@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -72,8 +73,12 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import com.modiprincekr.thedialer.view.theme.SettingsClickTracker
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.foundation.combinedClickable
@@ -94,10 +99,19 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.generated.destinations.ContactDetailsScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.ContactEditScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.RecentScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.NotesScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.ramcosta.composedestinations.generated.destinations.FavoritesScreenDestination
+import com.coolappstore.evercallrecorder.by.svhp.ui.common.SwipeableItemContainer
+import com.modiprincekr.thedialer.controller.util.SwipeActionHelper
+import com.modiprincekr.thedialer.controller.util.BlockedNumbersManager
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import com.modiprincekr.thedialer.view.components.TabNavigationHelper
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -244,11 +258,12 @@ fun FavoritesScreen(navController: NavController, navigator: DestinationsNavigat
     }
 
     val pillNav = remember { prefs.getBoolean(PreferenceManager.KEY_PILL_NAV, true) }
+    val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
+            .pointerInput(isRtl) {
                 awaitPointerEventScope {
                     while (true) {
                         val down = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull() ?: continue
@@ -275,7 +290,8 @@ fun FavoritesScreen(navController: NavController, navigator: DestinationsNavigat
                                         navController = navController,
                                         currentRoute = FavoritesScreenDestination.route,
                                         goForward = dx < 0,
-                                        prefs = prefs
+                                        prefs = prefs,
+                                        isRtl = isRtl
                                     )
                                 }
                             }
@@ -329,7 +345,7 @@ fun FavoritesScreen(navController: NavController, navigator: DestinationsNavigat
 
                 ScrollHapticsGridEffect(gridState = gridState)
                 val gridColumns = if (favoritesInList) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 100.dp)
-                val contentPadding = if (favoritesInList) PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp) else PaddingValues(12.dp)
+                val contentPadding = if (favoritesInList) PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp) else PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 100.dp)
                 val verticalSpacing = if (favoritesInList) 8.dp else 12.dp
                 val horizontalSpacing = if (favoritesInList) 0.dp else 12.dp
 
@@ -551,6 +567,99 @@ private fun FavoriteContactCard(
 
     val phoneNumber = contact.phoneNumbers.firstOrNull()
 
+    var avatarCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var cardCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val recordAvatarClick: () -> Unit = {
+        avatarCoords?.let { coords ->
+            val center = coords.boundsInRoot().center
+            val rootSize = coords.findRootCoordinates().size
+            SettingsClickTracker.recordTap(
+                center.x, center.y, rootSize.width.toFloat(), rootSize.height.toFloat()
+            )
+        } ?: cardCoords?.let { coords ->
+            val bounds = coords.boundsInRoot()
+            val rootSize = coords.findRootCoordinates().size
+            SettingsClickTracker.recordTap(
+                if (isListView) bounds.left + 38f else bounds.center.x,
+                if (isListView) bounds.center.y else bounds.top + bounds.width / 2f,
+                rootSize.width.toFloat(),
+                rootSize.height.toFloat()
+            )
+        } ?: SettingsClickTracker.recordNormalized(0.5f, 0.5f)
+    }
+
+    val leftSwipeKey = remember(settingsVer) { prefs.getSwipeAction("favourites", "left") }
+    val rightSwipeKey = remember(settingsVer) { prefs.getSwipeAction("favourites", "right") }
+    val colorScheme = MaterialTheme.colorScheme
+    val leftSwipeAction = remember(leftSwipeKey, colorScheme) { SwipeActionHelper.resolveActionItem(leftSwipeKey, colorScheme) }
+    val rightSwipeAction = remember(rightSwipeKey, colorScheme) { SwipeActionHelper.resolveActionItem(rightSwipeKey, colorScheme) }
+
+    val handleSwipeAction: (String) -> Unit = { actionKey ->
+        val numToCall = phoneNumber.orEmpty()
+        when (actionKey) {
+            "call", "call_back" -> {
+                if (numToCall.isNotBlank()) makeCall(context, numToCall)
+            }
+            "send_text" -> {
+                if (numToCall.isNotBlank()) {
+                    try {
+                        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$numToCall"))
+                        context.startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+            }
+            "delete", "delete_contact" -> {
+                contactsVM.toggleFavorite(contact)
+            }
+            "select" -> onSelectMode?.invoke()
+            "view_contact" -> {
+                recordAvatarClick()
+                navigator.navigate(ContactDetailsScreenDestination(contactId = contact.id))
+            }
+            "edit_contact" -> {
+                navigator.navigate(ContactEditScreenDestination(contactId = contact.id))
+            }
+            "copy_number" -> {
+                if (numToCall.isNotBlank()) {
+                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(ClipData.newPlainText("phone_number", numToCall))
+                    Toast.makeText(context, "Number copied", Toast.LENGTH_SHORT).show()
+                }
+            }
+            "share", "share_contact" -> {
+                val shareText = if (numToCall.isNotBlank()) "${contact.name}: $numToCall" else contact.name
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, shareText)
+                }
+                context.startActivity(Intent.createChooser(intent, "Share contact"))
+            }
+            "toggle_favorite" -> contactsVM.toggleFavorite(contact)
+            "block_contact" -> {
+                val num = contact.phoneNumbers.firstOrNull()
+                if (!num.isNullOrBlank()) {
+                    val isBlocked = BlockedNumbersManager.isBlocked(context, prefs, num)
+                    BlockedNumbersManager.toggle(context, prefs, num)
+                    Toast.makeText(
+                        context,
+                        if (isBlocked) "Contact unblocked" else "Contact blocked",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            "call_chat_via" -> showCallChatViaPicker = true
+            "search_truecaller" -> {
+                if (numToCall.isNotBlank()) {
+                    val isLaunched = com.modiprincekr.thedialer.controller.util.openTruecaller(context, numToCall)
+                    if (!isLaunched) {
+                        Toast.makeText(context, "Truecaller is not installed", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            "fake_call" -> showFakeCallSheet = true
+        }
+    }
+
     val scale by animateFloatAsState(
         targetValue = when {
             isDragging -> if (isListView) 1.03f else 1.08f
@@ -587,6 +696,7 @@ private fun FavoriteContactCard(
                 }
             }
             .onGloballyPositioned { coords ->
+                cardCoords = coords
                 val bounds = coords.boundsInWindow()
                 onBoundsChanged?.invoke(bounds)
             }
@@ -598,6 +708,11 @@ private fun FavoriteContactCard(
                         while (true) {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             isPressed = true
+                            if (currentEvent.buttons.isSecondaryPressed) {
+                                isPressed = false
+                                if (selectionMode) onSelectToggle?.invoke() else showMenu = true
+                                continue
+                            }
                             val startPos = down.position
                             val touchSlop = viewConfiguration.touchSlop
                             var longPressTriggered = false
@@ -620,7 +735,14 @@ private fun FavoriteContactCard(
                                     isPressed = false
                                     when {
                                         dragStarted -> { isDraggingLocally = false; onDragEnd?.invoke() }
-                                        !longPressTriggered -> { if (selectionMode) onSelectToggle?.invoke() else onClick() }
+                                        !longPressTriggered -> {
+                                            if (selectionMode) {
+                                                onSelectToggle?.invoke()
+                                            } else {
+                                                recordAvatarClick()
+                                                onClick()
+                                            }
+                                        }
                                         // long press without drag: menu already shown in job
                                     }
                                     break@loop
@@ -655,97 +777,115 @@ private fun FavoriteContactCard(
             }
     ) {
         if (isListView) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
+            SwipeableItemContainer(
+                leftAction = leftSwipeAction,
+                rightAction = rightSwipeAction,
+                onSwipeLeft = { handleSwipeAction(leftSwipeKey) },
+                onSwipeRight = { handleSwipeAction(rightSwipeKey) },
+                enabled = !selectionMode && !isDragging,
+                shape = RoundedCornerShape(16.dp)
             ) {
-                AnimatedVisibility(
-                    visible = selectionMode,
-                    enter = fadeIn(animationSpec = tween(220, easing = FastOutSlowInEasing)) +
-                            expandHorizontally(
-                                animationSpec = spring(
-                                    stiffness = Spring.StiffnessMediumLow,
-                                    dampingRatio = Spring.DampingRatioNoBouncy
-                                ),
-                                expandFrom = Alignment.Start,
-                                clip = false
-                            ),
-                    exit = fadeOut(animationSpec = tween(180, easing = FastOutLinearInEasing)) +
-                           shrinkHorizontally(
-                               animationSpec = tween(220, easing = FastOutLinearInEasing),
-                               shrinkTowards = Alignment.Start,
-                               clip = false
-                           )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(end = 12.dp)
+                    AnimatedVisibility(
+                        visible = selectionMode,
+                        enter = fadeIn(animationSpec = tween(220, easing = FastOutSlowInEasing)) +
+                                expandHorizontally(
+                                    animationSpec = spring(
+                                        stiffness = Spring.StiffnessMediumLow,
+                                        dampingRatio = Spring.DampingRatioNoBouncy
+                                    ),
+                                    expandFrom = Alignment.Start,
+                                    clip = false
+                                ),
+                        exit = fadeOut(animationSpec = tween(180, easing = FastOutLinearInEasing)) +
+                               shrinkHorizontally(
+                                   animationSpec = tween(220, easing = FastOutLinearInEasing),
+                                   shrinkTowards = Alignment.Start,
+                                   clip = false
+                               )
                     ) {
-                        Checkbox(
-                            checked = isSelected,
-                            onCheckedChange = null,
-                            modifier = Modifier.size(24.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(end = 12.dp)
+                        ) {
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = null,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .onGloballyPositioned { avatarCoords = it }
+                    ) {
+                        RivoAvatar(
+                            name = contact.name,
+                            photoUri = contact.photoUri,
+                            modifier = Modifier.fillMaxSize(),
+                            shape = CircleShape
                         )
                     }
-                }
 
-                Box(modifier = Modifier.size(48.dp)) {
-                    RivoAvatar(
-                        name = contact.name,
-                        photoUri = contact.photoUri,
-                        modifier = Modifier.fillMaxSize(),
-                        shape = CircleShape
-                    )
-                }
+                    Spacer(modifier = Modifier.width(14.dp))
 
-                Spacer(modifier = Modifier.width(14.dp))
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = contact.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (!phoneNumber.isNullOrBlank()) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.Center
+                    ) {
                         Text(
-                            text = phoneNumber,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text = contact.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        if (!phoneNumber.isNullOrBlank()) {
+                            Text(
+                                text = phoneNumber,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
-                }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
 
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Call,
-                            contentDescription = "Call",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(18.dp)
-                        )
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Call,
+                                contentDescription = "Call",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }
         } else {
             Box {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(modifier = Modifier.fillMaxWidth().aspectRatio(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .onGloballyPositioned { avatarCoords = it }
+                    ) {
                         RivoAvatar(
                             name = contact.name,
                             photoUri = contact.photoUri,
@@ -944,6 +1084,7 @@ private fun FavoriteContactCard(
                     iconTint = Color(0xFF2196F3),
                     onClick = {
                         showMenu = false
+                        recordAvatarClick()
                         navigator.navigate(ContactDetailsScreenDestination(contactId = contact.id))
                     }
                 )

@@ -151,7 +151,8 @@ private fun applySaturatedContainers(
     darkTheme: Boolean,
     themeMode: String,
     saturationScale: Float = 1.0f,
-    isDynamic: Boolean = true
+    isDynamic: Boolean = true,
+    saturatedTarget: String = PreferenceManager.SATURATED_TARGET_CONTAINER
 ): androidx.compose.material3.ColorScheme {
     val argb = seedColor.toArgb()
     val hsl = FloatArray(3)
@@ -187,6 +188,64 @@ private fun applySaturatedContainers(
 
     val isBright = androidx.core.graphics.ColorUtils.calculateLuminance(argb) > 0.45
     val onSeedColor = if (isBright) Color(0xFF1C1B1F) else Color.White
+
+    if (saturatedTarget == PreferenceManager.SATURATED_TARGET_BACKGROUND) {
+        return if (darkTheme) {
+            val dynamicBgDark = hslColor(containerHue, (effectiveSat * (0.85f + boost * 0.15f)).coerceIn(0.20f, 1.0f), (0.13f + boost * 0.05f).coerceIn(0.08f, 0.22f))
+            val dynamicSurfaceDark = hslColor(containerHue, (effectiveSat * (0.85f + boost * 0.15f)).coerceIn(0.20f, 1.0f), (0.15f + boost * 0.06f).coerceIn(0.10f, 0.25f))
+            val brightWhite = Color(0xFFFFFFFF)
+            val visibleGreyText = Color(0xFFD4D4D8)
+            val visibleOutline = Color(0xFF9E9E9E)
+            val vibrantPrimary = if (isDynamic) hslColor(containerHue, (0.90f * minOf(scale, 1.0f) + boost * 0.10f).coerceIn(0.50f, 1.0f), (0.58f + boost * 0.08f).coerceIn(0.50f, 0.70f)) else seedColor
+            val vibrantOnPrimary = if (isDynamic) Color(0xFF1C1B1F) else onSeedColor
+            val isAmoled = themeMode == "black" || themeMode == "auto_bw"
+            scheme.copy(
+                primary = vibrantPrimary,
+                onPrimary = vibrantOnPrimary,
+                primaryContainer = if (isAmoled) Color(0xFF141414) else Color(0xFF1E1E1E),
+                onPrimaryContainer = Color.White,
+                background = dynamicBgDark,
+                surface = dynamicSurfaceDark,
+                onBackground = brightWhite,
+                onSurface = brightWhite,
+                onSurfaceVariant = visibleGreyText,
+                outline = visibleOutline,
+                surfaceContainerLowest = Color.Black,
+                surfaceContainerLow = if (isAmoled) Color.Black else Color(0xFF0C0C0C),
+                surfaceContainer = if (isAmoled) Color(0xFF080808) else Color(0xFF121212),
+                surfaceContainerHigh = if (isAmoled) Color(0xFF121212) else Color(0xFF1A1A1A),
+                surfaceContainerHighest = if (isAmoled) Color(0xFF1A1A1A) else Color(0xFF222222),
+                surfaceVariant = if (isAmoled) Color(0xFF121212) else Color(0xFF1A1A1A)
+            )
+        } else {
+            val dynamicBgLight = hslColor(containerHue, (effectiveSat * (0.65f + boost * 0.35f)).coerceIn(0.25f, 0.90f), (0.86f - boost * 0.08f).coerceIn(0.74f, 0.93f))
+            val dynamicSurfaceLight = hslColor(containerHue, (effectiveSat * (0.65f + boost * 0.35f)).coerceIn(0.25f, 0.90f), (0.88f - boost * 0.08f).coerceIn(0.76f, 0.95f))
+            val crispDark = Color(0xFF111827)
+            val visibleDarkGreyText = Color(0xFF4B5563)
+            val visibleLightOutline = Color(0xFF757575)
+            val vibrantPrimaryLight = if (isDynamic) hslColor(containerHue, (0.90f * minOf(scale, 1.0f) + boost * 0.10f).coerceIn(0.50f, 1.0f), (0.42f - boost * 0.04f).coerceIn(0.35f, 0.50f)) else seedColor
+            val vibrantOnPrimaryLight = if (isDynamic) Color.White else onSeedColor
+            val isPureWhite = themeMode == "white" || themeMode == "auto_bw"
+            scheme.copy(
+                primary = vibrantPrimaryLight,
+                onPrimary = vibrantOnPrimaryLight,
+                primaryContainer = Color.White,
+                onPrimaryContainer = crispDark,
+                background = dynamicBgLight,
+                surface = dynamicSurfaceLight,
+                onBackground = crispDark,
+                onSurface = crispDark,
+                onSurfaceVariant = visibleDarkGreyText,
+                outline = visibleLightOutline,
+                surfaceContainerLowest = Color.White,
+                surfaceContainerLow = Color.White,
+                surfaceContainer = if (isPureWhite) Color.White else Color(0xFFFBFBFB),
+                surfaceContainerHigh = if (isPureWhite) Color(0xFFF7F7F7) else Color(0xFFF2F2F2),
+                surfaceContainerHighest = if (isPureWhite) Color(0xFFEEEEEE) else Color(0xFFEBEBEB),
+                surfaceVariant = if (isPureWhite) Color(0xFFEEEEEE) else Color(0xFFEBEBEB)
+            )
+        }
+    }
 
     return if (darkTheme) {
         val low = hslColor(containerHue, effectiveSat, (0.12f + boost * 0.06f).coerceIn(0.08f, 0.25f))
@@ -294,6 +353,7 @@ private fun applySaturatedContainers(
     }
 }
 
+
 @Composable
 fun Rivo4Theme(
     systemDark: Boolean = isSystemInDarkTheme(),
@@ -353,9 +413,18 @@ fun Rivo4Theme(
     val isDynamicActive = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     val isSaturatedActive = prefs.isSaturatedForTheme(darkTheme)
+    val saturatedTarget = prefs.getSaturatedTarget()
 
     if (isSaturatedActive) {
-        colorScheme = applySaturatedContainers(colorScheme, seedColor, darkTheme, themeMode, saturationScale, isDynamic = isDynamicActive)
+        colorScheme = applySaturatedContainers(
+            colorScheme,
+            seedColor,
+            darkTheme,
+            themeMode,
+            saturationScale,
+            isDynamic = isDynamicActive,
+            saturatedTarget = saturatedTarget
+        )
     } else {
         colorScheme = when (themeMode) {
             "black" -> colorScheme.copy(

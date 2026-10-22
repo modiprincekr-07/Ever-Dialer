@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.view.components.RivoAnimatedSection
 import com.modiprincekr.thedialer.view.components.RivoExpressiveCard
+import com.modiprincekr.thedialer.view.components.rivoHeadingColor
 import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
 import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
 import com.ramcosta.composedestinations.annotation.Destination
@@ -68,7 +69,7 @@ fun DefaultMessageAppScreen(navigator: DestinationsNavigator) {
                         Text(
                             "Message App",
                             style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = rivoHeadingColor(),
                             modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
                         )
                         RivoExpressiveCard {

@@ -27,12 +27,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
+import com.modiprincekr.thedialer.view.theme.SettingsClickTracker
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenu
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenuItem
@@ -73,6 +78,24 @@ fun SingleTile(
     var isPressed             by remember { mutableStateOf(false) }
     var horizontalDragDetected by remember { mutableStateOf(false) }
 
+    var avatarCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var rowCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val recordAvatarClick: () -> Unit = {
+        avatarCoords?.let { coords ->
+            val center = coords.boundsInRoot().center
+            val rootSize = coords.findRootCoordinates().size
+            SettingsClickTracker.recordTap(
+                center.x, center.y, rootSize.width.toFloat(), rootSize.height.toFloat()
+            )
+        } ?: rowCoords?.let { coords ->
+            val bounds = coords.boundsInRoot()
+            val rootSize = coords.findRootCoordinates().size
+            SettingsClickTracker.recordTap(
+                bounds.left + 38f, bounds.center.y, rootSize.width.toFloat(), rootSize.height.toFloat()
+            )
+        } ?: SettingsClickTracker.recordNormalized(0.12f, 0.5f)
+    }
+
     val scale by animateFloatAsState(
         targetValue    = if (showMenu) 0.97f else if (isPressed) 0.95f else 1f,
         animationSpec  = spring(
@@ -93,6 +116,7 @@ fun SingleTile(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .onGloballyPositioned { rowCoords = it }
                 .clip(RoundedCornerShape(16.dp))
                 .combinedClickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -105,6 +129,7 @@ fun SingleTile(
                                 prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
                             )
                         }
+                        recordAvatarClick()
                         onClick()
                     },
                     onLongClick       = onLongClick
@@ -150,6 +175,7 @@ fun SingleTile(
                     iconContainerColor = iconContainerColor,
                     modifier           = Modifier
                         .size(42.dp)
+                        .onGloballyPositioned { avatarCoords = it }
                         .then(
                             if (onAvatarClick != null)
                                 Modifier.combinedClickable(
@@ -163,6 +189,7 @@ fun SingleTile(
                                                 prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
                                             )
                                         }
+                                        recordAvatarClick()
                                         onAvatarClick()
                                     }
                                 )

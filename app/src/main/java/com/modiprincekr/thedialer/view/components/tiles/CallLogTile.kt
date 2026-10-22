@@ -43,6 +43,7 @@ fun CallLogTile(
     val settingsVer by prefs.settingsChanged.collectAsState()
     val use24HourTime = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_CALL_TIME_FORMAT_24H, false) }
     val showTalkTime = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_SHOW_TALK_TIME_IN_CALL_LOGS, false) }
+    val showMissedCallDuration = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_SHOW_MISSED_CALL_DURATION, false) }
     val nameNonContactsAsUnknown = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_NAME_NON_CONTACTS_AS_UNKNOWN, true) }
     val showAvatarsInCalls = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_SHOW_AVATARS_CALLS, true) }
     val displayTitle = displayNameOverride ?: (
@@ -109,7 +110,13 @@ fun CallLogTile(
 
                 Spacer(modifier = Modifier.width(4.dp))
                 val dateStr = formatDate(log.date, use24HourTime)
-                val durationStr = if (isBlocked && log.duration > 0) " • ${log.duration}s" else if (showTalkTime && !isMissed) " • ${formatDuration(log.duration)}" else ""
+                val durationStr = if (isBlocked && log.duration > 0) {
+                    " • ${log.duration}s"
+                } else if (isMissed && showMissedCallDuration && log.duration > 0) {
+                    " • ${log.duration}s"
+                } else if (showTalkTime && !isMissed) {
+                    " • ${formatDuration(log.duration)}"
+                } else ""
                 Text(text = "$dateStr$durationStr", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },

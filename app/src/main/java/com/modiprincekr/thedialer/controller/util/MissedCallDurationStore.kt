@@ -49,7 +49,42 @@ object MissedCallDurationStore {
         } catch (_: Throwable) {}
     }
 
+    fun clear(context: Context) {
+        memoryCache.clear()
+        try {
+            getPrefs(context).edit().clear().apply()
+        } catch (_: Throwable) {}
+    }
+
+    fun checkAutoReset(context: Context, prefs: PreferenceManager) {
+        if (!prefs.getBoolean(PreferenceManager.KEY_AUTO_RESET_MISSED_CALL_DURATION_ENABLED, false)) return
+        val value = prefs.getInt(PreferenceManager.KEY_AUTO_RESET_MISSED_CALL_DURATION_VALUE, 24).coerceAtLeast(1)
+        val unit = prefs.getString(PreferenceManager.KEY_AUTO_RESET_MISSED_CALL_DURATION_UNIT, "hours") ?: "hours"
+        val intervalMs = if (unit == "days") value * 86400000L else value * 3600000L
+        val lastReset = prefs.getLong(PreferenceManager.KEY_AUTO_RESET_MISSED_CALL_DURATION_LAST_RESET, 0L)
+        val now = System.currentTimeMillis()
+        if (lastReset == 0L) {
+            prefs.setLong(PreferenceManager.KEY_AUTO_RESET_MISSED_CALL_DURATION_LAST_RESET, now)
+        } else if (now - lastReset >= intervalMs) {
+            clear(context)
+            prefs.setLong(PreferenceManager.KEY_AUTO_RESET_MISSED_CALL_DURATION_LAST_RESET, now)
+        }
+    }
+
     fun getDuration(context: Context, number: String, dateMillis: Long): Long {
+        val appPrefs = try {
+            org.koin.core.context.GlobalContext.get().get<PreferenceManager>()
+        } catch (_: Throwable) { null }
+
+        if (appPrefs != null && appPrefs.getBoolean(PreferenceManager.KEY_AUTO_RESET_MISSED_CALL_DURATION_ENABLED, false)) {
+            val value = appPrefs.getInt(PreferenceManager.KEY_AUTO_RESET_MISSED_CALL_DURATION_VALUE, 24).coerceAtLeast(1)
+            val unit = appPrefs.getString(PreferenceManager.KEY_AUTO_RESET_MISSED_CALL_DURATION_UNIT, "hours") ?: "hours"
+            val intervalMs = if (unit == "days") value * 86400000L else value * 3600000L
+            if (System.currentTimeMillis() - dateMillis > intervalMs) {
+                return 0L
+            }
+        }
+
         val digits = normalize(number)
         if (digits.isBlank()) return 0L
 

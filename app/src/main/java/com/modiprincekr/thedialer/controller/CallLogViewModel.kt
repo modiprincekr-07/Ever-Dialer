@@ -42,6 +42,14 @@ class CallLogViewModel(
     private val _selectedFilter = MutableStateFlow(CallLogFilter.All)
     val selectedFilter = _selectedFilter.asStateFlow()
 
+    private val _isFullHistoryLoaded = MutableStateFlow(false)
+    val isFullHistoryLoaded = _isFullHistoryLoaded.asStateFlow()
+
+    private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore = _isLoadingMore.asStateFlow()
+
+    @Volatile private var currentLoadedLimit = 100
+
     // In-memory cache
     @Volatile private var cachedLogs: List<CallLogEntry> = CallLogsCache.getInMemoryCache() ?: emptyList()
     @Volatile private var isFetching = false
@@ -128,7 +136,15 @@ class CallLogViewModel(
                     }
                 }
             }
-            // Step 2: refresh from provider in background
+            // Step 2: refresh from provider in background if needed
+            val isNewLogic = prefs.getBoolean(PreferenceManager.KEY_NEW_CALL_LOGS_LOGIC, false)
+            if (isNewLogic && diskCache.isNotEmpty()) {
+                val latestDate = callLogRepo.getLatestCallDate()
+                if (latestDate != null && diskCache.firstOrNull()?.date == latestDate) {
+                    // Cache is up to date with latest call log; skip heavy reload on launch
+                    return@launch
+                }
+            }
             fetchLogsInternal()
         }
 
@@ -193,6 +209,26 @@ class CallLogViewModel(
         fetchLogs(forceRefresh = true)
     }
 
+    fun refreshIfStale() {
+        val isNewLogic = prefs.getBoolean(PreferenceManager.KEY_NEW_CALL_LOGS_LOGIC, false)
+        if (!isNewLogic) {
+            refreshLogs()
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val current = _allCallLogs.value
+            if (current.isEmpty()) {
+                fetchLogsInternal()
+                return@launch
+            }
+            val latestDate = callLogRepo.getLatestCallDate()
+            val cachedFirstDate = current.firstOrNull()?.date
+            if (latestDate != null && latestDate != cachedFirstDate) {
+                fetchLogsInternal()
+            }
+        }
+    }
+
     fun deleteCallLog(entry: CallLogEntry) {
         viewModelScope.launch(Dispatchers.IO) {
             callLogRepo.deleteCallLog(entry)
@@ -242,6 +278,30 @@ class CallLogViewModel(
         }
     }
 
+    fun loadOlderHistory() {
+        val isNewLogic = prefs.getBoolean(PreferenceManager.KEY_NEW_CALL_LOGS_LOGIC, false)
+        if (isNewLogic || _isFullHistoryLoaded.value || _isLoadingMore.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoadingMore.value = true
+            try {
+                val nextLimit = currentLoadedLimit + 100
+                val logs = callLogRepo.getCallLogs(limit = nextLimit)
+                val prevCount = _allCallLogs.value.size
+                currentLoadedLimit = nextLimit
+                cachedLogs = logs
+                withContext(Dispatchers.Main) {
+                    if (logs.size == prevCount || logs.size < nextLimit) {
+                        _isFullHistoryLoaded.value = true
+                    }
+                    _allCallLogs.value = logs
+                }
+            } catch (_: Exception) {
+            } finally {
+                _isLoadingMore.value = false
+            }
+        }
+    }
+
     private suspend fun fetchLogsInternal() {
         ensureObservers()
         if (isFetching) {
@@ -253,11 +313,37 @@ class CallLogViewModel(
         try {
             do {
                 pendingRefresh = false
-                val result = callLogRepo.getCallLogs()
+                val isNewLogic = prefs.getBoolean(PreferenceManager.KEY_NEW_CALL_LOGS_LOGIC, false)
+                val limit = if (!isNewLogic && !_isFullHistoryLoaded.value) currentLoadedLimit else null
+                val result = callLogRepo.getCallLogs(limit = limit)
+                val prevCached = cachedLogs
                 cachedLogs = result
-                CallLogsCache.write(getApplication(), result)
-                withContext(Dispatchers.Main) {
-                    _allCallLogs.value = result
+                if (isNewLogic) {
+                    val changed = result.size != prevCached.size ||
+                        result.zip(prevCached).any { (a, b) ->
+                            a.number != b.number || a.date != b.date || a.type != b.type ||
+                                a.name != b.name || a.photoUri != b.photoUri || a.count != b.count ||
+                                a.callIds != b.callIds
+                        }
+                    if (changed || _allCallLogs.value.isEmpty()) {
+                        CallLogsCache.write(getApplication(), result)
+                        withContext(Dispatchers.Main) {
+                            _allCallLogs.value = result
+                        }
+                    }
+                    withContext(Dispatchers.Main) {
+                        _isFullHistoryLoaded.value = true
+                    }
+                } else {
+                    if (prevCached.isEmpty() || prevCached != result) {
+                        CallLogsCache.write(getApplication(), result)
+                    }
+                    withContext(Dispatchers.Main) {
+                        _isFullHistoryLoaded.value = true
+                        if (_allCallLogs.value != result) {
+                            _allCallLogs.value = result
+                        }
+                    }
                 }
             } while (pendingRefresh)
 

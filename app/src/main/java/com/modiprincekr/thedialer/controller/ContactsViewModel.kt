@@ -14,6 +14,7 @@ import com.modiprincekr.thedialer.modal.data.Contact
 import com.modiprincekr.thedialer.modal.data.ContactAccount
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -82,13 +83,28 @@ class ContactsViewModel(
 
     init {
         _enabledAccountKeys.value = getEnabledAccountKeys()
-        fetchContactGroups()
-        loadCachedContactsThenRefresh()
-        fetchAvailableAccounts()
+        val isNewContactsLogic = prefs.getBoolean(PreferenceManager.KEY_NEW_CONTACTS_LOGIC, false)
+        if (isNewContactsLogic) {
+            _contactGroups.value = prefs.getContactGroups()
+            loadCachedContactsThenRefresh()
+            viewModelScope.launch(Dispatchers.IO) {
+                delay(4000)
+                fetchContactGroups()
+                fetchAvailableAccounts()
+            }
+        } else {
+            fetchContactGroups()
+            loadCachedContactsThenRefresh()
+            fetchAvailableAccounts()
+        }
         ensureContentObservers()
     }
 
     fun fetchContactGroups() {
+        if (prefs.getBoolean(PreferenceManager.KEY_NEW_CONTACTS_LOGIC, false)) {
+            _contactGroups.value = prefs.getContactGroups()
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val rawLocalGroups = prefs.getContactGroups()
             val order = prefs.getContactsDisplayOrder()
@@ -329,12 +345,20 @@ class ContactsViewModel(
             _isLoading.value = false
             return
         }
+        val isNewContactsLogic = prefs.getBoolean(PreferenceManager.KEY_NEW_CONTACTS_LOGIC, false)
         viewModelScope.launch(Dispatchers.IO) {
             val cached = runCatching { ContactsCache.read(ctx) }.getOrDefault(emptyList())
             if (cached.isNotEmpty() && !hasLoadedFromCache) {
+                hasLoadedFromCache = true
                 _allContacts.value = cached
                 updateDisplayedContacts(cached)
                 _isLoading.value = false
+                if (isNewContactsLogic) {
+                    // With new contacts logic enabled, serve disk cache immediately and
+                    // do not hammer ContentResolver with a full fetch on app open.
+                    // ContentObserver is already registered to pick up any changes.
+                    return@launch
+                }
             }
             fetchContacts()
         }

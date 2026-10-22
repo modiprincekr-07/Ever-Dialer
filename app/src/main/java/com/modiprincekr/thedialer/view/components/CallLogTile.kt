@@ -62,6 +62,8 @@ import com.coolappstore.evercallrecorder.by.svhp.ui.viewmodels.RecordingItem
 import androidx.compose.material.icons.rounded.PlayArrow
 import com.modiprincekr.thedialer.modal.`interface`.IContactsRepository
 import com.modiprincekr.thedialer.modal.data.CallLogEntry
+import com.modiprincekr.thedialer.modal.data.Contact
+import com.coolappstore.evercallrecorder.by.svhp.ui.common.SwipeActionItem
 import com.modiprincekr.thedialer.view.screen.settings.AddMode
 import com.modiprincekr.thedialer.view.screen.settings.FakeCallAddSheet
 import com.modiprincekr.thedialer.controller.util.makeCall
@@ -94,6 +96,7 @@ private val SimCardNotchShape = GenericShape { size, _ ->
 data class CallLogDisplayConfig(
     val use24HourTime: Boolean = false,
     val showTalkTime: Boolean = false,
+    val showMissedCallDuration: Boolean = false,
     val groupCallsByLatest: Boolean = false,
     val showTotalCallsMade: Boolean = false,
     val showSims: Boolean = true,
@@ -105,7 +108,12 @@ data class CallLogDisplayConfig(
     val sim1Color: Color = Color(PreferenceManager.DEFAULT_SIM1_COLOR),
     val sim2Color: Color = Color(PreferenceManager.DEFAULT_SIM2_COLOR),
     val isScrollAnimEnabled: Boolean = true,
-    val showNumbersInCallLogs: Boolean = true
+    val showNumbersInCallLogs: Boolean = true,
+    val isSaturatedActive: Boolean = false,
+    val leftSwipeKey: String = "call",
+    val rightSwipeKey: String = "send_text",
+    val leftSwipeAction: SwipeActionItem? = null,
+    val rightSwipeAction: SwipeActionItem? = null
 )
 
 @Composable
@@ -265,7 +273,8 @@ fun CallLogTileSimple(
         CallLog.Calls.BLOCKED_TYPE  -> Icons.Default.Block
         else                        -> Icons.Default.Call
     }
-    val ringDurationText = if ((isMissed || isBlocked) && log.duration > 0) "${log.duration}s rang" else null
+    val showMissedCallDuration = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_SHOW_MISSED_CALL_DURATION, false) }
+    val ringDurationText = if (isBlocked && log.duration > 0) "${log.duration}s rang" else if (isMissed && showMissedCallDuration && log.duration > 0) "${log.duration}s rang" else null
     val durationText = if (isMissed || isBlocked) ringDurationText else if (log.duration > 0) android.text.format.DateUtils.formatElapsedTime(log.duration) else null
 
     RivoListItem(
@@ -354,18 +363,11 @@ fun CallLogTile(
     onSelectMode: ((CallLogEntry) -> Unit)? = null,
     totalCallsCount: Int? = null,
     config: CallLogDisplayConfig? = null,
-    navigator: DestinationsNavigator? = null
+    navigator: DestinationsNavigator? = null,
+    matchedContact: Contact? = null
 ) {
     val context   = LocalContext.current
     val contactsVM: ContactsViewModel = koinActivityViewModel()
-    val allContacts by contactsVM.allContacts.collectAsState()
-    val matchedContact = remember(log.contactId, log.number, allContacts) {
-        if (!log.contactId.isNullOrBlank() && log.contactId != "0" && log.contactId != "-1" && log.contactId != "null") {
-            allContacts.find { it.id == log.contactId }
-        } else if (log.number.isNotBlank()) {
-            allContacts.find { c -> c.phoneNumbers.any { n -> numbersLikelyMatch(log.number, n) } }
-        } else null
-    }
     val resolvedContactName = matchedContact?.name?.takeIf { it.isNotBlank() }
         ?: log.name?.takeIf { it.isNotBlank() && it != log.number && !log.isCallerIdName }
     val isContact = resolvedContactName != null
@@ -375,9 +377,8 @@ fun CallLogTile(
     var showMoveDialog by remember { mutableStateOf(false) }
 
     val prefs = koinInject<PreferenceManager>()
-    val settingsVer by prefs.settingsChanged.collectAsState()
     val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
-    val isSaturatedActive = remember(settingsVer, isDark) { prefs.isSaturatedForTheme(isDark) }
+    val isSaturatedActive = config?.isSaturatedActive ?: remember(isDark) { prefs.isSaturatedForTheme(isDark) }
     val isMissed = log.type == CallLog.Calls.MISSED_TYPE
     val isBlocked = log.type == CallLog.Calls.BLOCKED_TYPE
 
@@ -401,6 +402,7 @@ fun CallLogTile(
     val showAvatars: Boolean
     val use24HourTime: Boolean
     val showTalkTime: Boolean
+    val showMissedCallDuration: Boolean
     val groupCallsByLatest: Boolean
     val showTotalCallsMade: Boolean
     val hideNames: Boolean
@@ -416,6 +418,7 @@ fun CallLogTile(
         showAvatars = config.showAvatars
         use24HourTime = config.use24HourTime
         showTalkTime = config.showTalkTime
+        showMissedCallDuration = config.showMissedCallDuration
         groupCallsByLatest = config.groupCallsByLatest
         showTotalCallsMade = config.showTotalCallsMade
         hideNames = config.hideNames
@@ -426,30 +429,23 @@ fun CallLogTile(
         sim2Color = config.sim2Color
         showNumbersInCallLogs = config.showNumbersInCallLogs
     } else {
-        fakeCallInContextMenu = remember(settingsVer) {
-            prefs.getBoolean(PreferenceManager.KEY_FAKE_CALL_IN_CONTEXT_MENU, false)
-        }
-        showAvatars = remember(settingsVer) {
-            prefs.getBoolean(PreferenceManager.KEY_SHOW_AVATARS_CALLS, true)
-        }
-        use24HourTime = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_CALL_TIME_FORMAT_24H, false) }
-        showTalkTime = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_SHOW_TALK_TIME_IN_CALL_LOGS, false) }
-        groupCallsByLatest = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_GROUP_CALLS_BY_LATEST, false) }
-        showTotalCallsMade = remember(settingsVer) {
-            groupCallsByLatest || prefs.getBoolean(PreferenceManager.KEY_SHOW_TOTAL_CALLS_MADE, false)
-        }
-        hideNames = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_CONTACTS_HIDER_HIDE_NAMES, false) }
-        hiddenIds = remember(settingsVer) {
+        fakeCallInContextMenu = prefs.getBoolean(PreferenceManager.KEY_FAKE_CALL_IN_CONTEXT_MENU, false)
+        showAvatars = prefs.getBoolean(PreferenceManager.KEY_SHOW_AVATARS_CALLS, true)
+        use24HourTime = prefs.getBoolean(PreferenceManager.KEY_CALL_TIME_FORMAT_24H, false)
+        showTalkTime = prefs.getBoolean(PreferenceManager.KEY_SHOW_TALK_TIME_IN_CALL_LOGS, false)
+        showMissedCallDuration = prefs.getBoolean(PreferenceManager.KEY_SHOW_MISSED_CALL_DURATION, false)
+        groupCallsByLatest = prefs.getBoolean(PreferenceManager.KEY_GROUP_CALLS_BY_LATEST, false)
+        showTotalCallsMade = groupCallsByLatest || prefs.getBoolean(PreferenceManager.KEY_SHOW_TOTAL_CALLS_MADE, false)
+        hideNames = prefs.getBoolean(PreferenceManager.KEY_CONTACTS_HIDER_HIDE_NAMES, false)
+        hiddenIds = run {
             val raw = prefs.getString(PreferenceManager.KEY_CONTACTS_HIDER_IDS, "") ?: ""
             if (raw.isBlank()) emptySet() else raw.split(",").filter { it.isNotBlank() }.toSet()
         }
-        nameNonContactsAsUnknown = remember(settingsVer) {
-            prefs.getBoolean(PreferenceManager.KEY_NAME_NON_CONTACTS_AS_UNKNOWN, true)
-        }
-        showSimsSetting = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_SHOW_SIMS_IN_CALL_LOGS, prefs.getShowSimsInCallLogsDefault()) }
-        sim1Color = remember(settingsVer) { Color(prefs.getInt(PreferenceManager.KEY_SIM1_COLOR, PreferenceManager.DEFAULT_SIM1_COLOR)) }
-        sim2Color = remember(settingsVer) { Color(prefs.getInt(PreferenceManager.KEY_SIM2_COLOR, PreferenceManager.DEFAULT_SIM2_COLOR)) }
-        showNumbersInCallLogs = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_SHOW_NUMBERS_IN_CALL_LOGS, true) }
+        nameNonContactsAsUnknown = prefs.getBoolean(PreferenceManager.KEY_NAME_NON_CONTACTS_AS_UNKNOWN, true)
+        showSimsSetting = prefs.getBoolean(PreferenceManager.KEY_SHOW_SIMS_IN_CALL_LOGS, prefs.getShowSimsInCallLogsDefault())
+        sim1Color = Color(prefs.getInt(PreferenceManager.KEY_SIM1_COLOR, PreferenceManager.DEFAULT_SIM1_COLOR))
+        sim2Color = Color(prefs.getInt(PreferenceManager.KEY_SIM2_COLOR, PreferenceManager.DEFAULT_SIM2_COLOR))
+        showNumbersInCallLogs = prefs.getBoolean(PreferenceManager.KEY_SHOW_NUMBERS_IN_CALL_LOGS, true)
     }
 
     var showFakeCallSheet by remember { mutableStateOf(false) }
@@ -520,10 +516,10 @@ fun CallLogTile(
             }
         } else null
         val colorScheme = MaterialTheme.colorScheme
-        val leftSwipeKey = remember(settingsVer) { prefs.getSwipeAction("call_logs", "left") }
-        val rightSwipeKey = remember(settingsVer) { prefs.getSwipeAction("call_logs", "right") }
-        val leftSwipeAction = remember(leftSwipeKey, colorScheme) { SwipeActionHelper.resolveActionItem(leftSwipeKey, colorScheme) }
-        val rightSwipeAction = remember(rightSwipeKey, colorScheme) { SwipeActionHelper.resolveActionItem(rightSwipeKey, colorScheme) }
+        val leftSwipeKey = config?.leftSwipeKey ?: prefs.getSwipeAction("call_logs", "left")
+        val rightSwipeKey = config?.rightSwipeKey ?: prefs.getSwipeAction("call_logs", "right")
+        val leftSwipeAction = config?.leftSwipeAction ?: remember(leftSwipeKey, colorScheme) { SwipeActionHelper.resolveActionItem(leftSwipeKey, colorScheme) }
+        val rightSwipeAction = config?.rightSwipeAction ?: remember(rightSwipeKey, colorScheme) { SwipeActionHelper.resolveActionItem(rightSwipeKey, colorScheme) }
 
         val handleSwipeAction: (String) -> Unit = { actionKey ->
             when (actionKey) {
@@ -616,10 +612,10 @@ fun CallLogTile(
                     ).show()
                 }
                 "search_truecaller" -> {
-                    try {
-                        val uri = Uri.parse("https://www.truecaller.com/search/in/${log.number}")
-                        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                    } catch (_: Exception) {}
+                    val isLaunched = com.modiprincekr.thedialer.controller.util.openTruecaller(context, log.number)
+                    if (!isLaunched) {
+                        Toast.makeText(context, "Truecaller is not installed", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }
@@ -652,6 +648,8 @@ fun CallLogTile(
                     val dateText = formatCallLogDate(log.date)
                     if (isBlocked && log.duration > 0) {
                         "$dateText • ${log.duration}s"
+                    } else if (isMissed && showMissedCallDuration && log.duration > 0) {
+                        "$dateText • ${log.duration}s"
                     } else if (showTalkTime && !isMissed) {
                         val durationText = formatDuration(log.duration)
                         "$dateText • $durationText"
@@ -659,8 +657,10 @@ fun CallLogTile(
                         dateText
                     }
                 } else {
-                    if (isMissed || isBlocked) {
+                    if (isBlocked) {
                         if (log.duration > 0) "${log.duration}s" else null
+                    } else if (isMissed) {
+                        if (showMissedCallDuration && log.duration > 0) "${log.duration}s" else null
                     } else if (showTalkTime) {
                         formatDuration(log.duration)
                     } else null

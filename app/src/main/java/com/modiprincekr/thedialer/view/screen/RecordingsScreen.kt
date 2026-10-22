@@ -112,10 +112,6 @@ fun RecordingsScreen(
         highlightQuery = ""
     }
 
-    BackHandler(enabled = openedFromSettings && selectedRecording == null && !isAppLocked) {
-        navigator.navigateUp()
-    }
-
     // Re-check disclaimer/permission state whenever this tab (re)appears or the app resumes.
     // Also re-arms App Lock (if enabled) whenever this screen is backgrounded — matching the
     // same behaviour as the bundled Ever Call Recorder's own Activity — since this screen is
@@ -159,7 +155,13 @@ fun RecordingsScreen(
     // from Settings → Call Recording rather than opened as the Recordings tab.
     DisposableEffect(openedFromSettings) {
         NavBarVisibilityState.hideForSettingsEntry = openedFromSettings
-        onDispose { NavBarVisibilityState.hideForSettingsEntry = false }
+        onDispose {
+            NavBarVisibilityState.hideForSettingsEntry = false
+            if (openedFromSettings) {
+                com.modiprincekr.thedialer.view.theme.SettingsClickTracker.notifyClosing()
+                com.modiprincekr.thedialer.view.theme.SettingsClickTracker.triggerSettingsCloseBounce()
+            }
+        }
     }
 
     val appVersion = remember {
@@ -197,14 +199,16 @@ fun RecordingsScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     HomeScreen(
                         appVersion = appVersion,
-                        onBackClick = if (openedFromSettings) { { navigator.navigateUp() } } else null,
+                        onBackClick = if (openedFromSettings) {
+                            {
+                                com.modiprincekr.thedialer.view.theme.SettingsClickTracker.notifyClosing()
+                                com.modiprincekr.thedialer.view.theme.SettingsClickTracker.triggerSettingsCloseBounce()
+                                navigator.navigateUp()
+                            }
+                        } else null,
                         onSettingsClick = {
-                            // Opens the bundled Ever Call Recorder app directly on its
-                            // Call Recording settings screen (storage location, filename
-                            // format, auto-delete rules, etc.), skipping the recordings list.
-                            val launch = Intent(context, com.coolappstore.evercallrecorder.by.svhp.MainActivity::class.java)
-                            launch.putExtra(com.coolappstore.evercallrecorder.by.svhp.MainActivity.EXTRA_OPEN_SETTINGS, true)
-                            context.startActivity(launch)
+                            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordNormalized(0.92f, 0.06f)
+                            navigator.navigate(com.ramcosta.composedestinations.generated.destinations.CallRecordingSettingsScreenDestination())
                         },
                         onRecordingClick = { recordingItem, query ->
                             selectedRecording = recordingItem
@@ -214,14 +218,16 @@ fun RecordingsScreen(
                         onGlobalSearchClick = {
                             navigator.navigate(com.ramcosta.composedestinations.generated.destinations.SearchScreenDestination())
                         },
-                        onEverDialerSettingsClick = {
-                            navigator.navigate(com.ramcosta.composedestinations.generated.destinations.SettingsScreenDestination())
+                        onEverDialerSettingsClick = if (openedFromSettings) { {} } else {
+                            { navigator.navigate(com.ramcosta.composedestinations.generated.destinations.SettingsScreenDestination()) }
                         },
-                        everDialerSettingsButton = {
-                            SettingsIconButton(
-                                navigator = navigator,
-                                modifier = Modifier.padding(end = 8.dp)
-                            )
+                        everDialerSettingsButton = if (openedFromSettings) null else {
+                            {
+                                SettingsIconButton(
+                                    navigator = navigator,
+                                    modifier = Modifier.padding(end = 8.dp)
+                                )
+                            }
                         }
                     )
 

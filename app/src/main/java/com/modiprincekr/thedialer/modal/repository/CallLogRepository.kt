@@ -125,8 +125,9 @@ class CallLogRepository(
         }
     }
 
-    override fun getCallLogs(): List<CallLogEntry> = try {
-        getCallLogsInternal()
+    override fun getCallLogs(limit: Int?): List<CallLogEntry> = try {
+        val effectiveLimit = limit
+        getCallLogsInternal(effectiveLimit)
     } catch (_: SecurityException) {
         // READ_CALL_LOG / READ_CONTACTS not granted (e.g. right after a fresh install before
         // the user answers the permission prompt) - fail safe instead of crashing.
@@ -135,7 +136,27 @@ class CallLogRepository(
         emptyList()
     }
 
-    private fun getCallLogsInternal(): List<CallLogEntry> {
+    override fun getLatestCallDate(): Long? = try {
+        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.READ_CALL_LOG
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) null
+        else {
+            contentResolver.query(
+                android.provider.CallLog.Calls.CONTENT_URI,
+                arrayOf(android.provider.CallLog.Calls.DATE),
+                null,
+                null,
+                "${android.provider.CallLog.Calls.DATE} DESC LIMIT 1"
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getLong(0) else null
+            }
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun getCallLogsInternal(limit: Int? = null): List<CallLogEntry> {
         ensureContactsObserver()
         val hasContactsPermission = androidx.core.content.ContextCompat.checkSelfPermission(
             context, android.Manifest.permission.READ_CONTACTS
@@ -148,7 +169,7 @@ class CallLogRepository(
         val canUseExisting = !contactIndexDirty && existing != null &&
             (!hasContactsPermission || existing.first.isNotEmpty())
 
-        val (exactIndex, suffixIndex) = if (canUseExisting && existing != null) {
+        val (exactIndex, suffixIndex) = if (canUseExisting) {
             existing
         } else {
             val built = buildContactIndex()
@@ -163,8 +184,9 @@ class CallLogRepository(
         }
 
         pruneAutoDeletedUnknownCalls(exactIndex, suffixIndex)
+        com.modiprincekr.thedialer.controller.util.MissedCallDurationStore.checkAutoReset(context, prefs)
 
-        val rawCalls = readRawCallLogRows()
+        val rawCalls = readRawCallLogRows(limit)
         val dedupedCalls = dedupeDuplicateProviderRows(rawCalls)
 
         val hiddenIds = ContactsHiderManager.getHiddenIds(prefs)
@@ -201,8 +223,8 @@ class CallLogRepository(
             // show each as its own entry.
             val canMerge = raw.digits.isNotEmpty() &&
                 lastEntry != null && lastEntry.number == raw.number && isSameCalendarDay(lastEntry.date, raw.date)
-            if (canMerge) {
-                callLogs[callLogs.size - 1] = lastEntry!!.copy(
+            if (canMerge && lastEntry != null) {
+                callLogs[callLogs.size - 1] = lastEntry.copy(
                     types = lastEntry.types + raw.type,
                     callIds = lastEntry.callIds + raw.callIds,
                     dates = lastEntry.dates + raw.date
@@ -232,7 +254,7 @@ class CallLogRepository(
 
     // ── Raw provider reads ──────────────────────────────────────────────────────
 
-    private fun readRawCallLogRows(): List<RawCall> {
+    private fun readRawCallLogRows(limit: Int? = null): List<RawCall> {
         val rows = mutableListOf<RawCall>()
         val projection = arrayOf(
             CallLog.Calls._ID,
@@ -263,6 +285,9 @@ class CallLogRepository(
             val phoneAccountIdIdx = cursor.getColumnIndex(CallLog.Calls.PHONE_ACCOUNT_ID)
 
             while (cursor.moveToNext()) {
+                if (limit != null && rows.size >= limit) {
+                    break
+                }
                 val id = if (idIdx >= 0) cursor.getLong(idIdx) else 0L
                 val number = cursor.getString(numberIdx) ?: "Unknown"
                 val phoneAccountId = if (phoneAccountIdIdx >= 0) cursor.getString(phoneAccountIdIdx) else null
@@ -272,18 +297,27 @@ class CallLogRepository(
                 val date = cursor.getLong(dateIdx)
                 var duration = cursor.getLong(durationIdx)
 
-                val targetNum = number.replace(" ", "").replace("-", "").trim()
-                val isBlockedNumber = targetNum.isNotEmpty() && blockedNormalized.any { blocked ->
-                    targetNum.endsWith(blocked) || blocked.endsWith(targetNum)
-                }
-                val effectiveType = if (type == CallLog.Calls.BLOCKED_TYPE || ((type == CallLog.Calls.MISSED_TYPE || type == 5 /* REJECTED */) && isBlockedNumber)) {
-                    CallLog.Calls.BLOCKED_TYPE
+                val isNewLogic = prefs.getBoolean(PreferenceManager.KEY_NEW_CALL_LOGS_LOGIC, false)
+                val effectiveType: Int
+                if (isNewLogic) {
+                    effectiveType = type
+                    if (type == CallLog.Calls.MISSED_TYPE && duration <= 0L) {
+                        duration = com.modiprincekr.thedialer.controller.util.MissedCallDurationStore.getDuration(context, number, date)
+                    }
                 } else {
-                    type
-                }
+                    val targetNum = number.replace(" ", "").replace("-", "").trim()
+                    val isBlockedNumber = targetNum.isNotEmpty() && blockedNormalized.any { blocked ->
+                        targetNum.endsWith(blocked) || blocked.endsWith(targetNum)
+                    }
+                    effectiveType = if (type == CallLog.Calls.BLOCKED_TYPE || ((type == CallLog.Calls.MISSED_TYPE || type == 5 /* REJECTED */) && isBlockedNumber)) {
+                        CallLog.Calls.BLOCKED_TYPE
+                    } else {
+                        type
+                    }
 
-                if ((effectiveType == CallLog.Calls.MISSED_TYPE || effectiveType == CallLog.Calls.BLOCKED_TYPE) && duration <= 0L) {
-                    duration = com.modiprincekr.thedialer.controller.util.MissedCallDurationStore.getDuration(context, number, date)
+                    if ((effectiveType == CallLog.Calls.MISSED_TYPE || effectiveType == CallLog.Calls.BLOCKED_TYPE) && duration <= 0L) {
+                        duration = com.modiprincekr.thedialer.controller.util.MissedCallDurationStore.getDuration(context, number, date)
+                    }
                 }
 
                 rows.add(

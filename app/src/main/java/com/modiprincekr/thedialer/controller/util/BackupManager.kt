@@ -28,10 +28,11 @@ object BackupManager {
         val hasContactGroups: Boolean = false,
         val hasRecordings: Boolean = false,
         val hasContacts: Boolean = false,
-        val hasCallLogs: Boolean = false
+        val hasCallLogs: Boolean = false,
+        val hasSms: Boolean = false
     ) {
         val hasAny: Boolean
-            get() = hasSettings || hasCallingCards || hasNotes || hasContactGroups || hasRecordings || hasContacts || hasCallLogs
+            get() = hasSettings || hasCallingCards || hasNotes || hasContactGroups || hasRecordings || hasContacts || hasCallLogs || hasSms
     }
 
     const val PREFS_RIVO = "rivo_prefs"
@@ -102,7 +103,8 @@ object BackupManager {
         backupContactGroups: Boolean = false,
         backupRecordings: Boolean = true,
         backupContacts: Boolean = false,
-        backupCallLogs: Boolean = false
+        backupCallLogs: Boolean = false,
+        backupSms: Boolean = false
     ): Boolean {
         return try {
             ZipOutputStream(outputStream).use { zip ->
@@ -401,6 +403,55 @@ object BackupManager {
                         android.util.Log.e("BackupManager", "Failed to backup call logs", e)
                     }
                 }
+
+                if (backupSms) {
+                    try {
+                        val cursor = context.contentResolver.query(
+                            android.provider.Telephony.Sms.CONTENT_URI,
+                            arrayOf(
+                                android.provider.Telephony.Sms.ADDRESS,
+                                android.provider.Telephony.Sms.BODY,
+                                android.provider.Telephony.Sms.DATE,
+                                android.provider.Telephony.Sms.TYPE,
+                                android.provider.Telephony.Sms.READ,
+                                android.provider.Telephony.Sms.STATUS,
+                                android.provider.Telephony.Sms.THREAD_ID
+                            ),
+                            null,
+                            null,
+                            "${android.provider.Telephony.Sms.DATE} DESC"
+                        )
+                        cursor?.use { c ->
+                            val addrIdx = c.getColumnIndex(android.provider.Telephony.Sms.ADDRESS)
+                            val bodyIdx = c.getColumnIndex(android.provider.Telephony.Sms.BODY)
+                            val dateIdx = c.getColumnIndex(android.provider.Telephony.Sms.DATE)
+                            val typeIdx = c.getColumnIndex(android.provider.Telephony.Sms.TYPE)
+                            val readIdx = c.getColumnIndex(android.provider.Telephony.Sms.READ)
+                            val statusIdx = c.getColumnIndex(android.provider.Telephony.Sms.STATUS)
+                            val threadIdx = c.getColumnIndex(android.provider.Telephony.Sms.THREAD_ID)
+
+                            val jsonArray = JSONArray()
+                            while (c.moveToNext()) {
+                                val obj = JSONObject()
+                                if (addrIdx >= 0 && !c.isNull(addrIdx)) obj.put("address", c.getString(addrIdx))
+                                if (bodyIdx >= 0 && !c.isNull(bodyIdx)) obj.put("body", c.getString(bodyIdx))
+                                if (dateIdx >= 0) obj.put("date", c.getLong(dateIdx))
+                                if (typeIdx >= 0) obj.put("type", c.getInt(typeIdx))
+                                if (readIdx >= 0) obj.put("read", c.getInt(readIdx))
+                                if (statusIdx >= 0) obj.put("status", c.getInt(statusIdx))
+                                if (threadIdx >= 0) obj.put("thread_id", c.getLong(threadIdx))
+                                jsonArray.put(obj)
+                            }
+                            if (jsonArray.length() > 0) {
+                                zip.putNextEntry(ZipEntry("sms/sms_messages.json"))
+                                zip.write(jsonArray.toString().toByteArray(Charsets.UTF_8))
+                                zip.closeEntry()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("BackupManager", "Failed to backup SMS", e)
+                    }
+                }
             }
             true
         } catch (_: Exception) {
@@ -416,13 +467,14 @@ object BackupManager {
         backupContactGroups: Boolean = false,
         backupRecordings: Boolean = true,
         backupContacts: Boolean = false,
-        backupCallLogs: Boolean = false
+        backupCallLogs: Boolean = false,
+        backupSms: Boolean = false
     ): File? {
         return try {
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val backupFile = File(getBackupDir(context), "EverDialer_Backup_$timestamp.everdialer")
             val ok = FileOutputStream(backupFile).use { outputStream ->
-                writeBackup(context, outputStream, backupSettings, backupCallingCards, backupNotes, backupContactGroups, backupRecordings, backupContacts, backupCallLogs)
+                writeBackup(context, outputStream, backupSettings, backupCallingCards, backupNotes, backupContactGroups, backupRecordings, backupContacts, backupCallLogs, backupSms)
             }
             if (ok) backupFile else null
         } catch (_: Exception) {
@@ -438,6 +490,7 @@ object BackupManager {
         var hasRecordings = false
         var hasContacts = false
         var hasCallLogs = false
+        var hasSms = false
 
         try {
             ZipInputStream(FileInputStream(backupFile)).use { zip ->
@@ -470,6 +523,9 @@ object BackupManager {
                         name.startsWith("call_logs/") && !name.endsWith("/") -> {
                             hasCallLogs = true
                         }
+                        name.startsWith("sms/") && !name.endsWith("/") -> {
+                            hasSms = true
+                        }
                     }
                     zip.closeEntry()
                     entry = zip.nextEntry
@@ -484,7 +540,8 @@ object BackupManager {
             hasContactGroups = hasContactGroups,
             hasRecordings = hasRecordings,
             hasContacts = hasContacts,
-            hasCallLogs = hasCallLogs
+            hasCallLogs = hasCallLogs,
+            hasSms = hasSms
         )
     }
 
@@ -497,7 +554,8 @@ object BackupManager {
         restoreContactGroups: Boolean = true,
         restoreRecordings: Boolean = true,
         restoreContacts: Boolean = true,
-        restoreCallLogs: Boolean = true
+        restoreCallLogs: Boolean = true,
+        restoreSms: Boolean = true
     ): Boolean {
         return try {
             var restoredAny = false
@@ -848,6 +906,86 @@ object BackupManager {
                                 }
                             }
                         }
+                        name == "sms/sms_messages.json" -> {
+                            if (restoreSms) {
+                                try {
+                                    val jsonStr = zip.readBytes().toString(Charsets.UTF_8)
+                                    val jsonArray = JSONArray(jsonStr)
+
+                                    val existingKeys = mutableSetOf<String>()
+                                    try {
+                                        val cursor = context.contentResolver.query(
+                                            android.provider.Telephony.Sms.CONTENT_URI,
+                                            arrayOf(
+                                                android.provider.Telephony.Sms.ADDRESS,
+                                                android.provider.Telephony.Sms.DATE,
+                                                android.provider.Telephony.Sms.BODY
+                                            ),
+                                            null,
+                                            null,
+                                            null
+                                        )
+                                        cursor?.use { c ->
+                                            val addrIdx = c.getColumnIndex(android.provider.Telephony.Sms.ADDRESS)
+                                            val dateIdx = c.getColumnIndex(android.provider.Telephony.Sms.DATE)
+                                            val bodyIdx = c.getColumnIndex(android.provider.Telephony.Sms.BODY)
+                                            while (c.moveToNext()) {
+                                                val addr = if (addrIdx >= 0) c.getString(addrIdx) ?: "" else ""
+                                                val date = if (dateIdx >= 0) c.getLong(dateIdx) else 0L
+                                                val body = if (bodyIdx >= 0) c.getString(bodyIdx) ?: "" else ""
+                                                existingKeys.add("$addr|$date|$body")
+                                            }
+                                        }
+                                    } catch (_: Exception) {}
+
+                                    for (i in 0 until jsonArray.length()) {
+                                        val obj = jsonArray.getJSONObject(i)
+                                        val addr = obj.optString("address", "")
+                                        val body = obj.optString("body", "")
+                                        val date = obj.optLong("date", 0L)
+                                        val type = obj.optInt("type", android.provider.Telephony.Sms.MESSAGE_TYPE_INBOX)
+                                        val read = obj.optInt("read", 1)
+                                        val status = obj.optInt("status", -1)
+                                        val key = "$addr|$date|$body"
+
+                                        if (!existingKeys.contains(key)) {
+                                            val values = android.content.ContentValues().apply {
+                                                put(android.provider.Telephony.Sms.ADDRESS, addr)
+                                                put(android.provider.Telephony.Sms.BODY, body)
+                                                put(android.provider.Telephony.Sms.DATE, date)
+                                                put(android.provider.Telephony.Sms.TYPE, type)
+                                                put(android.provider.Telephony.Sms.READ, read)
+                                                if (status >= 0) {
+                                                    put(android.provider.Telephony.Sms.STATUS, status)
+                                                }
+                                                if (addr.isNotBlank()) {
+                                                    try {
+                                                        val threadId = android.provider.Telephony.Threads.getOrCreateThreadId(context, addr)
+                                                        if (threadId > 0) {
+                                                            put(android.provider.Telephony.Sms.THREAD_ID, threadId)
+                                                        }
+                                                    } catch (_: Throwable) {}
+                                                }
+                                            }
+                                            try {
+                                                val targetUri = if (type == android.provider.Telephony.Sms.MESSAGE_TYPE_SENT) {
+                                                    android.provider.Telephony.Sms.Sent.CONTENT_URI
+                                                } else {
+                                                    android.provider.Telephony.Sms.Inbox.CONTENT_URI
+                                                }
+                                                context.contentResolver.insert(targetUri, values)
+                                                existingKeys.add(key)
+                                            } catch (e: Exception) {
+                                                android.util.Log.e("BackupManager", "Failed to insert SMS message", e)
+                                            }
+                                        }
+                                    }
+                                    restoredAny = true
+                                } catch (e: Exception) {
+                                    android.util.Log.e("BackupManager", "Failed to restore SMS", e)
+                                }
+                            }
+                        }
                     }
                     zip.closeEntry()
                     entry = zip.nextEntry
@@ -912,7 +1050,22 @@ object BackupManager {
             } catch (_: Throwable) {}
 
             try {
-                org.koin.java.KoinJavaComponent.getKoin().getOrNull<PreferenceManager>()?.notifyChanged()
+                val prefMgr = org.koin.java.KoinJavaComponent.getKoin().getOrNull<PreferenceManager>()
+                prefMgr?.notifyChanged()
+
+                if (restoreSettings) {
+                    // Re-apply Ever Dialer launcher icon and app name preset
+                    val selectedIcon = prefMgr?.getString("selected_app_icon", "default") ?: "default"
+                    val appNamePreset = prefMgr?.getString(PreferenceManager.KEY_APP_NAME_PRESET, "default") ?: "default"
+                    val dialerAlias = com.modiprincekr.thedialer.view.screen.settings.aliasNameFor(selectedIcon, appNamePreset)
+                    com.modiprincekr.thedialer.view.screen.settings.applyLauncherAlias(context, dialerAlias)
+
+                    // Re-apply SMS launcher alias
+                    val smsIconEnabled = prefMgr?.getBoolean(PreferenceManager.KEY_SMS_LAUNCHER_ICON_ENABLED, true) ?: true
+                    val smsAppName = prefMgr?.getString(PreferenceManager.KEY_SMS_LAUNCHER_APP_NAME, "Ever SMS") ?: "Ever SMS"
+                    val smsIcon = prefMgr?.getString(PreferenceManager.KEY_SMS_SELECTED_APP_ICON, "default") ?: "default"
+                    com.modiprincekr.thedialer.view.screen.settings.updateSmsLauncherAliasFull(context, smsIconEnabled, smsAppName, smsIcon)
+                }
             } catch (_: Throwable) {}
 
             restoredAny

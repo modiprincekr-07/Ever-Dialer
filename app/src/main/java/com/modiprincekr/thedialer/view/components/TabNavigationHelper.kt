@@ -90,12 +90,14 @@ object TabNavigationHelper {
     /**
      * Navigates to the adjacent tab (forward or backward in user's configured tab order).
      * @param goForward true to navigate to the tab to the right (next index), false to the left (prev index).
+     * @param isRtl true if layout direction is RTL, in which case horizontal swipe directions are mirrored.
      */
     fun navigateAdjacentTab(
         navController: NavController,
         currentRoute: String,
         goForward: Boolean,
-        prefs: PreferenceManager
+        prefs: PreferenceManager,
+        isRtl: Boolean = false
     ) {
         val visibleRoutes = getVisibleTabRoutes(prefs)
         if (visibleRoutes.size <= 1) return
@@ -107,7 +109,8 @@ object TabNavigationHelper {
         }
         if (currentIdx == -1) return
 
-        val targetIdx = if (goForward) {
+        val effectiveForward = if (isRtl) !goForward else goForward
+        val targetIdx = if (effectiveForward) {
             (currentIdx + 1) % visibleRoutes.size
         } else {
             (currentIdx - 1 + visibleRoutes.size) % visibleRoutes.size

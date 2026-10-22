@@ -68,7 +68,12 @@ import com.modiprincekr.thedialer.modal.data.SmsMessage
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenu
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenuItem
+import com.modiprincekr.thedialer.view.theme.SettingsClickTracker
 import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -275,7 +280,8 @@ fun SmsChatScreen(
     }
 
     LaunchedEffect(messages) {
-        if (!userSelectedSimManually && messages.isNotEmpty() && sortedSims.size == 2) {
+        val hasStoredPref = address.isNotBlank() && prefs.getInt("last_used_sms_sub_id_$address", -1) != -1
+        if (!userSelectedSimManually && !hasStoredPref && messages.isNotEmpty() && sortedSims.size == 2) {
             val lastUsedInChat = messages.lastOrNull { m ->
                 m.subId != null && sortedSims.any { it.subscriptionId == m.subId }
             }?.subId
@@ -602,13 +608,22 @@ fun SmsChatScreen(
             } else {
                 TopAppBar(
                     title = {
+                        var pillCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
                         Surface(
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                             modifier = Modifier
+                                .onGloballyPositioned { pillCoords = it }
                                 .clip(CircleShape)
                                 .clickable {
+                                    pillCoords?.let { coords ->
+                                        val center = coords.boundsInRoot().center
+                                        val rootSize = coords.findRootCoordinates().size
+                                        SettingsClickTracker.recordTap(
+                                            center.x, center.y, rootSize.width.toFloat(), rootSize.height.toFloat()
+                                        )
+                                    }
                                     navigator.navigate(
                                         ContactDetailsScreenDestination(
                                             contactId = matchedContact?.id,
@@ -1015,6 +1030,10 @@ fun SmsChatScreen(
                                             .clickable {
                                                 userSelectedSimManually = true
                                                 selectedSubId = sim.subscriptionId
+                                                prefs.setInt("last_used_sms_sub_id", sim.subscriptionId)
+                                                if (address.isNotBlank()) {
+                                                    prefs.setInt("last_used_sms_sub_id_$address", sim.subscriptionId)
+                                                }
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -1332,6 +1351,11 @@ private fun ChatBubble(
     val timeColor = textColor.copy(alpha = 0.7f)
 
     var showMessageMenu by remember { mutableStateOf(false) }
+    val prefs = koinInject<PreferenceManager>()
+    val smsVM: SmsViewModel = koinActivityViewModel()
+    val settingsVer by prefs.settingsChanged.collectAsState()
+    val isPinned = remember(settingsVer, message.id) { prefs.isSmsMessagePinned(message.id) }
+    val isStarred = remember(settingsVer, message.id) { prefs.isSmsMessageStarred(message.id) }
 
     Row(
         modifier = modifier
@@ -1434,6 +1458,22 @@ private fun ChatBubble(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    if (isPinned) {
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = "Pinned",
+                            tint = timeColor,
+                            modifier = Modifier.size(11.dp)
+                        )
+                    }
+                    if (isStarred) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Starred",
+                            tint = Color(0xFFFFB300),
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
                     Text(
                         text = timeStr,
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
@@ -1459,16 +1499,34 @@ private fun ChatBubble(
                 onDismissRequest = { showMessageMenu = false }
             ) {
                 RivoDropdownMenuItem(
+                    text = if (isPinned) "Unpin message" else "Pin message",
+                    icon = Icons.Default.PushPin,
+                    onClick = {
+                        showMessageMenu = false
+                        prefs.setSmsMessagePinned(message.id, !isPinned)
+                    }
+                )
+                RivoDropdownMenuItem(
+                    text = if (isStarred) "Unstar message" else "Star message",
+                    icon = if (isStarred) Icons.Default.StarOutline else Icons.Default.Star,
+                    iconTint = Color(0xFFFFB300),
+                    onClick = {
+                        showMessageMenu = false
+                        prefs.setSmsMessageStarred(message.id, !isStarred)
+                        smsVM.refreshStarredMessages(prefs.getStarredSmsMessages())
+                    }
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+                RivoDropdownMenuItem(
                     text = "Select",
                     icon = Icons.Default.SelectAll,
                     onClick = {
                         showMessageMenu = false
                         onSelectClick()
                     }
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
                 RivoDropdownMenuItem(
                     text = "Copy text",

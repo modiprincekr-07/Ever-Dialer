@@ -19,6 +19,7 @@ import com.modiprincekr.thedialer.view.components.RivoAnimatedSection
 import com.modiprincekr.thedialer.view.components.RivoExpressiveCard
 import com.modiprincekr.thedialer.view.components.RivoListItem
 import com.modiprincekr.thedialer.view.components.RivoSwitchListItem
+import com.modiprincekr.thedialer.view.components.rivoHeadingColor
 import com.modiprincekr.thedialer.view.components.settingsSearchHighlight
 import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
 import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
@@ -100,7 +101,7 @@ fun IncomingCallUIScreen(navigator: DestinationsNavigator, highlightKey: String?
                     Text(
                         "Full Screen Display",
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = rivoHeadingColor(),
                         modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
                     )
                     RivoExpressiveCard {
@@ -142,7 +143,7 @@ fun IncomingCallUIScreen(navigator: DestinationsNavigator, highlightKey: String?
                     Text(
                         "Appearance & Background",
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = rivoHeadingColor(),
                         modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
                     )
                     RivoExpressiveCard {
@@ -231,7 +232,7 @@ fun IncomingCallUIScreen(navigator: DestinationsNavigator, highlightKey: String?
                         Text(
                             "Quick Actions",
                             style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = rivoHeadingColor(),
                             modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
                         )
                         RivoExpressiveCard {

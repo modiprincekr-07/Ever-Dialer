@@ -56,6 +56,7 @@ import androidx.compose.ui.Modifier
 import com.ramcosta.composedestinations.generated.destinations.ContactEditScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.CustomBackgroundPickerScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.RecordingsScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.SmsChatScreenDestination
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.coolappstore.evercallrecorder.by.svhp.ui.viewmodels.HomeViewModel
 import com.modiprincekr.thedialer.view.components.findMatchingRecording
@@ -284,6 +285,12 @@ fun ContactDetailsScreen(
     val truecallerInstalled = remember(context) { isTruecallerInstalled(context) }
     val hasAnySocialApp = whatsAppInstalled || whatsAppBusinessInstalled || telegramInstalled || meetInstalled || truecallerInstalled
 
+    val whatsAppIcon = remember(context, whatsAppInstalled) { if (whatsAppInstalled) getWhatsAppIcon(context) else null }
+    val whatsAppBusinessIcon = remember(context, whatsAppBusinessInstalled) { if (whatsAppBusinessInstalled) getWhatsAppBusinessIcon(context) else null }
+    val telegramIcon = remember(context, telegramInstalled) { if (telegramInstalled) getTelegramIcon(context) else null }
+    val meetIcon = remember(context, meetInstalled) { if (meetInstalled) getGoogleMeetIcon(context) else null }
+    val truecallerIcon = remember(context, truecallerInstalled) { if (truecallerInstalled) getTruecallerIcon(context) else null }
+
     val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
     val isSaturatedActive = remember(settingsVer, isDark) { prefs.isSaturatedForTheme(isDark) }
     val contactInfoActionKeys = remember(settingsVer) {
@@ -398,9 +405,20 @@ fun ContactDetailsScreen(
         when (action) {
             "sms" -> {
                 if (number.isNotBlank() && number != "Unknown") {
-                    try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("sms:$number")))
-                    } catch (_: Exception) {}
+                    if (com.modiprincekr.thedialer.controller.util.DefaultSmsManager.isDefaultSms(context)) {
+                        navigator.navigate(
+                            SmsChatScreenDestination(
+                                threadId = -1L,
+                                address = number,
+                                contactName = contact?.name,
+                                photoUri = contact?.photoUri
+                            )
+                        )
+                    } else {
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("sms:$number")))
+                        } catch (_: Exception) {}
+                    }
                 }
             }
             "whatsapp" -> {
@@ -984,45 +1002,46 @@ fun ContactDetailsScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Transparent)) {
-        // Background image layer sits behind the whole column so it shows through
-        // the transparent header instead of a solid banner.
-        Box(modifier = Modifier.fillMaxWidth().height(340.dp)) {
-            AsyncImage(model = contact?.photoUri, contentDescription = null, modifier = Modifier.fillMaxSize().blur(50.dp), contentScale = ContentScale.Crop)
-            Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, MaterialTheme.colorScheme.surface))))
-        }
+    com.modiprincekr.thedialer.view.theme.ExpandingScreenContainer(onClose = { navigator.navigateUp() }) { closeWithAnimation ->
+        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+            // Background image layer sits behind the whole column so it shows through
+            // the transparent header instead of a solid banner.
+            Box(modifier = Modifier.fillMaxWidth().height(340.dp)) {
+                AsyncImage(model = contact?.photoUri, contentDescription = null, modifier = Modifier.fillMaxSize().blur(50.dp), contentScale = ContentScale.Crop)
+                Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, MaterialTheme.colorScheme.surface))))
+            }
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
                             modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(if (isSaturatedActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .statusBarsPadding(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = { navigator.navigateUp() }) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Back",
-                                    tint = if (isSaturatedActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                )
+                            Box(
+                                modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(if (isSaturatedActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                IconButton(onClick = { closeWithAnimation() }) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back",
+                                        tint = if (isSaturatedActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
                             }
-                        }
 
                             Row(
                                 modifier = Modifier
@@ -1188,7 +1207,7 @@ fun ContactDetailsScreen(
                                                 )
                                                 RivoDropdownMenuItem(
                                                     text = "Call via WhatsApp",
-                                                    iconBitmap = remember(context) { getWhatsAppIcon(context) },
+                                                    iconBitmap = whatsAppIcon,
                                                     onClick = {
                                                         showCallLongPressMenu = false
                                                         chooseSocialApp("whatsapp")
@@ -1202,7 +1221,7 @@ fun ContactDetailsScreen(
                                                 )
                                                 RivoDropdownMenuItem(
                                                     text = "Call via WhatsApp Business",
-                                                    iconBitmap = remember(context) { getWhatsAppBusinessIcon(context) },
+                                                    iconBitmap = whatsAppBusinessIcon,
                                                     onClick = {
                                                         showCallLongPressMenu = false
                                                         chooseSocialApp("whatsapp_business")
@@ -1216,7 +1235,7 @@ fun ContactDetailsScreen(
                                                 )
                                                 RivoDropdownMenuItem(
                                                     text = "Call via Google Meet",
-                                                    iconBitmap = remember(context) { getGoogleMeetIcon(context) },
+                                                    iconBitmap = meetIcon,
                                                     onClick = {
                                                         showCallLongPressMenu = false
                                                         chooseSocialApp("googlemeet")
@@ -1273,7 +1292,7 @@ fun ContactDetailsScreen(
                                                 )
                                                 RivoDropdownMenuItem(
                                                     text = "Chat on WhatsApp",
-                                                    iconBitmap = remember(context) { getWhatsAppIcon(context) },
+                                                    iconBitmap = whatsAppIcon,
                                                     onClick = {
                                                         showTextLongPressMenu = false
                                                         chooseTextApp("whatsapp")
@@ -1287,7 +1306,7 @@ fun ContactDetailsScreen(
                                                 )
                                                 RivoDropdownMenuItem(
                                                     text = "Chat on WhatsApp Business",
-                                                    iconBitmap = remember(context) { getWhatsAppBusinessIcon(context) },
+                                                    iconBitmap = whatsAppBusinessIcon,
                                                     onClick = {
                                                         showTextLongPressMenu = false
                                                         chooseTextApp("whatsapp_business")
@@ -1381,12 +1400,23 @@ fun ContactDetailsScreen(
                                             iconTint = Color(0xFF4CAF50),
                                             onClick = {
                                                 selectedNumberForMenu = null
-                                                val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$menuNum")).apply {
-                                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                                if (com.modiprincekr.thedialer.controller.util.DefaultSmsManager.isDefaultSms(context)) {
+                                                    navigator.navigate(
+                                                        SmsChatScreenDestination(
+                                                            threadId = -1L,
+                                                            address = menuNum,
+                                                            contactName = contact?.name,
+                                                            photoUri = contact?.photoUri
+                                                        )
+                                                    )
+                                                } else {
+                                                    val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$menuNum")).apply {
+                                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                                    }
+                                                    try {
+                                                        context.startActivity(intent)
+                                                    } catch (_: Throwable) {}
                                                 }
-                                                try {
-                                                    context.startActivity(intent)
-                                                } catch (_: Throwable) {}
                                             }
                                         )
                                         RivoDropdownMenuItem(
@@ -1912,11 +1942,6 @@ fun ContactDetailsScreen(
                     "social" -> {
                         if (showSocial && hasAnySocialApp) {
                             item {
-                                val whatsAppIcon = remember(context) { getWhatsAppIcon(context) }
-                                val whatsAppBusinessIcon = remember(context) { getWhatsAppBusinessIcon(context) }
-                                val telegramIcon = remember(context) { getTelegramIcon(context) }
-                                val meetIcon = remember(context) { getGoogleMeetIcon(context) }
-                                val truecallerIcon = remember(context) { getTruecallerIcon(context) }
                                 RivoExpressiveCard(title = "Social", icon = Icons.Default.Share) {
                                     val socialScrollState = rememberScrollState()
                                     val isScrollable = socialScrollState.maxValue > 0
@@ -2168,7 +2193,7 @@ fun ContactDetailsScreen(
                                                     maxLines = if (isExpanded) Int.MAX_VALUE else 5,
                                                     overflow = TextOverflow.Ellipsis,
                                                     onTextLayout = { textLayoutResult ->
-                                                        if (textLayoutResult.lineCount > 5 || textLayoutResult.hasVisualOverflow) {
+                                                        if ((textLayoutResult.lineCount > 5 || textLayoutResult.hasVisualOverflow) && !hasMoreThan5Lines) {
                                                             hasMoreThan5Lines = true
                                                         }
                                                     }
@@ -2306,7 +2331,7 @@ fun ContactDetailsScreen(
                                                 maxLines = if (isNoteExpanded) Int.MAX_VALUE else 5,
                                                 overflow = TextOverflow.Ellipsis,
                                                 onTextLayout = { textLayoutResult ->
-                                                    if (textLayoutResult.lineCount > 5 || textLayoutResult.hasVisualOverflow) {
+                                                    if ((textLayoutResult.lineCount > 5 || textLayoutResult.hasVisualOverflow) && !hasNoteMoreThan5Lines) {
                                                         hasNoteMoreThan5Lines = true
                                                     }
                                                 }
@@ -2418,24 +2443,32 @@ fun ContactDetailsScreen(
                                     }
                                 ) {
                                     Column(modifier = Modifier.animateContentSize()) {
+                                        val isNewCallLogsLogic = prefs.getBoolean(PreferenceManager.KEY_NEW_CALL_LOGS_LOGIC, false)
                                         contactLogs.take(3).forEachIndexed { index, log ->
-                                            val matchingRecording = remember(log, allRecordings, contactPhoneNumbers) {
-                                                findMatchingRecording(log, allRecordings, contactPhoneNumbers)
-                                            }
-                                            CallLogTileSimple(
-                                                log = log,
-                                                matchingRecording = matchingRecording,
-                                                onRecordingClick = { rec ->
-                                                    NavBarVisibilityState.hideForSettingsEntry = true
-                                                    navigator.navigate(
-                                                        RecordingsScreenDestination(
-                                                            openedFromSettings = true,
-                                                            openedRecordingUri = rec.uri.toString()
+                                            if (isNewCallLogsLogic) {
+                                                CallLogTileSimple(
+                                                    log = log,
+                                                    onCallClick = { initiateCall(it.number) }
+                                                )
+                                            } else {
+                                                val matchingRecording = remember(log, allRecordings, contactPhoneNumbers) {
+                                                    findMatchingRecording(log, allRecordings, contactPhoneNumbers)
+                                                }
+                                                CallLogTileSimple(
+                                                    log = log,
+                                                    matchingRecording = matchingRecording,
+                                                    onRecordingClick = { rec ->
+                                                        NavBarVisibilityState.hideForSettingsEntry = true
+                                                        navigator.navigate(
+                                                            RecordingsScreenDestination(
+                                                                openedFromSettings = true,
+                                                                openedRecordingUri = rec.uri.toString()
+                                                            )
                                                         )
-                                                    )
-                                                },
-                                                onCallClick = { initiateCall(it.number) }
-                                            )
+                                                    },
+                                                    onCallClick = { initiateCall(it.number) }
+                                                )
+                                            }
                                             if (index < 2 && index < contactLogs.size - 1) {
                                                 HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                             }
@@ -2569,6 +2602,7 @@ fun ContactDetailsScreen(
             }
             item { Spacer(modifier = Modifier.height(100.dp)) }
         }
+    }
     }
 
     if (showAddContactChoiceDialog) {

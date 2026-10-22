@@ -13,6 +13,7 @@ object AppFontConstants {
     const val FONT_ID_COMFORTAA = "comfortaa"
     const val FONT_ID_PATRICK_HAND = "patrick_hand"
     const val FONT_ID_GOCHI_HAND = "gochi_hand"
+    const val FONT_ID_ADVENT_PRO = "advent_pro"
 
     val OFL_1_1_LICENSE_TEXT = """
 SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
@@ -78,6 +79,18 @@ val PatrickHandFontFamily = FontFamily(
 
 val GochiHandFontFamily = FontFamily(
     Font(R.font.gochi_hand_regular, FontWeight.Normal)
+)
+
+val AdventProFontFamily = FontFamily(
+    Font(R.font.advent_pro_thin, FontWeight.Thin),
+    Font(R.font.advent_pro_extralight, FontWeight.ExtraLight),
+    Font(R.font.advent_pro_light, FontWeight.Light),
+    Font(R.font.advent_pro_regular, FontWeight.Normal),
+    Font(R.font.advent_pro_medium, FontWeight.Medium),
+    Font(R.font.advent_pro_semibold, FontWeight.SemiBold),
+    Font(R.font.advent_pro_bold, FontWeight.Bold),
+    Font(R.font.advent_pro_extrabold, FontWeight.ExtraBold),
+    Font(R.font.advent_pro_black, FontWeight.Black)
 )
 
 data class AppFontItem(
@@ -174,6 +187,24 @@ Designed by Juan Pablo del Peral for HT Fonts. To contribute, see github.com/hue
         licenseName = "SIL Open Font License, Version 1.1",
         licenseText = AppFontConstants.OFL_1_1_LICENSE_TEXT,
         fontFamily = GochiHandFontFamily
+    ),
+    AppFontItem(
+        id = AppFontConstants.FONT_ID_ADVENT_PRO,
+        name = "Advent Pro",
+        styleTag = "Modern Sans-Serif Variable",
+        designer = "VivaRado",
+        about = """
+Advent Pro is a modern font designed for web and print. Advent Pro utilizes some of the universal characteristics of the sans-serif genre with modern characteristics to give an edge to your typography.
+
+The family was upgraded to a variable font with additional Italic styles in December 2022. The spacing and kerning was improved, which could lead to a slightly different text line length than the previous version.
+
+To contribute, see github.com/googlefonts/Advent.
+        """.trimIndent(),
+        upstreamUrl = "https://github.com/googlefonts/Advent",
+        copyrightNotice = "Copyright 2018 The Advent Pro Project Authors (https://github.com/googlefonts/Advent)",
+        licenseName = "SIL Open Font License, Version 1.1",
+        licenseText = AppFontConstants.OFL_1_1_LICENSE_TEXT,
+        fontFamily = AdventProFontFamily
     )
 )
 
@@ -187,6 +218,7 @@ object AppFontHelper {
             AppFontConstants.FONT_ID_COMFORTAA -> ComfortaaFontFamily
             AppFontConstants.FONT_ID_PATRICK_HAND -> PatrickHandFontFamily
             AppFontConstants.FONT_ID_GOCHI_HAND -> GochiHandFontFamily
+            AppFontConstants.FONT_ID_ADVENT_PRO -> AdventProFontFamily
             else -> {
                 val file = File(fontKeyOrPath)
                 if (file.exists()) {
@@ -211,6 +243,7 @@ object AppFontHelper {
             AppFontConstants.FONT_ID_COMFORTAA -> "Comfortaa"
             AppFontConstants.FONT_ID_PATRICK_HAND -> "Patrick Hand"
             AppFontConstants.FONT_ID_GOCHI_HAND -> "Gochi Hand"
+            AppFontConstants.FONT_ID_ADVENT_PRO -> "Advent Pro"
             else -> {
                 val file = File(fontKeyOrPath)
                 if (file.exists()) {

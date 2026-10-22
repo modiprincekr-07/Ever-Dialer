@@ -28,6 +28,15 @@ val appModule = module {
     single<ISmsRepository> {
         SmsRepository(androidContext(), androidContext().contentResolver)
     }
+    single {
+        com.modiprincekr.thedialer.controller.util.PcBluetoothSyncManager(
+            androidContext(),
+            get(),
+            get(),
+            get(),
+            get()
+        )
+    }
     viewModel { ContactsViewModel(androidApplication(), get(), get()) }
     viewModel { CallLogViewModel(androidApplication(), get(), get()) }
     viewModel { SmsViewModel(androidApplication(), get(), get()) }

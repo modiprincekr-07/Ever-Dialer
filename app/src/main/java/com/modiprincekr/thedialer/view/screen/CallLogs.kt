@@ -38,6 +38,7 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinActivityViewModel
 import org.koin.compose.koinInject
+import com.modiprincekr.thedialer.view.theme.ExpandingScreenContainer
 import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
 import java.util.Locale
 import com.modiprincekr.thedialer.controller.ContactsViewModel
@@ -75,19 +76,6 @@ fun CallLogFullScreen(
     var showSimPicker by remember { mutableStateOf(false) }
     var pendingNumber by remember { mutableStateOf<String?>(null) }
 
-    // Entrance animation
-    var screenVisible by remember { mutableStateOf(false) }
-    val screenAlpha by animateFloatAsState(
-        targetValue = if (screenVisible) 1f else 0f,
-        animationSpec = tween(300),
-        label = "logScreenAlpha"
-    )
-    val screenScale by animateFloatAsState(
-        targetValue = if (screenVisible) 1f else 0.96f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "logScreenScale"
-    )
-    LaunchedEffect(Unit) { screenVisible = true }
 
     val matchedContact = remember(contactId, phoneNumber, contacts) {
         if (contactId != null && contactId != "null") contacts.find { it.id == contactId }
@@ -127,21 +115,22 @@ fun CallLogFullScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        if (contactName != null) "History with $contactName" else "Call History",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navigator.navigateUp() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
+    ExpandingScreenContainer(onClose = { navigator.navigateUp() }) { closeWithAnimation ->
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            if (contactName != null) "History with $contactName" else "Call History",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { closeWithAnimation() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -150,7 +139,7 @@ fun CallLogFullScreen(
         },
         containerColor = MaterialTheme.colorScheme.surface
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding).fillMaxSize().alpha(screenAlpha).scale(screenScale)) {
+        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 val settingsVersion by prefs.settingsChanged.collectAsState()
                 val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
@@ -203,7 +192,6 @@ fun CallLogFullScreen(
                             CallLogFilter.Missed -> filteredLogsByContact.filter { it.type == CallLog.Calls.MISSED_TYPE }
                             CallLogFilter.Incoming -> filteredLogsByContact.filter { it.type == CallLog.Calls.INCOMING_TYPE }
                             CallLogFilter.Outgoing -> filteredLogsByContact.filter { it.type == CallLog.Calls.OUTGOING_TYPE }
-                            CallLogFilter.Blocked -> filteredLogsByContact.filter { it.type == CallLog.Calls.BLOCKED_TYPE }
                         }
                     }
 
@@ -300,5 +288,6 @@ fun CallLogFullScreen(
                 onClick = { scope.launch { listState.animateScrollToItem(0) } }
             )
         }
+    }
     }
 }

@@ -44,6 +44,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -455,64 +458,91 @@ fun ContactListItem(
         val leftSwipeAction = remember(leftSwipeKey, colorScheme) { SwipeActionHelper.resolveActionItem(leftSwipeKey, colorScheme) }
         val rightSwipeAction = remember(rightSwipeKey, colorScheme) { SwipeActionHelper.resolveActionItem(rightSwipeKey, colorScheme) }
 
-        val handleSwipeAction: (String) -> Unit = { actionKey ->
-            val primaryNumber = prefs.getContactDefaultNumber(contact.id)?.takeIf { it in contact.phoneNumbers }
-            val numToCall = primaryNumber ?: contact.phoneNumbers.firstOrNull().orEmpty()
-            when (actionKey) {
-                "call", "call_back" -> {
-                    if (numToCall.isNotBlank()) makeCall(context, numToCall)
-                }
-                "send_text" -> {
-                    if (numToCall.isNotBlank()) {
-                        try {
-                            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$numToCall"))
-                            context.startActivity(intent)
-                        } catch (_: Exception) {}
-                    }
-                }
-                "delete", "delete_contact" -> {
-                    showDeleteConfirm = true
-                }
-                "select" -> onSelectMode()
-                "view_contact" -> {
-                    navigator.navigate(ContactDetailsScreenDestination(contactId = contact.id))
-                }
-                "edit_contact" -> {
-                    navigator.navigate(ContactEditScreenDestination(contactId = contact.id))
-                }
-                "copy_number" -> {
-                    if (numToCall.isNotBlank()) {
-                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        cm.setPrimaryClip(ClipData.newPlainText("phone_number", numToCall))
-                        Toast.makeText(context, "Number copied", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                "share", "share_contact" -> {
-                    val shareText = if (numToCall.isNotBlank()) "${contact.name}: $numToCall" else contact.name
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, shareText)
-                    }
-                    context.startActivity(Intent.createChooser(intent, "Share contact"))
-                }
-                "toggle_favorite" -> contactsVM.toggleFavorite(contact)
-                "block_contact" -> {
-                    val number = contact.phoneNumbers.firstOrNull()
-                    if (!number.isNullOrBlank()) {
-                        val isBlocked = BlockedNumbersManager.isBlocked(context, prefs, number)
-                        BlockedNumbersManager.toggle(context, prefs, number)
-                        Toast.makeText(
-                            context,
-                            if (isBlocked) "Contact unblocked" else "Contact blocked",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-                "call_chat_via" -> showCallChatViaPicker = true
-                "fake_call" -> showFakeCallSheet = true
-                "move_contact" -> showMoveDialog = true
+    var avatarCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var rowCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val recordAvatarClick: () -> Unit = {
+        avatarCoords?.let { coords ->
+            val center = coords.boundsInRoot().center
+            val rootSize = coords.findRootCoordinates().size
+            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordTap(
+                center.x, center.y, rootSize.width.toFloat(), rootSize.height.toFloat()
+            )
+        } ?: rowCoords?.let { coords ->
+            val bounds = coords.boundsInRoot()
+            val rootSize = coords.findRootCoordinates().size
+            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordTap(
+                bounds.left + 38f, bounds.center.y, rootSize.width.toFloat(), rootSize.height.toFloat()
+            )
+        } ?: com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordNormalized(0.12f, 0.5f)
+    }
+
+    val handleSwipeAction: (String) -> Unit = { actionKey ->
+        val primaryNumber = prefs.getContactDefaultNumber(contact.id)?.takeIf { it in contact.phoneNumbers }
+        val numToCall = primaryNumber ?: contact.phoneNumbers.firstOrNull().orEmpty()
+        when (actionKey) {
+            "call", "call_back" -> {
+                if (numToCall.isNotBlank()) makeCall(context, numToCall)
             }
+            "send_text" -> {
+                if (numToCall.isNotBlank()) {
+                    try {
+                        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$numToCall"))
+                        context.startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+            }
+            "delete", "delete_contact" -> {
+                showDeleteConfirm = true
+            }
+            "select" -> onSelectMode()
+            "view_contact" -> {
+                recordAvatarClick()
+                navigator.navigate(ContactDetailsScreenDestination(contactId = contact.id))
+            }
+            "edit_contact" -> {
+                navigator.navigate(ContactEditScreenDestination(contactId = contact.id))
+            }
+            "copy_number" -> {
+                if (numToCall.isNotBlank()) {
+                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(ClipData.newPlainText("phone_number", numToCall))
+                    Toast.makeText(context, "Number copied", Toast.LENGTH_SHORT).show()
+                }
+            }
+            "share", "share_contact" -> {
+                val shareText = if (numToCall.isNotBlank()) "${contact.name}: $numToCall" else contact.name
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, shareText)
+                }
+                context.startActivity(Intent.createChooser(intent, "Share contact"))
+            }
+            "toggle_favorite" -> contactsVM.toggleFavorite(contact)
+            "block_contact" -> {
+                val number = contact.phoneNumbers.firstOrNull()
+                if (!number.isNullOrBlank()) {
+                    val isBlocked = BlockedNumbersManager.isBlocked(context, prefs, number)
+                    BlockedNumbersManager.toggle(context, prefs, number)
+                    Toast.makeText(
+                        context,
+                        if (isBlocked) "Contact unblocked" else "Contact blocked",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            "call_chat_via" -> showCallChatViaPicker = true
+            "search_truecaller" -> {
+                if (numToCall.isNotBlank()) {
+                    val isLaunched = com.modiprincekr.thedialer.controller.util.openTruecaller(context, numToCall)
+                    if (!isLaunched) {
+                        Toast.makeText(context, "Truecaller is not installed", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            "fake_call" -> showFakeCallSheet = true
+            "move_contact" -> showMoveDialog = true
         }
+    }
 
     Box(modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }) {
         SwipeableItemContainer(
@@ -526,6 +556,7 @@ fun ContactListItem(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onGloballyPositioned { coords -> rowCoords = coords }
                     .combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -540,6 +571,7 @@ fun ContactListItem(
                                         prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
                                     )
                                 }
+                                recordAvatarClick()
                                 navigator.navigate(ContactDetailsScreenDestination(contactId = contact.id))
                             }
                         },
@@ -556,7 +588,9 @@ fun ContactListItem(
                         name = headline,
                         photoUri = contact.photoUri,
                         size = 48.dp,
-                        modifier = Modifier.size(48.dp)
+                        modifier = Modifier
+                            .size(48.dp)
+                            .onGloballyPositioned { coords -> avatarCoords = coords }
                     )
                     Spacer(modifier = Modifier.width(16.dp))
                 }
@@ -740,6 +774,7 @@ fun ContactListItem(
                         iconTint = Color(0xFF2196F3),
                         onClick  = {
                             showMenu = false
+                            recordAvatarClick()
                             navigator.navigate(ContactDetailsScreenDestination(contactId = contact.id))
                         }
                     )

@@ -150,11 +150,13 @@ fun ContactScreen(navController: NavController, navigator: DestinationsNavigator
         }
     }
 
+    val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+
     Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
+            .pointerInput(isRtl) {
                 awaitPointerEventScope {
                     while (true) {
                         val down = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull() ?: continue
@@ -176,7 +178,8 @@ fun ContactScreen(navController: NavController, navigator: DestinationsNavigator
                                         navController = navController,
                                         currentRoute = ContactScreenDestination.route,
                                         goForward = dx < 0,
-                                        prefs = prefs_ui
+                                        prefs = prefs_ui,
+                                        isRtl = isRtl
                                     )
                                 }
                             }
@@ -198,13 +201,13 @@ fun ContactScreen(navController: NavController, navigator: DestinationsNavigator
             val isDynamic = remember(settingsVer) { prefs_ui.getBoolean(PreferenceManager.KEY_DYNAMIC_COLORS, true) }
             val usePrimary = isSaturatedActive || !isDynamic
             val fabBg = if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
-            val fabFg = if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
+            val fabFg = if (isSaturatedActive && isDark) Color.Black else if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
             val fabShape = RoundedCornerShape(17.dp)
             val useLiquidGlass = liquidGlass && lgContactsFab && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && globalBackdrop != null
             val useBlur = blurEffects && blurContactsFab && !useLiquidGlass
             val baseModifier = Modifier
                 .scale(fabScale)
-                .then(if (pillNav) Modifier.navigationBarsPadding().padding(bottom = 92.dp) else Modifier)
+                .then(if (pillNav) Modifier.navigationBarsPadding().padding(bottom = 92.dp) else Modifier.navigationBarsPadding().padding(bottom = 80.dp))
                 .then(if (isLandscape) Modifier.navigationBarsPadding().padding(bottom = 8.dp, end = 32.dp) else Modifier)
             val fabOnClick: () -> Unit = {
                 val intent = Intent(Intent.ACTION_INSERT, ContactsContract.Contacts.CONTENT_URI)

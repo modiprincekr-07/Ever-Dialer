@@ -76,7 +76,28 @@ fun NewMessageScreen(
     val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
     val isSaturatedActive = remember(settingsVer, isDark) { prefs.isSaturatedForTheme(isDark) }
 
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageOpening = false
+        com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageClosing = false
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageOpening = false
+                com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageClosing = false
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageOpening = false
+            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageClosing = false
+            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageOpen = false
+        }
+    }
+
     fun openChatWith(number: String, name: String?) {
+        com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageClosing = true
+        com.modiprincekr.thedialer.view.theme.SettingsClickTracker.notifyClosing()
         navigator.navigate(
             SmsChatScreenDestination(
                 threadId = -1L,
@@ -87,17 +108,22 @@ fun NewMessageScreen(
         )
     }
 
-    Scaffold(
-        modifier = Modifier.settingsMotionBlur(),
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            SettingsPillTopAppBar(
-                title = "New Message",
-                onBackClick = { navigator.navigateUp() }
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.surface
-    ) { paddingValues ->
+    com.modiprincekr.thedialer.view.theme.ExpandingScreenContainer(onClose = { navigator.navigateUp() }) { closeWithAnimation ->
+        Scaffold(
+            modifier = Modifier.settingsMotionBlur(),
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                SettingsPillTopAppBar(
+                    title = "New Message",
+                    onBackClick = {
+                        com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isNewMessageClosing = true
+                        com.modiprincekr.thedialer.view.theme.SettingsClickTracker.notifyClosing()
+                        closeWithAnimation()
+                    }
+                )
+            },
+            containerColor = MaterialTheme.colorScheme.surface
+        ) { paddingValues ->
         val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
         Column(
@@ -254,4 +280,5 @@ fun NewMessageScreen(
             }
         }
     }
+}
 }

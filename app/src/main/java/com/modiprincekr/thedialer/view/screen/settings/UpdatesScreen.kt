@@ -657,7 +657,7 @@ private fun VersionStatsRow(checkState: CheckState) {
             value = latestVersionText,
             icon = if (isNewer) Icons.Outlined.CloudDownload else Icons.Outlined.CheckCircle,
             modifier = Modifier.weight(1f),
-            iconTint = if (isNewer) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+            iconTint = MaterialTheme.colorScheme.primary,
             highlighted = isNewer,
             containerBgColor = if (isNewer) MaterialTheme.colorScheme.primaryContainer
                               else MaterialTheme.colorScheme.surfaceContainerHigh
@@ -811,11 +811,11 @@ private fun ExpressiveActionArea(
                         .height(52.dp),
                     shape = RoundedCornerShape(18.dp),
                     colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
                     )
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Refresh, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(10.dp))
                     Text("Check for Updates", fontWeight = FontWeight.SemiBold)
                 }
@@ -942,14 +942,14 @@ private fun ExpressiveReleaseNotesCard(
                             // Left Pane: Status Icon Surface
                             Surface(
                                 shape = RoundedCornerShape(20.dp),
-                                color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
                                 modifier = Modifier.size(56.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         Icons.Default.CheckCircle,
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.secondary,
+                                        tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(30.dp)
                                     )
                                 }
@@ -978,7 +978,7 @@ private fun ExpressiveReleaseNotesCard(
                                     Surface(
                                         onClick = onCompareClick,
                                         shape = RoundedCornerShape(12.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer
+                                        color = MaterialTheme.colorScheme.primary
                                     ) {
                                         Row(
                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -988,13 +988,13 @@ private fun ExpressiveReleaseNotesCard(
                                             Icon(
                                                 Icons.Outlined.Description,
                                                 contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                tint = MaterialTheme.colorScheme.onPrimary,
                                                 modifier = Modifier.size(16.dp)
                                             )
                                             Text(
                                                 "View Installed Version Notes",
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                color = MaterialTheme.colorScheme.onPrimary,
                                                 fontWeight = FontWeight.SemiBold
                                             )
                                         }

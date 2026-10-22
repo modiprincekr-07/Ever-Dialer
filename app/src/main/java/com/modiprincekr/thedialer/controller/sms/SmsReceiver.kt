@@ -116,18 +116,29 @@ class SmsReceiver : BroadcastReceiver() {
                 // Broadcast in-process event to instantly update active screens
                 SmsEventBus.notifyNewSms(if (threadId > 0) threadId else null)
 
+                try {
+                    val syncMgr = org.koin.core.context.GlobalContext.get().getOrNull<com.modiprincekr.thedialer.controller.util.PcBluetoothSyncManager>()
+                    syncMgr?.triggerImmediateSync()
+                } catch (_: Throwable) {}
+
                 // Resolve contact name and photo for notification
-                val (contactName, photoUri) = resolveContact(context, address)
-                showSmsNotification(
-                    context = context,
-                    sender = address,
-                    contactName = contactName,
-                    photoUri = photoUri,
-                    message = fullBody,
-                    threadId = threadId,
-                    messageId = insertedMessageId,
-                    timestamp = timestamp
-                )
+                val prefs = PreferenceManager(context)
+                val isBlocked = com.modiprincekr.thedialer.controller.util.BlockedNumbersManager.isBlocked(context, prefs, address)
+                val isMuted = prefs.isSmsMuted(address)
+
+                if (!isBlocked && !isMuted) {
+                    val (contactName, photoUri) = resolveContact(context, address)
+                    showSmsNotification(
+                        context = context,
+                        sender = address,
+                        contactName = contactName,
+                        photoUri = photoUri,
+                        message = fullBody,
+                        threadId = threadId,
+                        messageId = insertedMessageId,
+                        timestamp = timestamp
+                    )
+                }
             } finally {
                 pendingResult.finish()
             }

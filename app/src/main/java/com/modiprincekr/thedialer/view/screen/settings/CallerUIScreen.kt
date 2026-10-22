@@ -40,6 +40,7 @@ import com.modiprincekr.thedialer.view.components.RivoAnimatedSection
 import com.modiprincekr.thedialer.view.components.RivoExpressiveCard
 import com.modiprincekr.thedialer.view.components.RivoIconBox
 import com.modiprincekr.thedialer.view.components.RivoSwitchListItem
+import com.modiprincekr.thedialer.view.components.rivoHeadingColor
 import com.modiprincekr.thedialer.view.components.settingsSearchHighlight
 import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
 import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
@@ -213,7 +214,7 @@ fun CallerUIScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                         Text(
                             "Full Screen Display",
                             style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = rivoHeadingColor(),
                             modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
                         )
                         RivoExpressiveCard {
@@ -257,7 +258,7 @@ fun CallerUIScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                         Text(
                             "Appearance & Background",
                             style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = rivoHeadingColor(),
                             modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
                         )
                         RivoExpressiveCard {
@@ -330,7 +331,7 @@ fun CallerUIScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                         Text(
                             "Feature Buttons & Sizing",
                             style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = rivoHeadingColor(),
                             modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
                         )
                         RivoExpressiveCard {

@@ -5,6 +5,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.automirrored.outlined.PhoneCallback
+import androidx.compose.material.icons.outlined.MarkChatRead
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.ColorScheme
 import com.coolappstore.evercallrecorder.by.svhp.ui.common.SwipeActionItem
@@ -13,6 +14,14 @@ object SwipeActionHelper {
 
     fun resolveActionItem(actionKey: String, colorScheme: ColorScheme): SwipeActionItem? {
         return when (actionKey) {
+            "read", "mark_read" -> SwipeActionItem(
+                key = actionKey,
+                label = "Mark Read",
+                icon = Icons.Outlined.MarkChatRead,
+                backgroundColor = colorScheme.secondary,
+                contentColor = colorScheme.onSecondary,
+                isDestructive = false
+            )
             "call", "call_back" -> SwipeActionItem(
                 key = actionKey,
                 label = "Call",

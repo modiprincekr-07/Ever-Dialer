@@ -580,7 +580,7 @@ fun AppSettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = 
                     RivoExpressiveCard {
                         RivoListItem(
                             headline = "Swipe Actions",
-                            supporting = "Configure left and right swipe gestures for Call Logs, Contacts, Call Recordings, and Notes",
+                            supporting = "Configure left and right swipe gestures for Call Logs, Contacts, Call Recordings, Notes, and Messages",
                             leadingIcon = Icons.Outlined.Swipe,
                             iconContainerColor = Color(0xFF673AB7),
                             trailingIcon = Icons.Default.ChevronRight,
@@ -668,7 +668,7 @@ private fun AppSettingsSectionLabel(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.primary,
+        color = rivoHeadingColor(),
         modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
     )
 }

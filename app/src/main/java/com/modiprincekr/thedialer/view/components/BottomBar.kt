@@ -1,5 +1,8 @@
 package com.modiprincekr.thedialer.view.components
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -55,7 +58,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.graphicsLayer
@@ -178,13 +185,20 @@ fun BottomBar(navController: NavController) {
         }
     }
 
+    val isRecordingsFromSettings = currentRoute.contains("recordings_screen", ignoreCase = true) &&
+        (navBackStackEntry?.arguments?.getBoolean("openedFromSettings", false) == true ||
+         navBackStackEntry?.arguments?.getString("openedFromSettings") == "true" ||
+         NavBarVisibilityState.hideForSettingsEntry)
+
     // Only render pill when a visible tab screen is active, and not while a tab screen
-    // (e.g. Recordings) is showing its own full-screen onboarding content.
+    // (e.g. Recordings) is showing its own full-screen onboarding content or opened from settings.
     val isOnTabScreen = visibleTabRoutes.any { currentRoute.contains(it, ignoreCase = true) } &&
+        !isRecordingsFromSettings &&
         !NavBarVisibilityState.hideForOnboarding &&
         !NavBarVisibilityState.hideForSelectionMode &&
         !NavBarVisibilityState.hideForSettingsEntry &&
-        !NavBarVisibilityState.hideForSearchResult
+        !NavBarVisibilityState.hideForSearchResult &&
+        !NavBarVisibilityState.hideForDialpad
 
     // If current tab is now hidden, redirect to first visible tab. This must only fire for
     // tabs the user actually disabled in Settings > Tab Sections — not for a visible tab that's
@@ -193,6 +207,7 @@ fun BottomBar(navController: NavController) {
     // away again in a loop.
     val isOnHiddenTab = TAB_ROUTES.any { currentRoute.contains(it, ignoreCase = true) } &&
         visibleTabRoutes.none { currentRoute.contains(it, ignoreCase = true) } &&
+        !isRecordingsFromSettings &&
         !NavBarVisibilityState.hideForSettingsEntry &&
         !NavBarVisibilityState.hideForSearchResult &&
         !currentRoute.contains(GroupsScreenDestination.route, ignoreCase = true) &&
@@ -214,14 +229,22 @@ fun BottomBar(navController: NavController) {
     LaunchedEffect(isOnTabScreen) {
         pillVisible = isOnTabScreen
     }
+    val localDensity = LocalDensity.current
+    val pillExitOffsetY = with(localDensity) { 180.dp.toPx() }
     val pillOffsetY by animateFloatAsState(
-        targetValue   = if (pillVisible) 0f else 220f,
-        animationSpec = tween(durationMillis = 600, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)),
+        targetValue   = if (pillVisible) 0f else pillExitOffsetY,
+        animationSpec = tween(
+            durationMillis = if (pillVisible) 420 else 460,
+            easing         = if (pillVisible) CubicBezierEasing(0.2f, 0f, 0f, 1f) else CubicBezierEasing(0.08f, 0.85f, 0.18f, 1f)
+        ),
         label         = "pillSlideIn"
     )
     val pillAlpha by animateFloatAsState(
         targetValue   = if (pillVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = 550, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)),
+        animationSpec = tween(
+            durationMillis = if (pillVisible) 350 else 300,
+            easing         = LinearEasing
+        ),
         label         = "pillFadeIn"
     )
 
@@ -306,7 +329,7 @@ fun BottomBar(navController: NavController) {
     }
 
     if (pillNav) {
-        if (!isOnTabScreen && pillAlpha <= 0.005f && pillOffsetY >= 210f) return
+        if (!isOnTabScreen && pillAlpha <= 0.005f && pillOffsetY >= pillExitOffsetY * 0.95f) return
 
         Box(
             modifier = Modifier
@@ -318,7 +341,7 @@ fun BottomBar(navController: NavController) {
             contentAlignment = Alignment.Center
         ) {
             val globalBackdrop = LocalLiquidGlassBackdrop.current
-            val pillShape = RoundedCornerShape(32.dp)
+            val pillShape = RoundedCornerShape(percent = 50)
 
             val useLgBottomNav = liquidGlass && lgBottomNav && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && globalBackdrop != null
             val useBlurBottomNav = blurEffects && blurBottomNav && !useLgBottomNav
@@ -432,7 +455,6 @@ fun BottomBar(navController: NavController) {
                         )
                     )
                     .widthIn(max = maxPillWidth)
-                    .clip(pillShape)
 
                 if (useLgBottomNav && globalBackdrop != null) {
                     Surface(
@@ -471,8 +493,8 @@ fun BottomBar(navController: NavController) {
                     Surface(
                         shape           = pillShape,
                         color           = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        shadowElevation = 8.dp,
-                        tonalElevation  = 4.dp,
+                        shadowElevation = 0.dp,
+                        tonalElevation  = 2.dp,
                         modifier        = mainPillModifier
                     ) { pillContent() }
                 }
@@ -498,12 +520,28 @@ fun BottomBar(navController: NavController) {
             }
         }
     } else {
+        val localDensity = LocalDensity.current
+        var barHeightPx by remember { mutableFloatStateOf(0f) }
+        val fallbackOffsetPx = with(localDensity) { 160.dp.toPx() }
+        val maxOffsetPx = if (barHeightPx > 0f) barHeightPx else fallbackOffsetPx
+
+        val navBarOffsetY by animateFloatAsState(
+            targetValue   = if (isOnTabScreen) 0f else maxOffsetPx,
+            animationSpec = tween(
+                durationMillis = if (isOnTabScreen) 420 else 460,
+                easing         = if (isOnTabScreen) CubicBezierEasing(0.2f, 0f, 0f, 1f) else CubicBezierEasing(0.08f, 0.85f, 0.18f, 1f)
+            ),
+            label         = "navBarOffsetY"
+        )
         val navBarAlpha by animateFloatAsState(
             targetValue   = if (isOnTabScreen) 1f else 0f,
-            animationSpec = tween(durationMillis = 550, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)),
+            animationSpec = tween(
+                durationMillis = if (isOnTabScreen) 350 else 300,
+                easing         = LinearEasing
+            ),
             label         = "navBarAlpha"
         )
-        if (!isOnTabScreen && navBarAlpha <= 0.005f) return
+        if (!isOnTabScreen && navBarAlpha <= 0.005f && navBarOffsetY >= maxOffsetPx * 0.95f) return
 
         val standardScrollState = rememberScrollState()
         val screenWidth = configuration.screenWidthDp.dp
@@ -525,74 +563,88 @@ fun BottomBar(navController: NavController) {
             label         = "standardIndicatorProgress"
         )
 
-        Surface(
-            color          = if (isSmsSelected) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer,
-            tonalElevation = 2.dp,
-            modifier       = Modifier
+        Box(
+            modifier = Modifier
                 .fillMaxWidth()
-                .wrapContentHeight()
-                .graphicsLayer { alpha = navBarAlpha }
+                .height(0.dp)
+                .wrapContentHeight(align = Alignment.Bottom, unbounded = true)
+                .offset { IntOffset(0, navBarOffsetY.toInt()) }
+                .graphicsLayer { alpha = navBarAlpha },
+            contentAlignment = Alignment.BottomCenter
         ) {
-            Column(
-                modifier = Modifier
+            Surface(
+                color          = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = 2.dp,
+                modifier       = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(standardScrollState)
-                        .padding(horizontal = if (canStandardScroll) 12.dp else 0.dp),
-                    horizontalArrangement = if (canStandardScroll) Arrangement.spacedBy(4.dp) else Arrangement.Center,
-                    verticalAlignment     = Alignment.CenterVertically
-                ) {
-                    orderedTabs.forEach { tab ->
-                        key(tab.key) {
-                            val bringIntoViewRequester = remember { BringIntoViewRequester() }
-                            LaunchedEffect(tab.selected) {
-                                if (tab.selected) {
-                                    try {
-                                        bringIntoViewRequester.bringIntoView()
-                                    } catch (_: Throwable) {}
-                                }
-                            }
-                            AnimatedNavBarItem(
-                                selected       = tab.selected,
-                                selectedIcon   = tab.selectedIcon,
-                                unselectedIcon = tab.unselectedIcon,
-                                label          = tab.label,
-                                iconOnly       = iconOnly,
-                                labelStyle     = labelStyle,
-                                modifier       = Modifier
-                                    .bringIntoViewRequester(bringIntoViewRequester)
-                                    .width(itemWidth),
-                                onClick        = tab.onClick,
-                                onLongClick    = {
-                                    doHaptic()
-                                    showTabSectionsDialog = true
-                                }
-                            )
+                    .wrapContentHeight()
+                    .onSizeChanged { size ->
+                        if (size.height > 0) {
+                            barHeightPx = size.height.toFloat()
                         }
                     }
-                }
-
-                Box(
+            ) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(16.dp * standardIndicatorProgress)
-                        .graphicsLayer {
-                            alpha = standardIndicatorProgress.coerceIn(0f, 1f)
-                        },
-                    contentAlignment = Alignment.BottomCenter
+                        .navigationBarsPadding()
+                        .padding(vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    if (standardIndicatorProgress > 0.01f) {
-                        ScrollIndicatorPill(
-                            scrollState = standardScrollState,
-                            useLg       = false,
-                            useBlur     = false
-                        )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(standardScrollState)
+                            .padding(horizontal = if (canStandardScroll) 12.dp else 0.dp),
+                        horizontalArrangement = if (canStandardScroll) Arrangement.spacedBy(4.dp) else Arrangement.Center,
+                        verticalAlignment     = Alignment.CenterVertically
+                    ) {
+                        orderedTabs.forEach { tab ->
+                            key(tab.key) {
+                                val bringIntoViewRequester = remember { BringIntoViewRequester() }
+                                LaunchedEffect(tab.selected) {
+                                    if (tab.selected) {
+                                        try {
+                                            bringIntoViewRequester.bringIntoView()
+                                        } catch (_: Throwable) {}
+                                    }
+                                }
+                                AnimatedNavBarItem(
+                                    selected       = tab.selected,
+                                    selectedIcon   = tab.selectedIcon,
+                                    unselectedIcon = tab.unselectedIcon,
+                                    label          = tab.label,
+                                    iconOnly       = iconOnly,
+                                    labelStyle     = labelStyle,
+                                    modifier       = Modifier
+                                        .bringIntoViewRequester(bringIntoViewRequester)
+                                        .width(itemWidth),
+                                    onClick        = tab.onClick,
+                                    onLongClick    = {
+                                        doHaptic()
+                                        showTabSectionsDialog = true
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(16.dp * standardIndicatorProgress)
+                            .graphicsLayer {
+                                alpha = standardIndicatorProgress.coerceIn(0f, 1f)
+                            },
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        if (standardIndicatorProgress > 0.01f) {
+                            ScrollIndicatorPill(
+                                scrollState = standardScrollState,
+                                useLg       = false,
+                                useBlur     = false
+                            )
+                        }
                     }
                 }
             }
@@ -656,7 +708,7 @@ private fun AnimatedNavBarItem(
     val isDynamic = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_DYNAMIC_COLORS, true) }
     val usePrimary = isSaturatedActive || !isDynamic
     val activeNavBg = if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
-    val activeNavFg = if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
+    val activeNavFg = if (isSaturatedActive && isDark) Color.Black else if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
 
     Column(
         modifier = modifier
@@ -726,7 +778,7 @@ private fun PillNavItem(
     val isDynamic = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_DYNAMIC_COLORS, true) }
     val usePrimary = isSaturatedActive || !isDynamic
     val activeNavBg = if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
-    val activeNavFg = if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
+    val activeNavFg = if (isSaturatedActive && isDark) Color.Black else if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
 
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()

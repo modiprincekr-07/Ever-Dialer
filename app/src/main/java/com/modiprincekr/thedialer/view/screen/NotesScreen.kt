@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.zIndex
 import kotlin.math.abs
@@ -242,11 +244,12 @@ fun NotesScreen(navController: NavController, navigator: DestinationsNavigator, 
     val coroutineScope = rememberCoroutineScope()
 
     val pillNav = remember { prefs.getBoolean(PreferenceManager.KEY_PILL_NAV, true) }
+    val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
+            .pointerInput(isRtl) {
                 awaitPointerEventScope {
                     while (true) {
                         val down = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull() ?: continue
@@ -268,7 +271,8 @@ fun NotesScreen(navController: NavController, navigator: DestinationsNavigator, 
                                         navController = navController,
                                         currentRoute = NotesScreenDestination.route,
                                         goForward = dx < 0,
-                                        prefs = prefs
+                                        prefs = prefs,
+                                        isRtl = isRtl
                                     )
                                 }
                             }
@@ -332,7 +336,7 @@ fun NotesScreen(navController: NavController, navigator: DestinationsNavigator, 
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 100.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (isLandscape && !isSearchResultView) {
@@ -597,7 +601,17 @@ fun NoteCard(note: NoteEntry, photoUri: String? = null, isSelected: Boolean = fa
                 indication = null,
                 onClick = onClick,
                 onLongClick = onLongClick
-            ),
+            )
+            .pointerInput(onLongClick) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
+                            onLongClick()
+                        }
+                    }
+                }
+            },
         shape = RoundedCornerShape(20.dp),
         color = cardBgColor
     ) {

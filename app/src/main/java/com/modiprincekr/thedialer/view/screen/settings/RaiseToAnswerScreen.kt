@@ -27,6 +27,7 @@ import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.view.components.RivoAnimatedSection
 import com.modiprincekr.thedialer.view.components.RivoExpressiveCard
 import com.modiprincekr.thedialer.view.components.RivoSwitchListItem
+import com.modiprincekr.thedialer.view.components.rivoHeadingColor
 import com.modiprincekr.thedialer.view.components.settingsSearchHighlight
 import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
 import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
@@ -230,6 +231,6 @@ private fun RaiseToAnswerSectionLabel(text: String) {
         text,
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier.padding(start = 12.dp, bottom = 8.dp),
-        color = MaterialTheme.colorScheme.primary
+        color = rivoHeadingColor()
     )
 }

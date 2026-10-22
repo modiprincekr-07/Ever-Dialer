@@ -117,11 +117,21 @@ class PreferenceManager(context: Context) {
 
     fun getDefaultSwipeAction(section: String, direction: String): String = "none"
 
-    fun getSwipeAction(section: String, direction: String): String =
-        getString("swipe_action_${section}_${direction}", getDefaultSwipeAction(section, direction)) ?: getDefaultSwipeAction(section, direction)
+    fun getSwipeAction(section: String, direction: String): String {
+        if (section == "sms") {
+            val key = if (direction == "left") KEY_SMS_SWIPE_LEFT_ACTION else KEY_SMS_SWIPE_RIGHT_ACTION
+            return getString(key, "none") ?: "none"
+        }
+        return getString("swipe_action_${section}_${direction}", getDefaultSwipeAction(section, direction)) ?: getDefaultSwipeAction(section, direction)
+    }
 
-    fun setSwipeAction(section: String, direction: String, action: String) =
+    fun setSwipeAction(section: String, direction: String, action: String) {
+        if (section == "sms") {
+            val key = if (direction == "left") KEY_SMS_SWIPE_LEFT_ACTION else KEY_SMS_SWIPE_RIGHT_ACTION
+            setString(key, action)
+        }
         setString("swipe_action_${section}_${direction}", action)
+    }
 
     /** Per-contact "Choose Default Number" preference (Contact Info, just below "Choose Sim") for
      *  contacts saved with 2+ phone numbers. When set to one of the contact's numbers, the header
@@ -134,6 +144,61 @@ class PreferenceManager(context: Context) {
 
     fun setContactDefaultNumber(contactKey: String, number: String?) =
         setString(KEY_CONTACT_DEFAULT_NUMBER_PREFIX + contactKey, number)
+
+    fun getPinnedSmsThreads(): Set<Long> =
+        getString(KEY_PINNED_SMS_THREADS, "")?.split(",")?.mapNotNull { it.trim().toLongOrNull() }?.toSet() ?: emptySet()
+
+    fun isSmsThreadPinned(threadId: Long): Boolean =
+        getPinnedSmsThreads().contains(threadId)
+
+    fun setSmsThreadPinned(threadId: Long, pinned: Boolean) {
+        val current = getPinnedSmsThreads().toMutableSet()
+        if (pinned) current.add(threadId) else current.remove(threadId)
+        setString(KEY_PINNED_SMS_THREADS, current.joinToString(","))
+    }
+
+    fun getPinnedSmsMessages(): Set<Long> =
+        getString(KEY_PINNED_SMS_MESSAGES, "")?.split(",")?.mapNotNull { it.trim().toLongOrNull() }?.toSet() ?: emptySet()
+
+    fun isSmsMessagePinned(messageId: Long): Boolean =
+        getPinnedSmsMessages().contains(messageId)
+
+    fun setSmsMessagePinned(messageId: Long, pinned: Boolean) {
+        val current = getPinnedSmsMessages().toMutableSet()
+        if (pinned) current.add(messageId) else current.remove(messageId)
+        setString(KEY_PINNED_SMS_MESSAGES, current.joinToString(","))
+    }
+
+    fun getStarredSmsMessages(): Set<Long> =
+        getString(KEY_STARRED_SMS_MESSAGES, "")?.split(",")?.mapNotNull { it.trim().toLongOrNull() }?.toSet() ?: emptySet()
+
+    fun isSmsMessageStarred(messageId: Long): Boolean =
+        getStarredSmsMessages().contains(messageId)
+
+    fun setSmsMessageStarred(messageId: Long, starred: Boolean) {
+        val current = getStarredSmsMessages().toMutableSet()
+        if (starred) current.add(messageId) else current.remove(messageId)
+        setString(KEY_STARRED_SMS_MESSAGES, current.joinToString(","))
+    }
+
+    fun getMutedSmsAddresses(): Set<String> =
+        getString(KEY_MUTED_SMS_ADDRESSES, "")?.split(",")?.map { it.trim().lowercase() }?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+
+    fun isSmsMuted(address: String): Boolean {
+        if (address.isBlank()) return false
+        val muted = getMutedSmsAddresses()
+        val clean = address.trim().lowercase()
+        return muted.any { it == clean || numbersLikelyMatch(it, clean) }
+    }
+
+    fun setSmsMuted(address: String, muted: Boolean) {
+        val clean = address.trim().lowercase()
+        if (clean.isBlank()) return
+        val current = getMutedSmsAddresses().toMutableSet()
+        if (muted) current.add(clean) else current.removeIf { it == clean || numbersLikelyMatch(it, clean) }
+        setString(KEY_MUTED_SMS_ADDRESSES, current.joinToString(","))
+    }
+
 
     /** Returns the user-configured tab order (Settings > Appearance > Tab Sections) as an
      *  ordered list of tab keys (e.g. "favorites", "calls", "contacts", "recordings", "notes").
@@ -168,6 +233,12 @@ class PreferenceManager(context: Context) {
         val raw = getString(KEY_SATURATED_MODES, DEFAULT_SATURATED_MODES) ?: DEFAULT_SATURATED_MODES
         return raw.split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
     }
+
+    fun getSaturatedTarget(): String =
+        getString(KEY_SATURATED_TARGET, SATURATED_TARGET_CONTAINER) ?: SATURATED_TARGET_CONTAINER
+
+    fun setSaturatedTarget(target: String) =
+        setString(KEY_SATURATED_TARGET, target)
 
     fun isSaturatedForTheme(isDark: Boolean): Boolean {
         if (!getBoolean(KEY_SATURATED_COLORS, false)) return false
@@ -397,6 +468,16 @@ class PreferenceManager(context: Context) {
         const val SIM_CHOICE_CALL_LOG           = "call_log"
         const val SIM_CHOICE_LAST_FOR_CONTACT   = "last_for_contact"
         const val SIM_CHOICE_LAST_IN_CALL       = "last_in_call"
+        const val KEY_DEFAULT_SPEAKER_ROUTE     = "default_speaker_route"
+        const val KEY_DEFAULT_MIC_ROUTE         = "default_mic_route"
+        const val KEY_USE_PREVIOUS_CALL_AUDIO_CONFIG = "use_previous_call_audio_config"
+        const val KEY_LAST_USED_SPEAKER_ROUTE   = "last_used_speaker_route"
+        const val KEY_LAST_USED_MIC_ROUTE       = "last_used_mic_route"
+        const val SPEAKER_ROUTE_EXTERNAL        = "external"
+        const val SPEAKER_ROUTE_EAR             = "ear_speaker"
+        const val SPEAKER_ROUTE_SPEAKER         = "speaker"
+        const val MIC_ROUTE_EXTERNAL            = "external"
+        const val MIC_ROUTE_SYSTEM              = "system"
         const val KEY_DYNAMIC_COLORS        = "dynamic_colors"
         const val KEY_AMOLED_MODE           = "amoled_mode"
         const val KEY_SOLID_ICONS           = "solid_icons"
@@ -432,6 +513,7 @@ class PreferenceManager(context: Context) {
         const val KEY_APP_HAPTICS              = "app_haptics_enabled"
         const val KEY_APP_HAPTICS_STRENGTH     = "app_haptics_strength"
         const val KEY_HAPTICS_CUSTOM_INTENSITY = "haptics_custom_intensity"
+        const val KEY_HAPTIC_TOUCH_ONLY        = "haptic_trigger_touch_screen_only"
         const val KEY_NOTES_ENABLED         = "notes_enabled"
         // When true (default), the app's Notes section and the call recording notes
         // (inside Ever Call Recorder's recording playback screen) are kept as two
@@ -450,6 +532,9 @@ class PreferenceManager(context: Context) {
         const val KEY_CORNER_RADIUS         = "corner_radius"
         const val KEY_THEME_MODE            = "theme_mode"
         const val KEY_SATURATED_COLORS      = "saturated_colors"
+        const val KEY_SATURATED_TARGET      = "saturated_target"
+        const val SATURATED_TARGET_CONTAINER = "container"
+        const val SATURATED_TARGET_BACKGROUND = "background"
         const val KEY_SATURATED_MODES       = "saturated_modes"
         const val DEFAULT_SATURATED_MODES   = "light,dark,white,black"
         const val KEY_SATURATION_LEVEL      = "saturation_level"
@@ -519,6 +604,13 @@ class PreferenceManager(context: Context) {
         const val KEY_CALL_TIME_FORMAT_24H  = "call_time_format_24h"
         // Talk Time in call logs — false = off (default), true = on
         const val KEY_SHOW_TALK_TIME_IN_CALL_LOGS = "show_talk_time_in_call_logs"
+        // Missed Call Duration in call logs — false = off (default), true = on
+        const val KEY_SHOW_MISSED_CALL_DURATION = "show_missed_call_duration_in_call_logs"
+        // Auto reset missed call duration
+        const val KEY_AUTO_RESET_MISSED_CALL_DURATION_ENABLED = "auto_reset_missed_call_duration_enabled"
+        const val KEY_AUTO_RESET_MISSED_CALL_DURATION_VALUE = "auto_reset_missed_call_duration_value"
+        const val KEY_AUTO_RESET_MISSED_CALL_DURATION_UNIT = "auto_reset_missed_call_duration_unit"
+        const val KEY_AUTO_RESET_MISSED_CALL_DURATION_LAST_RESET = "auto_reset_missed_call_duration_last_reset"
         // Whether the ongoing-call screen smoothly slides away when a call ends. Default true;
         // when false, the call screen should close immediately instead.
         const val KEY_HANGUP_ANIMATION      = "hangup_animation"
@@ -587,6 +679,8 @@ class PreferenceManager(context: Context) {
         // describing the order tabs appear in the bottom navigation bar.
         const val KEY_TAB_ORDER                = "tab_order"
         const val KEY_MISSED_CALL_RESET_TIME   = "missed_call_reset_time"
+        const val KEY_NEW_CALL_LOGS_LOGIC      = "new_call_logs_logic"
+        const val KEY_NEW_CONTACTS_LOGIC       = "new_contacts_logic"
         const val DEFAULT_TAB_ORDER            = "favorites,calls,contacts,sms,groups,recordings,notes,dialpad"
         // Passwords & Security / Biometrics
         const val KEY_BIOMETRICS_TYPE          = "biometrics_type"         // "system" | "pin" | "password" | "pattern" | ""
@@ -662,6 +756,7 @@ class PreferenceManager(context: Context) {
         const val KEY_SEARCH_FILTER_SETTINGS        = "search_filter_settings"
         const val KEY_SEARCH_FILTER_ORDER           = "search_filter_order"
 
+        const val KEY_SMS_ENABLED                   = "sms_enabled"
         const val KEY_SMS_CHAT_TEXT_SIZE            = "sms_chat_text_size"
         const val DEFAULT_SMS_CHAT_TEXT_SIZE        = 16f
 
@@ -677,11 +772,19 @@ class PreferenceManager(context: Context) {
         const val KEY_SMS_MAX_MMS_SIZE              = "sms_max_mms_size" // "100KB", "200KB", "300KB", "600KB", "1MB", "2MB"
         const val KEY_SMS_DISABLE_SCREENSHOTS       = "sms_disable_screenshots"
         const val KEY_SMS_AUTO_COLOR_AVATARS        = "sms_auto_color_avatars"
+        const val KEY_SMS_SHOW_AVATAR               = "sms_show_avatar"
         const val KEY_SMS_SHOW_STT                  = "sms_show_stt"
         const val KEY_SMS_SWIPE_RIGHT_ACTION        = "sms_swipe_right_action" // "call", "read", "delete", "none" (default: "none")
         const val KEY_SMS_SWIPE_LEFT_ACTION         = "sms_swipe_left_action" // "delete", "read", "none" (default: "none")
         const val KEY_SMS_SELECTED_FILTER          = "sms_selected_filter" // "all", "contacts", "unknown"
         const val KEY_SMS_FILTER_ORDER             = "sms_filter_order"
+        const val KEY_SMS_LAUNCHER_ICON_ENABLED     = "sms_launcher_icon_enabled"
+        const val KEY_SMS_LAUNCHER_APP_NAME         = "sms_launcher_app_name"
+        const val KEY_SMS_SELECTED_APP_ICON         = "sms_selected_app_icon"
+        const val KEY_PINNED_SMS_THREADS            = "pinned_sms_threads"
+        const val KEY_PINNED_SMS_MESSAGES           = "pinned_sms_messages"
+        const val KEY_STARRED_SMS_MESSAGES          = "starred_sms_messages"
+        const val KEY_MUTED_SMS_ADDRESSES           = "muted_sms_addresses"
         const val KEY_SCHEDULED_SMS                 = "scheduled_sms_list"
         const val KEY_SMS_FLOATING_BUBBLE           = "sms_floating_bubble"
 
@@ -801,6 +904,15 @@ class PreferenceManager(context: Context) {
 
         // Confirm placing a call
         const val KEY_CONFIRM_PLACING_CALL         = "confirm_placing_call"
+
+        // PC Connect & Bluetooth PC Sync
+        const val KEY_PC_SYNC_FAVOURITES           = "pc_sync_favourites"
+        const val KEY_PC_SYNC_CALL_LOGS            = "pc_sync_call_logs"
+        const val KEY_PC_SYNC_CONTACTS             = "pc_sync_contacts"
+        const val KEY_PC_SYNC_SMS                  = "pc_sync_sms"
+        const val KEY_PC_SYNC_NOTES                = "pc_sync_notes"
+        const val KEY_PC_SYNC_CONTACT_PFP          = "pc_sync_contact_pfp"
+        const val KEY_PC_SYNC_BLUETOOTH_ENABLED    = "pc_sync_bluetooth_enabled"
     }
 }
 

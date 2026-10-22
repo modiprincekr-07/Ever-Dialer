@@ -19,6 +19,8 @@ import android.telecom.InCallService
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import android.telecom.VideoProfile
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothProfile
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -76,6 +78,51 @@ class CallService : InCallService() {
     private val callAnsweredSet = mutableSetOf<Call>()
     private val handledCallEndedPopups = java.util.Collections.newSetFromMap(java.util.WeakHashMap<Call, Boolean>())
     private val pendingAccountSelectionCalls = java.util.Collections.newSetFromMap(java.util.WeakHashMap<Call, Boolean>())
+    private val defaultAudioAppliedForCall = java.util.Collections.newSetFromMap(java.util.WeakHashMap<Call, Boolean>())
+
+    fun applyDefaultAudioRouting(call: Call) {
+        if (!defaultAudioAppliedForCall.add(call)) return
+        val usePrevious = prefs.getBoolean(PreferenceManager.KEY_USE_PREVIOUS_CALL_AUDIO_CONFIG, false)
+        val desiredSpeaker = if (usePrevious) {
+            prefs.getString(PreferenceManager.KEY_LAST_USED_SPEAKER_ROUTE, PreferenceManager.SPEAKER_ROUTE_EXTERNAL) ?: PreferenceManager.SPEAKER_ROUTE_EXTERNAL
+        } else {
+            prefs.getString(PreferenceManager.KEY_DEFAULT_SPEAKER_ROUTE, PreferenceManager.SPEAKER_ROUTE_EXTERNAL) ?: PreferenceManager.SPEAKER_ROUTE_EXTERNAL
+        }
+
+        val supportedMask = _audioState.value?.supportedRouteMask ?: 0
+        val btAdapter = try { BluetoothAdapter.getDefaultAdapter() } catch (_: Throwable) { null }
+        val hasBluetooth = (supportedMask and CallAudioState.ROUTE_BLUETOOTH) != 0 ||
+            try {
+                btAdapter?.getProfileConnectionState(BluetoothProfile.HEADSET) == BluetoothProfile.STATE_CONNECTED
+            } catch (_: Throwable) { false }
+        val hasWired = (supportedMask and CallAudioState.ROUTE_WIRED_HEADSET) != 0
+        val isExternalConnected = hasBluetooth || hasWired
+
+        when (desiredSpeaker) {
+            PreferenceManager.SPEAKER_ROUTE_EXTERNAL -> {
+                if (isExternalConnected) {
+                    val route = if (hasBluetooth) CallAudioState.ROUTE_BLUETOOTH else CallAudioState.ROUTE_WIRED_HEADSET
+                    setAudioRoute(route)
+                } else {
+                    setAudioRoute(CallAudioState.ROUTE_EARPIECE)
+                }
+            }
+            PreferenceManager.SPEAKER_ROUTE_SPEAKER -> {
+                setAudioRoute(CallAudioState.ROUTE_SPEAKER)
+            }
+            PreferenceManager.SPEAKER_ROUTE_EAR -> {
+                setAudioRoute(CallAudioState.ROUTE_EARPIECE)
+            }
+            else -> {
+                if (isExternalConnected) {
+                    val route = if (hasBluetooth) CallAudioState.ROUTE_BLUETOOTH else CallAudioState.ROUTE_WIRED_HEADSET
+                    setAudioRoute(route)
+                } else {
+                    setAudioRoute(CallAudioState.ROUTE_EARPIECE)
+                }
+            }
+        }
+    }
 
     private fun recordMissedCallDurationIfNeeded(call: Call) {
         val ringStart = callRingStartTimes.remove(call)
@@ -669,15 +716,19 @@ class CallService : InCallService() {
 
             if (state == Call.STATE_RINGING) {
                 callRingStartTimes.getOrPut(call) { System.currentTimeMillis() }
-            } else if (state == Call.STATE_ACTIVE) {
-                cancelAutoRedial()
-                callAnsweredSet.add(call)
-                callConnectTimes.getOrPut(call) { System.currentTimeMillis() }
-                com.coolappstore.evercallrecorder.by.svhp.services.call.CallSessionManager.getInstance(this@CallService)
-                    .notifyCallAnsweredInDialer()
+            } else if (state == Call.STATE_ACTIVE || state == Call.STATE_DIALING) {
+                if (state == Call.STATE_ACTIVE) {
+                    cancelAutoRedial()
+                    callAnsweredSet.add(call)
+                    callConnectTimes.getOrPut(call) { System.currentTimeMillis() }
+                    com.coolappstore.evercallrecorder.by.svhp.services.call.CallSessionManager.getInstance(this@CallService)
+                        .notifyCallAnsweredInDialer()
+                }
+                applyDefaultAudioRouting(call)
             }
 
             if (state == Call.STATE_DISCONNECTED) {
+                defaultAudioAppliedForCall.remove(call)
                 recordMissedCallDurationIfNeeded(call)
                 val cause = call.details?.disconnectCause
                 val causeCode = cause?.code ?: DisconnectCause.UNKNOWN
@@ -851,6 +902,9 @@ class CallService : InCallService() {
             try {
                 com.modiprincekr.thedialer.controller.util.MissedCallBadgeManager.updateBadge(this)
             } catch (_: Exception) {}
+            try {
+                org.koin.core.context.GlobalContext.get().getOrNull<com.modiprincekr.thedialer.controller.util.PcBluetoothSyncManager>()?.triggerImmediateSync()
+            } catch (_: Throwable) {}
         }, 300)
     }
 
@@ -1070,6 +1124,9 @@ class CallService : InCallService() {
             handleSelectPhoneAccount(call, number)
             return
         }
+        if (call.state == Call.STATE_DIALING || call.state == Call.STATE_CONNECTING || call.state == Call.STATE_ACTIVE) {
+            applyDefaultAudioRouting(call)
+        }
         updateNotification(call)
         if (call.state != Call.STATE_RINGING) {
             launchCallActivity()
@@ -1083,6 +1140,18 @@ class CallService : InCallService() {
         _audioState.value = audioState
         // Rebuild notification so mute/speaker button labels stay in sync
         _currentCallSession.value?.call?.let { updateNotification(it) }
+
+        audioState?.let { state ->
+            val speakerVal = when (state.route) {
+                CallAudioState.ROUTE_BLUETOOTH, CallAudioState.ROUTE_WIRED_HEADSET -> PreferenceManager.SPEAKER_ROUTE_EXTERNAL
+                CallAudioState.ROUTE_SPEAKER -> PreferenceManager.SPEAKER_ROUTE_SPEAKER
+                CallAudioState.ROUTE_EARPIECE -> PreferenceManager.SPEAKER_ROUTE_EAR
+                else -> null
+            }
+            if (speakerVal != null) {
+                prefs.setString(PreferenceManager.KEY_LAST_USED_SPEAKER_ROUTE, speakerVal)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

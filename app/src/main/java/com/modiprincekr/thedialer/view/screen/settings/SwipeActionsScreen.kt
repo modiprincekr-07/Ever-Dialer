@@ -33,6 +33,7 @@ import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
 import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
+import com.ramcosta.composedestinations.generated.destinations.FavouritesSettingsScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import org.koin.compose.koinInject
 
@@ -79,6 +80,7 @@ private val CONTACTS_SWIPE_OPTIONS = listOf(
     SwipeActionOption("share_contact", "Share contact", Icons.Default.Share),
     SwipeActionOption("call_chat_via", "Call/Chat Via", Icons.AutoMirrored.Filled.Chat),
     SwipeActionOption("send_text", "Send text", Icons.AutoMirrored.Filled.Message),
+    SwipeActionOption("search_truecaller", "Search Truecaller", Icons.Default.Search),
     SwipeActionOption("move_contact", "Move contact", Icons.Default.DriveFileMove),
     SwipeActionOption("toggle_favorite", "Add/Remove Favourites", Icons.Default.Favorite),
     SwipeActionOption("block_contact", "Block/Unblock contact", Icons.Default.Block),
@@ -100,11 +102,21 @@ private val NOTES_SWIPE_OPTIONS = listOf(
     SwipeActionOption("delete", "Delete", Icons.Default.Delete)
 )
 
+private val SMS_SWIPE_OPTIONS = listOf(
+    SwipeActionOption("call", "Call", Icons.Default.Call),
+    SwipeActionOption("read", "Mark Read / Unread", Icons.Outlined.MarkChatRead),
+    SwipeActionOption("delete", "Delete Conversation", Icons.Default.Delete)
+)
+
+private val FAVOURITES_SWIPE_OPTIONS = CONTACTS_SWIPE_OPTIONS
+
 private val SWIPE_SECTIONS = listOf(
+    SwipeSectionInfo("favourites", "Favourites", Icons.Default.Favorite, Color(0xFFE91E63), FAVOURITES_SWIPE_OPTIONS),
     SwipeSectionInfo("call_logs", "Call Logs", Icons.Outlined.History, Color(0xFF2196F3), CALL_LOGS_SWIPE_OPTIONS),
     SwipeSectionInfo("contacts", "Contacts", Icons.Outlined.Person, Color(0xFF4CAF50), CONTACTS_SWIPE_OPTIONS),
     SwipeSectionInfo("recordings", "Call Recordings", Icons.Outlined.Mic, Color(0xFFE91E63), RECORDINGS_SWIPE_OPTIONS),
-    SwipeSectionInfo("notes", "Notes", Icons.Outlined.Description, Color(0xFFFF9800), NOTES_SWIPE_OPTIONS)
+    SwipeSectionInfo("notes", "Notes", Icons.Outlined.Description, Color(0xFFFF9800), NOTES_SWIPE_OPTIONS),
+    SwipeSectionInfo("sms", "SMS / Messages", Icons.AutoMirrored.Filled.Message, Color(0xFF673AB7), SMS_SWIPE_OPTIONS)
 )
 
 private fun getActionLabel(section: SwipeSectionInfo, key: String): String {
@@ -125,10 +137,12 @@ fun SwipeActionsScreen(
     val colorScheme = MaterialTheme.colorScheme
     val swipeSections = remember(colorScheme) {
         listOf(
+            SwipeSectionInfo("favourites", "Favourites", Icons.Default.Favorite, Color(0xFFE91E63), FAVOURITES_SWIPE_OPTIONS),
             SwipeSectionInfo("call_logs", "Call Logs", Icons.Outlined.History, colorScheme.primary, CALL_LOGS_SWIPE_OPTIONS),
             SwipeSectionInfo("contacts", "Contacts", Icons.Outlined.Person, colorScheme.secondary, CONTACTS_SWIPE_OPTIONS),
             SwipeSectionInfo("recordings", "Call Recordings", Icons.Outlined.Mic, colorScheme.tertiary, RECORDINGS_SWIPE_OPTIONS),
-            SwipeSectionInfo("notes", "Notes", Icons.Outlined.Description, colorScheme.primary, NOTES_SWIPE_OPTIONS)
+            SwipeSectionInfo("notes", "Notes", Icons.Outlined.Description, colorScheme.primary, NOTES_SWIPE_OPTIONS),
+            SwipeSectionInfo("sms", "SMS / Messages", Icons.AutoMirrored.Filled.Message, colorScheme.secondary, SMS_SWIPE_OPTIONS)
         )
     }
 
@@ -160,6 +174,11 @@ fun SwipeActionsScreen(
                 val leftLabel = getActionLabel(section, leftKey)
                 val rightLabel = getActionLabel(section, rightKey)
 
+                val isFavoritesSection = section.key == "favourites"
+                val favoritesInList = remember(settingsVer) {
+                    prefs.getBoolean(PreferenceManager.KEY_FAVORITES_IN_LIST, false)
+                }
+
                 RivoAnimatedSection(delayMs = (index * 25).toLong()) {
                     Column {
                         Text(
@@ -169,6 +188,48 @@ fun SwipeActionsScreen(
                             modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
                         )
                         RivoExpressiveCard {
+                            if (isFavoritesSection && !favoritesInList) {
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Info,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Text(
+                                                text = "This feature can only be used when the favourites section is in list style.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onErrorContainer
+                                            )
+                                        }
+                                        FilledTonalButton(
+                                            onClick = {
+                                                navigator.navigate(FavouritesSettingsScreenDestination())
+                                            },
+                                            modifier = Modifier.align(Alignment.End),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                        ) {
+                                            Text("Show Favourites in list", style = MaterialTheme.typography.labelMedium)
+                                        }
+                                    }
+                                }
+                                CardDivider()
+                            }
+
                             // Section header row - tapping it opens floating popup
                             Row(
                                 modifier = Modifier
@@ -221,7 +282,7 @@ fun SwipeActionsScreen(
                             RivoListItem(
                                 headline = "Left action",
                                 supporting = leftLabel,
-                                leadingIcon = Icons.Outlined.ArrowBack,
+                                leadingIcon = Icons.AutoMirrored.Outlined.ArrowBack,
                                 iconContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                                 trailingIcon = Icons.Default.ChevronRight,
                                 onClick = {
@@ -236,7 +297,7 @@ fun SwipeActionsScreen(
                             RivoListItem(
                                 headline = "Right action",
                                 supporting = rightLabel,
-                                leadingIcon = Icons.Outlined.ArrowForward,
+                                leadingIcon = Icons.AutoMirrored.Outlined.ArrowForward,
                                 iconContainerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f),
                                 trailingIcon = Icons.Default.ChevronRight,
                                 onClick = {

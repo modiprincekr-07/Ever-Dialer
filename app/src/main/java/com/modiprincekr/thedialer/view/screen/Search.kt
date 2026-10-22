@@ -3,10 +3,12 @@ package com.modiprincekr.thedialer.view.screen
 import android.Manifest
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.material.icons.Icons
@@ -22,13 +24,25 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.activity.compose.BackHandler
+import androidx.activity.BackEventCompat
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogWindowProvider
+import android.graphics.drawable.ColorDrawable
+import android.view.WindowManager
+import androidx.core.view.WindowCompat
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -65,6 +79,7 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinActivityViewModel
 
@@ -86,7 +101,7 @@ private fun matchesNoteQuery(text: String, query: String): Boolean {
 }
 
 @OptIn(ExperimentalPermissionsApi::class)
-@Destination<RootGraph>(style = com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle::class)
+@Destination<RootGraph>(style = com.modiprincekr.thedialer.view.theme.SearchDestinationStyle::class)
 @Composable
 fun SearchScreen(
     navController: NavController,
@@ -95,28 +110,224 @@ fun SearchScreen(
 ) {
     val permState = rememberPermissionState(Manifest.permission.READ_CONTACTS)
     val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
-    val showButton by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
+    val prefs = koinInject<PreferenceManager>()
+    val settingsVer by prefs.settingsChanged.collectAsState()
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val coroutineScope = rememberCoroutineScope()
 
-    DisposableEffect(Unit) {
+    // Configure the Dialog window to be 100% transparent and edge-to-edge
+    // so the underlying screen (Recents, Contacts, etc.) remains fully visible underneath,
+    // and sync the phone's status bar / navigation bar icon colors according to the theme.
+    val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
+    val view = LocalView.current
+    DisposableEffect(view, isDark) {
+        val window = (view.parent as? DialogWindowProvider)?.window
+        window?.let { w ->
+            w.setDimAmount(0f)
+            w.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
+            w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            WindowCompat.setDecorFitsSystemWindows(w, false)
+            w.statusBarColor = android.graphics.Color.TRANSPARENT
+            w.navigationBarColor = android.graphics.Color.TRANSPARENT
+            val controller = WindowCompat.getInsetsController(w, w.decorView)
+            // Light icons on dark theme (!isDark is false), dark icons on light theme (!isDark is true)
+            controller.isAppearanceLightStatusBars = !isDark
+            controller.isAppearanceLightNavigationBars = !isDark
+        }
+        onDispose {}
+    }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isSearchOpening = true
+        NavBarVisibilityState.hideForSettingsEntry = true
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isSearchOpening = true
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.isSearchOpening = false
             NavBarVisibilityState.hideForSettingsEntry = false
         }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.surface
-    ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            ContactSearchContent(
-                navigator = navigator,
-                navController = navController,
-                isGranted = permState.status == PermissionStatus.Granted,
-                onRequestPermission = { permState.launchPermissionRequest() },
-                listState = listState,
-                initialQuery = initialQuery
+    // Animation progress: 0f = collapsed search bar pill shape, 1f = fully expanded screen
+    val animProgress = remember { Animatable(0f) }
+    var isClosing by remember { mutableStateOf(false) }
+
+    // Luxurious, smooth expressive zoom curves
+    val zoomEnterEasing = remember { CubicBezierEasing(0.16f, 1f, 0.3f, 1f) }
+    val zoomExitEasing = remember { CubicBezierEasing(0.2f, 0f, 0f, 1f) }
+
+    LaunchedEffect(Unit) {
+        animProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = 580,
+                easing = zoomEnterEasing
             )
+        )
+    }
+
+    var hasNavigatedUp by remember { mutableStateOf(false) }
+    val safeNavigateUp: () -> Unit = {
+        if (!hasNavigatedUp) {
+            hasNavigatedUp = true
+            try {
+                navigator.navigateUp()
+            } catch (_: Exception) {}
+        }
+    }
+
+    val closeSearch: () -> Unit = {
+        if (!isClosing && !hasNavigatedUp) {
+            isClosing = true
+            keyboardController?.hide()
+            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.notifyClosing()
+            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.triggerSearchBounce()
+            coroutineScope.launch {
+                animProgress.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(
+                        durationMillis = 480,
+                        easing = zoomExitEasing
+                    )
+                )
+                safeNavigateUp()
+            }
+        }
+    }
+
+    val predictiveBackEnabled = remember(settingsVer) {
+        prefs.getBoolean(PreferenceManager.KEY_PREDICTIVE_BACK_GESTURE, true)
+    }
+    var isPredictiveBackTriggering by remember { mutableStateOf(false) }
+    var backSwipeProgress by remember { mutableFloatStateOf(0f) }
+    var backSwipeEdge by remember { mutableIntStateOf(0) }
+
+    if (predictiveBackEnabled) {
+        PredictiveBackHandler(enabled = !isClosing && !hasNavigatedUp) { progressFlow ->
+            isPredictiveBackTriggering = true
+            keyboardController?.hide()
+            try {
+                progressFlow.collect { backEvent ->
+                    backSwipeEdge = backEvent.swipeEdge
+                    // Increased sensitivity (2.6x) and movement for immediate, fluid gesture response
+                    val sensitivity = 2.6f
+                    val effective = (backEvent.progress * sensitivity).coerceIn(0f, 1f)
+                    backSwipeProgress = effective
+                    val scrub = (1f - (effective * 0.52f)).coerceIn(0f, 1f)
+                    animProgress.snapTo(scrub)
+                }
+                // Gesture committed! Play the exact same smooth exit animation as the top back button
+                isClosing = true
+                isPredictiveBackTriggering = false
+                com.modiprincekr.thedialer.view.theme.SettingsClickTracker.notifyClosing()
+                com.modiprincekr.thedialer.view.theme.SettingsClickTracker.triggerSearchBounce()
+                animProgress.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(
+                        durationMillis = 480,
+                        easing = zoomExitEasing
+                    )
+                )
+                safeNavigateUp()
+            } catch (e: CancellationException) {
+                // Gesture cancelled!
+                isPredictiveBackTriggering = false
+                backSwipeProgress = 0f
+                animProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = spring(
+                        stiffness = Spring.StiffnessMediumLow,
+                        dampingRatio = Spring.DampingRatioLowBouncy
+                    )
+                )
+            }
+        }
+    } else {
+        BackHandler(enabled = !isClosing && !hasNavigatedUp) {
+            closeSearch()
+        }
+    }
+
+    val density = LocalDensity.current
+    val progress = animProgress.value
+
+    // Background scrim: semi-transparent black overlay that smoothly fades in/out with gesture progress.
+    // Behind this scrim, the previous opened page (Recents, Contacts, etc.) is fully visible!
+    val scrimAlpha = (0.38f * progress).coerceIn(0f, 0.38f)
+
+    // Unified smooth scale: exactly the same math for both back button and predictive system back!
+    // Zooms out to 1.0f on open, and smoothly zooms inward all the way down to 0.06f on close
+    val currentScale = lerp(0.06f, 1f, progress)
+
+    // Unified corner radius: rounds smoothly up to 28dp pill radius as it collapses into the pill
+    val currentCornerRadius = (28 * (1f - progress)).dp
+
+    val swipeOffsetPx = if (isPredictiveBackTriggering && backSwipeProgress > 0f) {
+        val dir = if (backSwipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
+        with(density) { dir * backSwipeProgress * progress * 150.dp.toPx() }
+    } else 0f
+
+    val swipeOffsetYPx = if (isPredictiveBackTriggering && backSwipeProgress > 0f) {
+        with(density) { backSwipeProgress * progress * 48.dp.toPx() }
+    } else 0f
+
+    // As the screen closes, the surface sheet below the search bar dissolves smoothly,
+    // leaving only the search bar pill itself to align and morph with the outside bar.
+    val surfaceAlpha = (progress * 1.5f).coerceIn(0f, 1f)
+    val surfaceBgColor = MaterialTheme.colorScheme.surface.copy(alpha = surfaceAlpha)
+
+    // Results content fades out before the pill finishes closing
+    val contentFadeAlpha = ((progress - 0.20f) / 0.80f).coerceIn(0f, 1f)
+
+    val searchOrigin = com.modiprincekr.thedialer.view.theme.SettingsClickTracker.lastOrigin
+    val surfaceAnimAlpha = (progress * 2.5f).coerceIn(0f, 1f)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = scrimAlpha))
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = currentScale
+                    scaleY = currentScale
+                    translationX = swipeOffsetPx
+                    translationY = swipeOffsetYPx
+                    transformOrigin = searchOrigin
+                    alpha = surfaceAnimAlpha
+                    clip = (currentCornerRadius > 0.5.dp)
+                    shape = RoundedCornerShape(currentCornerRadius)
+                },
+            color = surfaceBgColor,
+            shape = RoundedCornerShape(currentCornerRadius)
+        ) {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                containerColor = Color.Transparent,
+                contentWindowInsets = WindowInsets(0, 0, 0, 0)
+            ) { innerPadding ->
+                Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                    ContactSearchContent(
+                        navigator = navigator,
+                        navController = navController,
+                        isGranted = permState.status == PermissionStatus.Granted,
+                        onRequestPermission = { permState.launchPermissionRequest() },
+                        listState = listState,
+                        initialQuery = initialQuery,
+                        onBack = closeSearch,
+                        searchBarProgress = progress,
+                        contentAlpha = contentFadeAlpha
+                    )
+                }
+            }
         }
     }
 }
@@ -140,7 +351,10 @@ fun ContactSearchContent(
     isGranted: Boolean,
     onRequestPermission: () -> Unit,
     listState: androidx.compose.foundation.lazy.LazyListState,
-    initialQuery: String? = null
+    initialQuery: String? = null,
+    onBack: () -> Unit = { navigator.navigateUp() },
+    searchBarProgress: Float = 1f,
+    contentAlpha: Float = 1f
 ) {
     if (!isGranted) {
         PermissionDeniedView(
@@ -219,6 +433,7 @@ fun ContactSearchContent(
     LaunchedEffect(Unit) {
         if (!hasAutoFocused) {
             hasAutoFocused = true
+            kotlinx.coroutines.delay(180)
             focusRequester.requestFocus()
             // Restore the cursor to the end of any already-typed query rather than letting the
             // newly (re)created text field default the selection back to the very start.
@@ -370,75 +585,53 @@ fun ContactSearchContent(
             groupResults.size + contactNoteResults.size + recordingNoteResults.size + settingResults.size
     val hasAnyResults = totalResults > 0
 
-    val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
-    val isSaturatedActive = remember(settingsVer, isDark) { prefs.isSaturatedForTheme(isDark) }
-
-    val searchBarBg = if (isSaturatedActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh
-    val searchBarFg = if (isSaturatedActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-    val searchBarPlaceholder = if (isSaturatedActive) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
-
-    Column(modifier = Modifier.fillMaxSize().imePadding()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .imePadding()
+    ) {
         // Search bar + filter button
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Surface(
+            AppSearchBar(
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(28.dp),
-                color = searchBarBg,
-                shadowElevation = 0.dp
+                isEditable = true,
+                query = queryFieldValue,
+                onQueryChange = { queryFieldValue = it },
+                onBackClick = onBack,
+                onClearClick = { queryFieldValue = TextFieldValue("") },
+                onVoiceClick = { VoiceSearchHelper.launchVoiceSearch(context, voiceSearchLauncher) },
+                focusRequester = focusRequester,
+                onSearchAction = {
+                    saveSearchQuery()
+                    keyboardController?.hide()
+                },
+                animProgress = searchBarProgress
+            )
+            Box(
+                modifier = Modifier.graphicsLayer {
+                    alpha = contentAlpha
+                    scaleX = (0.5f + 0.5f * contentAlpha).coerceIn(0f, 1f)
+                    scaleY = (0.5f + 0.5f * contentAlpha).coerceIn(0f, 1f)
+                }
             ) {
-                TextField(
-                    value = queryFieldValue,
-                    onValueChange = { queryFieldValue = it },
-                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-                    placeholder = { Text("Universal Search", color = searchBarPlaceholder) },
-                    leadingIcon = {
-                        IconButton(onClick = { navigator.navigateUp() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = searchBarFg)
-                        }
-                    },
-                    trailingIcon = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (query.isNotEmpty()) {
-                                IconButton(onClick = { queryFieldValue = TextFieldValue("") }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = searchBarFg)
-                                }
-                            }
-                            IconButton(onClick = {
-                                VoiceSearchHelper.launchVoiceSearch(context, voiceSearchLauncher)
-                            }) {
-                                Icon(Icons.Default.Mic, contentDescription = "Voice Search", tint = searchBarFg)
-                            }
-                        }
-                    },
-                    colors = TextFieldDefaults.colors(
-                        focusedTextColor = searchBarFg,
-                        unfocusedTextColor = searchBarFg,
-                        cursorColor = searchBarFg,
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent
-                    ),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Search
-                    ),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                        onSearch = {
-                            saveSearchQuery()
-                            keyboardController?.hide()
-                        }
-                    ),
-                    singleLine = true
-                )
+                SearchFilterButton()
             }
-            SearchFilterButton()
         }
 
-        // Call this number chip
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .graphicsLayer { alpha = contentAlpha }
+        ) {
+            // Call this number chip
         if (query.isNotEmpty() && query.all { it.isDigit() || it == '+' || it == '-' || it == ' ' }) {
             Surface(
                 modifier = Modifier
@@ -1007,6 +1200,7 @@ fun ContactSearchContent(
                 }
                 }
             }
+        }
         }
     }
 }

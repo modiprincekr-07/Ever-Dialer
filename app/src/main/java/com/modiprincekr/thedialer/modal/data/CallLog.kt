@@ -1,7 +1,9 @@
 package com.modiprincekr.thedialer.modal.data
 
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
 
+@Immutable
 @Serializable
 data class CallLogEntry(
     val number: String,
