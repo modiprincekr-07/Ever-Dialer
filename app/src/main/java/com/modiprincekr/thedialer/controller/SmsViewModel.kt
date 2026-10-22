@@ -86,12 +86,8 @@ class SmsViewModel(
     private var activeThreadId: Long? = null
     private var debounceJob: Job? = null
 
-    private val prefs: com.modiprincekr.thedialer.controller.util.PreferenceManager by lazy {
-        org.koin.core.context.GlobalContext.get().get()
-    }
-
     fun isSmsEnabled(): Boolean {
-        return prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_SMS_ENABLED, false)
+        return prefs?.getBoolean(PreferenceManager.KEY_SMS_ENABLED, false) ?: false
     }
 
     fun clearConversations() {
