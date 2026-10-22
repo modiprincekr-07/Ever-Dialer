@@ -1563,7 +1563,6 @@ fun ExpressiveCallScreen(
                     if (isBluetoothActive) CallService.setAudioRoute(CallAudioState.ROUTE_EARPIECE)
                     else CallService.setAudioRoute(CallAudioState.ROUTE_BLUETOOTH)
                 }
-                }
             }
             CallButtonPrefs.ID_SPEAKER -> AnimatedCallButton(
                 icon = when {
@@ -1590,7 +1589,6 @@ fun ExpressiveCallScreen(
                     CallService.setAudioRoute(if (isSpeakerOn) CallAudioState.ROUTE_EARPIECE else CallAudioState.ROUTE_SPEAKER)
                 }
             }
-            CallButtonPrefs.ID_BLUETOOTH -> { /* Standalone Bluetooth button removed */ }
             CallButtonPrefs.ID_RECORD -> AnimatedCallButton(
                 icon = Icons.Default.FiberManualRecord,
                 label = if (isManuallyRecording) "Stop" else "Record",
@@ -2841,6 +2839,7 @@ fun ExpressiveCallScreen(
                 }
             }
         }
+    }
     }
 
     if (showCallingCardPopup) {
