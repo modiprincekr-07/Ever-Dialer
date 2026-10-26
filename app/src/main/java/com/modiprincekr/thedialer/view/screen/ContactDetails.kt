@@ -1175,6 +1175,13 @@ fun ContactDetailsScreen(
                                     .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                IconButton(onClick = { showBackgroundPfpChoiceDialog = true }) {
+                                    Icon(
+                                        Icons.Default.Wallpaper,
+                                        contentDescription = "Change Background & GIF",
+                                        tint = if (contactGifPath != null) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                                    )
+                                }
                                 IconButton(onClick = {
                                     if (shortcutNumbers.isEmpty()) {
                                         android.widget.Toast.makeText(context, "No phone number to add", android.widget.Toast.LENGTH_SHORT).show()
@@ -1222,6 +1229,26 @@ fun ContactDetailsScreen(
                             Box(modifier = Modifier.size(400.dp), contentAlignment = Alignment.Center) {
                                 Box(modifier = Modifier.size(330.dp).background(brush = Brush.radialGradient(colors = listOf(avatarGlowColor.copy(alpha = 0.45f), Color.Transparent))).blur(60.dp))
                                 RivoAvatar(name = displayName, photoUri = contact?.photoUri, forcePersonIcon = true, modifier = Modifier.size(240.dp), shape = CircleShape)
+                                Surface(
+                                    onClick = { showBackgroundPfpChoiceDialog = true },
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    tonalElevation = 6.dp,
+                                    shadowElevation = 4.dp,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(end = 76.dp, bottom = 76.dp)
+                                        .size(46.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            Icons.Default.Wallpaper,
+                                            contentDescription = "Change GIF Background",
+                                            tint = if (contactGifPath != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
                             }
                             Text(text = displayName, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                         }
