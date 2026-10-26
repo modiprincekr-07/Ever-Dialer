@@ -1098,6 +1098,7 @@ fun CallLogTile(
     }
     CallChatViaOverlay(
         phoneNumber = log.number.takeIf { it.isNotBlank() },
+        contactId = matchedContact?.id,
         phoneNumbers = callChatViaNumbers,
         showPicker = showCallChatViaPicker,
         onPickerDismiss = { showCallChatViaPicker = false },

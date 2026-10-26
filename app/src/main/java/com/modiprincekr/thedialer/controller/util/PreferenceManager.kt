@@ -71,6 +71,19 @@ class PreferenceManager(context: Context) {
     fun getAllKeys(): Set<String>                      = prefs.all.keys
     fun notifyChanged()                                { _settingsChanged.value += 1 }
 
+    fun getContactGifBackground(contactKey: String?): String? {
+        if (contactKey.isNullOrBlank()) return null
+        return getString("contact_${contactKey}_gif_bg", null)
+    }
+
+    fun setContactGifBackground(contactKey: String, uri: String?) {
+        if (uri.isNullOrBlank()) {
+            remove("contact_${contactKey}_gif_bg")
+        } else {
+            setString("contact_${contactKey}_gif_bg", uri)
+        }
+    }
+
     /** Returns true if an incoming call from [phoneNumber] should be gated behind biometric. */
     fun shouldGateCallWithBiometric(phoneNumber: String?): Boolean {
         if (!getBoolean(KEY_BIOMETRICS_CALL_LOCK, false)) return false

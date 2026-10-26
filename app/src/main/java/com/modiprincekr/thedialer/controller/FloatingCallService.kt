@@ -43,10 +43,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.background
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.path
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import coil.compose.AsyncImage
+import com.modiprincekr.thedialer.controller.util.ContactGifManager
+import com.modiprincekr.thedialer.controller.util.rememberGifImageLoader
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.view.screen.CallActivity
 import com.modiprincekr.thedialer.view.theme.Rivo4Theme
@@ -502,6 +507,11 @@ class FloatingCallService : Service() {
                     targetOffsetY = { it }
                 ) + fadeOut(tween(300, easing = FastOutLinearInEasing))
             ) {
+                val gifUri = remember(phoneNumber) {
+                    ContactGifManager.getContactGif(context, null, phoneNumber)
+                }
+                val gifImageLoader = rememberGifImageLoader()
+
                 Surface(
                     modifier        = (if (isLandscape) {
                         Modifier
@@ -522,13 +532,29 @@ class FloatingCallService : Service() {
                     tonalElevation  = 4.dp,
                     shadowElevation = 0.dp
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = if (isLandscape) 16.dp else 24.dp)
-                            .padding(top = if (isLandscape) 10.dp else 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(0.dp)
-                    ) {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (!gifUri.isNullOrBlank()) {
+                            AsyncImage(
+                                model = gifUri,
+                                imageLoader = gifImageLoader,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.matchParentSize()
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.65f))
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = if (isLandscape) 16.dp else 24.dp)
+                                .padding(top = if (isLandscape) 10.dp else 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(0.dp)
+                        ) {
                         // Drag handle with targeted vertical drag gesture
                         Box(
                             modifier = Modifier
@@ -693,6 +719,7 @@ class FloatingCallService : Service() {
             }
         }
     }
+}
 
     // ── Sheet action button ───────────────────────────────────────────────────
 

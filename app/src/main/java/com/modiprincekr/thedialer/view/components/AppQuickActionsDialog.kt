@@ -3,6 +3,7 @@ package com.modiprincekr.thedialer.view.components
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -34,6 +36,9 @@ import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import coil.compose.AsyncImage
+import com.modiprincekr.thedialer.controller.util.ContactGifManager
+import com.modiprincekr.thedialer.controller.util.rememberGifImageLoader
 import kotlinx.coroutines.CancellationException
 import org.koin.compose.koinInject
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
@@ -72,6 +77,8 @@ import com.modiprincekr.thedialer.controller.util.startWhatsAppVoiceCall
 @Composable
 fun AppQuickActionsDialog(
     appName: String,
+    contactId: String? = null,
+    phoneNumber: String? = null,
     onChat: (() -> Unit)? = null,
     onVoiceCall: () -> Unit,
     onVideoCall: () -> Unit,
@@ -98,6 +105,12 @@ fun AppQuickActionsDialog(
                 }
             }
 
+            val context = LocalContext.current
+            val gifUri = remember(contactId, phoneNumber) {
+                ContactGifManager.getContactGif(context, contactId, phoneNumber)
+            }
+            val gifImageLoader = rememberGifImageLoader()
+
             Surface(
                 shape = RoundedCornerShape(28.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -107,23 +120,40 @@ fun AppQuickActionsDialog(
                     .scale(backScale.value)
                     .alpha(backAlpha.value)
             ) {
-                Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                    Text(
-                        appName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-                    )
-                    if (onChat != null) {
-                        AppQuickActionRow(icon = Icons.AutoMirrored.Filled.Chat, label = "Chat", onClick = onChat)
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    if (!gifUri.isNullOrBlank()) {
+                        AsyncImage(
+                            model = gifUri,
+                            imageLoader = gifImageLoader,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.matchParentSize()
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.60f))
+                        )
                     }
-                    AppQuickActionRow(icon = Icons.Default.Call, label = "Voice Call", onClick = onVoiceCall)
-                    AppQuickActionRow(icon = Icons.Default.Videocam, label = "Video Call", onClick = onVideoCall)
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.align(Alignment.End).padding(horizontal = 16.dp)
-                    ) { Text("Cancel") }
+
+                    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                        Text(
+                            appName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                        )
+                        if (onChat != null) {
+                            AppQuickActionRow(icon = Icons.AutoMirrored.Filled.Chat, label = "Chat", onClick = onChat)
+                        }
+                        AppQuickActionRow(icon = Icons.Default.Call, label = "Voice Call", onClick = onVoiceCall)
+                        AppQuickActionRow(icon = Icons.Default.Videocam, label = "Video Call", onClick = onVideoCall)
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.align(Alignment.End).padding(horizontal = 16.dp)
+                        ) { Text("Cancel") }
+                    }
                 }
             }
         }
@@ -165,6 +195,7 @@ private fun AppQuickActionRow(icon: androidx.compose.ui.graphics.vector.ImageVec
 @Composable
 fun CallChatViaOverlay(
     phoneNumber: String?,
+    contactId: String? = null,
     showPicker: Boolean,
     onPickerDismiss: () -> Unit,
     showGoogleMeet: Boolean = false,
@@ -315,6 +346,8 @@ fun CallChatViaOverlay(
         }
         AppQuickActionsDialog(
             appName = appLabel,
+            contactId = contactId,
+            phoneNumber = number,
             onChat = if (app == "googlemeet") null else {
                 {
                     showAppQuickActions = null

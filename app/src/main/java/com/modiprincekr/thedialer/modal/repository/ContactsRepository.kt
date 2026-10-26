@@ -372,21 +372,74 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
         return try {
             val uri = Uri.parse(uriString)
             context.contentResolver.openInputStream(uri)?.use { stream ->
-                val bitmap = android.graphics.BitmapFactory.decodeStream(stream) ?: return null
+                val bytes = stream.readBytes()
+                val exif = try {
+                    android.media.ExifInterface(java.io.ByteArrayInputStream(bytes))
+                } catch (_: Throwable) {
+                    null
+                }
+                val orientation = exif?.getAttributeInt(
+                    android.media.ExifInterface.TAG_ORIENTATION,
+                    android.media.ExifInterface.ORIENTATION_NORMAL
+                ) ?: android.media.ExifInterface.ORIENTATION_NORMAL
+
+                val rawBitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+                val uprightBitmap = rotateBitmapToUpright(rawBitmap, orientation)
+
                 val maxDim = 720
-                val scaled = if (bitmap.width > maxDim || bitmap.height > maxDim) {
-                    val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
-                    val targetW = if (ratio >= 1f) maxDim else (maxDim * ratio).toInt()
-                    val targetH = if (ratio >= 1f) (maxDim / ratio).toInt() else maxDim
-                    android.graphics.Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
-                } else bitmap
+                val scaled = if (uprightBitmap.width > maxDim || uprightBitmap.height > maxDim) {
+                    val ratio = uprightBitmap.width.toFloat() / uprightBitmap.height.toFloat()
+                    val targetW = if (ratio >= 1f) maxDim else (maxDim * ratio).toInt().coerceAtLeast(1)
+                    val targetH = if (ratio >= 1f) (maxDim / ratio).toInt().coerceAtLeast(1) else maxDim
+                    val scaledBm = android.graphics.Bitmap.createScaledBitmap(uprightBitmap, targetW, targetH, true)
+                    if (scaledBm != uprightBitmap && !uprightBitmap.isRecycled) {
+                        uprightBitmap.recycle()
+                    }
+                    scaledBm
+                } else uprightBitmap
+
                 val baos = java.io.ByteArrayOutputStream()
                 scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, baos)
+                if (!scaled.isRecycled) {
+                    scaled.recycle()
+                }
+                if (!rawBitmap.isRecycled) {
+                    rawBitmap.recycle()
+                }
                 baos.toByteArray()
             }
         } catch (e: Exception) {
             android.util.Log.e("ContactsRepo", "Error reading photo bytes", e)
             null
+        }
+    }
+
+    private fun rotateBitmapToUpright(bitmap: android.graphics.Bitmap, orientation: Int): android.graphics.Bitmap {
+        val matrix = android.graphics.Matrix()
+        when (orientation) {
+            android.media.ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+            android.media.ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+            android.media.ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            android.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+            android.media.ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+            android.media.ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.postRotate(90f)
+                matrix.postScale(-1f, 1f)
+            }
+            android.media.ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.postRotate(270f)
+                matrix.postScale(-1f, 1f)
+            }
+            else -> return bitmap
+        }
+        return try {
+            val rotated = android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            if (rotated != bitmap && !bitmap.isRecycled) {
+                bitmap.recycle()
+            }
+            rotated
+        } catch (_: Throwable) {
+            bitmap
         }
     }
 

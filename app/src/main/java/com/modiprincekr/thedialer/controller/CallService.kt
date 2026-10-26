@@ -333,7 +333,37 @@ class CallService : InCallService() {
         if (photoUri.isNullOrEmpty()) return null
         return try {
             contentResolver.openInputStream(android.net.Uri.parse(photoUri))?.use { stream ->
-                android.graphics.BitmapFactory.decodeStream(stream)
+                val bytes = stream.readBytes()
+                val exif = try {
+                    android.media.ExifInterface(java.io.ByteArrayInputStream(bytes))
+                } catch (_: Throwable) { null }
+                val orientation = exif?.getAttributeInt(
+                    android.media.ExifInterface.TAG_ORIENTATION,
+                    android.media.ExifInterface.ORIENTATION_NORMAL
+                ) ?: android.media.ExifInterface.ORIENTATION_NORMAL
+
+                val raw = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+                when (orientation) {
+                    android.media.ExifInterface.ORIENTATION_ROTATE_90 -> {
+                        val m = android.graphics.Matrix().apply { postRotate(90f) }
+                        val r = android.graphics.Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+                        if (r != raw) raw.recycle()
+                        r
+                    }
+                    android.media.ExifInterface.ORIENTATION_ROTATE_180 -> {
+                        val m = android.graphics.Matrix().apply { postRotate(180f) }
+                        val r = android.graphics.Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+                        if (r != raw) raw.recycle()
+                        r
+                    }
+                    android.media.ExifInterface.ORIENTATION_ROTATE_270 -> {
+                        val m = android.graphics.Matrix().apply { postRotate(270f) }
+                        val r = android.graphics.Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+                        if (r != raw) raw.recycle()
+                        r
+                    }
+                    else -> raw
+                }
             }
         } catch (e: Exception) {
             null

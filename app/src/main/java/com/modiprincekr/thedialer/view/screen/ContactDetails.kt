@@ -126,6 +126,8 @@ import com.modiprincekr.thedialer.controller.util.deduplicatePhoneNumbers
 import com.modiprincekr.thedialer.controller.util.ContactRingtoneUtils
 import com.modiprincekr.thedialer.controller.util.BlockedNumbersManager
 import androidx.compose.material.icons.outlined.Block
+import com.modiprincekr.thedialer.controller.util.ContactGifManager
+import com.modiprincekr.thedialer.controller.util.rememberGifImageLoader
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Destination<RootGraph>(style = SettingsTransitionStyle::class)
@@ -361,6 +363,36 @@ fun ContactDetailsScreen(
             }
         }
     }
+
+    val gifImageLoader = rememberGifImageLoader()
+    var showGifOptionsDialog by remember { mutableStateOf(false) }
+    var contactGifPath by remember(contactSimKey, settingsVer) {
+        mutableStateOf(ContactGifManager.getContactGif(context, contact?.id ?: contactSimKey, phoneNumber))
+    }
+
+    val gifPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val key = contact?.id ?: contactSimKey
+                val phones = contactPhoneNumbers.ifEmpty { listOfNotNull(phoneNumber) }
+                val result = ContactGifManager.saveContactGif(context, key, phones, uri)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    result.fold(
+                        onSuccess = { savedPath ->
+                            contactGifPath = savedPath
+                            android.widget.Toast.makeText(context, "GIF background set successfully", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        onFailure = { error ->
+                            android.widget.Toast.makeText(context, error.message ?: "Failed to set GIF", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    )
+                }
+            }
+        }
+    }
+
     fun openRingtonePicker() {
         val id = contact?.id ?: return
         val defaultUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
@@ -553,6 +585,8 @@ fun ContactDetailsScreen(
         }
         AppQuickActionsDialog(
             appName = appLabel,
+            contactId = contact?.id,
+            phoneNumber = socialPhone,
             onChat = if (app == "googlemeet") null else {
                 {
                     showAppQuickActions = null
@@ -987,6 +1021,46 @@ fun ContactDetailsScreen(
                                 Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
+                        Surface(
+                            onClick = {
+                                showBackgroundPfpChoiceDialog = false
+                                if (contactGifPath != null) {
+                                    showGifOptionsDialog = true
+                                } else {
+                                    gifPickerLauncher.launch("image/gif")
+                                }
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Animation, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(Modifier.width(14.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Contact Background GIF", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        if (contactGifPath != null) "Custom GIF active (max 15s) • Tap to manage" else "Looping GIF for header & popups (max 15s)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                 },
                 confirmButton = {},
@@ -1002,12 +1076,64 @@ fun ContactDetailsScreen(
         }
     }
 
+    if (showGifOptionsDialog) {
+        AlertDialog(
+            onDismissRequest = { showGifOptionsDialog = false },
+            title = { Text("Contact Background GIF") },
+            text = { Text("Manage the looping background GIF for this contact.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showGifOptionsDialog = false
+                        gifPickerLauncher.launch("image/gif")
+                    }
+                ) {
+                    Text("Change GIF")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            showGifOptionsDialog = false
+                            val key = contact?.id ?: contactSimKey
+                            val phones = contactPhoneNumbers.ifEmpty { listOfNotNull(phoneNumber) }
+                            ContactGifManager.removeContactGif(context, key, phones)
+                            contactGifPath = null
+                            android.widget.Toast.makeText(context, "GIF background removed", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Text("Remove", color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(onClick = { showGifOptionsDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
+
     com.modiprincekr.thedialer.view.theme.ExpandingScreenContainer(onClose = { navigator.navigateUp() }) { closeWithAnimation ->
         Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
             // Background image layer sits behind the whole column so it shows through
             // the transparent header instead of a solid banner.
             Box(modifier = Modifier.fillMaxWidth().height(340.dp)) {
-                AsyncImage(model = contact?.photoUri, contentDescription = null, modifier = Modifier.fillMaxSize().blur(50.dp), contentScale = ContentScale.Crop)
+                if (!contactGifPath.isNullOrBlank()) {
+                    AsyncImage(
+                        model = contactGifPath,
+                        imageLoader = gifImageLoader,
+                        contentDescription = "Contact GIF background",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    AsyncImage(
+                        model = contact?.photoUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize().blur(50.dp),
+                        contentScale = ContentScale.Crop
+                    )
+                }
                 Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, MaterialTheme.colorScheme.surface))))
             }
 
@@ -2523,8 +2649,9 @@ fun ContactDetailsScreen(
                                 val isCustomized = (incomingContactBgType != null && incomingContactBgType != "none" && incomingContactBgType != "default") ||
                                     (ongoingContactBgType != null && ongoingContactBgType != "none" && ongoingContactBgType != "default") ||
                                     (incomingContactPfpType != null && incomingContactPfpType != "none" && incomingContactPfpType != "default") ||
-                                    (ongoingContactPfpType != null && ongoingContactPfpType != "none" && ongoingContactPfpType != "default")
-                                val customSupporting = if (isCustomized) "Custom background & PFP configured" else "According to Settings (Default)"
+                                    (ongoingContactPfpType != null && ongoingContactPfpType != "none" && ongoingContactPfpType != "default") ||
+                                    (contactGifPath != null)
+                                val customSupporting = if (contactGifPath != null) "Custom GIF background configured" else if (isCustomized) "Custom background & PFP configured" else "According to Settings (Default)"
 
                                 RivoExpressiveCard(title = "Background And Contact PFP Customisation", icon = Icons.Default.Wallpaper) {
                                     RivoListItem(
