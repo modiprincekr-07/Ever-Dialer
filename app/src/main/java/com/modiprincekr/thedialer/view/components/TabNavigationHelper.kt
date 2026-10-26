@@ -23,7 +23,7 @@ object TabNavigationHelper {
         "groups"     -> GroupsScreenDestination.route
         "recordings" -> RecordingsScreenDestination.route
         "notes"      -> NotesScreenDestination.route
-        "dialpad"    -> DialPadScreenDestination.route
+        "dialpad"    -> DialPadScreenDestination().route
         else         -> null
     }
 
@@ -34,11 +34,12 @@ object TabNavigationHelper {
             base.contains(FavoritesScreenDestination.route, ignoreCase = true) -> "favorites"
             base.contains(RecentScreenDestination.route, ignoreCase = true)    -> "calls"
             base.contains(ContactScreenDestination.route, ignoreCase = true)   -> "contacts"
-            base.contains(SmsScreenDestination.route, ignoreCase = true)       -> "sms"
+            base.contains(SmsScreenDestination().route, ignoreCase = true)     -> "sms"
             base.contains(GroupsScreenDestination.route, ignoreCase = true)    -> "groups"
             base.contains(RecordingsScreenDestination.route, ignoreCase = true)-> "recordings"
             base.contains(NotesScreenDestination.route, ignoreCase = true)     -> "notes"
-            base.contains(DialPadScreenDestination.route, ignoreCase = true)   -> "dialpad"
+            base.contains(DialPadScreenDestination().route, ignoreCase = true) ||
+                base.contains("dial_pad_screen", ignoreCase = true)             -> "dialpad"
             else -> null
         }
     }

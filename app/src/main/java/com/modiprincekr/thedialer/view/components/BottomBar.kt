@@ -107,11 +107,11 @@ private val TAB_ROUTES = setOf(
     FavoritesScreenDestination.route,
     RecentScreenDestination.route,
     ContactScreenDestination.route,
-    SmsScreenDestination.route,
+    SmsScreenDestination().route,
     GroupsScreenDestination.route,
     RecordingsScreenDestination.route,
     NotesScreenDestination.route,
-    DialPadScreenDestination.route
+    DialPadScreenDestination().route
 )
 
 /** Describes a single bottom-navigation tab, driving both the pill-style and standard nav bars. */
@@ -315,7 +315,7 @@ fun BottomBar(navController: NavController) {
                     onClick = { doHaptic(); navigate(NotesScreenDestination.route) }
                 ) else null
                 "dialpad" -> if (showDialpadTab) TabSpec(
-                    key = key, route = DialPadScreenDestination.route, label = com.modiprincekr.thedialer.controller.util.AppStrings.get("Dialpad", appLang),
+                    key = key, route = DialPadScreenDestination().route, label = com.modiprincekr.thedialer.controller.util.AppStrings.get("Dialpad", appLang),
                     selectedIcon = Icons.Filled.Dialpad, unselectedIcon = Icons.Outlined.Dialpad,
                     selected = isDialpadSelected,
                     onClick = {

@@ -368,11 +368,13 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
             val useLiquidGlass = liquidGlass && lgRecentsFab && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && globalBackdrop != null
             val useBlur = blurEffects && blurRecentsFab && !useLiquidGlass
             val onOpenDialpad: () -> Unit = {
-                performAppHaptic(
-                    context,
-                    prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
-                    prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
-                )
+                try {
+                    performAppHaptic(
+                        context,
+                        prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
+                        prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+                    )
+                } catch (_: Throwable) {}
                 dialpadClosing = false
                 showDialpad = true
             }
@@ -543,8 +545,8 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
                 val density = LocalDensity.current
                 val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
                 val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
-                val pivotX = (fabCenter?.x ?: (screenWidthPx * 0.88f)) / screenWidthPx.coerceAtLeast(1f)
-                val pivotY = (fabCenter?.y ?: (screenHeightPx * 0.92f)) / screenHeightPx.coerceAtLeast(1f)
+                val pivotX = ((fabCenter?.x ?: (screenWidthPx * 0.88f)) / screenWidthPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                val pivotY = ((fabCenter?.y ?: (screenHeightPx * 0.92f)) / screenHeightPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
 
                 Surface(
                     modifier = Modifier

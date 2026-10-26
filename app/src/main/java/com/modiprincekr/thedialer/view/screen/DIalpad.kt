@@ -711,7 +711,11 @@ fun DialPadContent(
     val sim2Color = remember(settingsState) { Color(prefs.getInt(PreferenceManager.KEY_SIM2_COLOR, PreferenceManager.DEFAULT_SIM2_COLOR)) }
 
     val clipText = remember {
-        clipboard.getText()?.text?.filter { it.isDigit() || it == '+' || it == '*' || it == '#' } ?: ""
+        try {
+            clipboard.getText()?.text?.filter { it.isDigit() || it == '+' || it == '*' || it == '#' } ?: ""
+        } catch (_: Throwable) {
+            ""
+        }
     }
     var showClipboardBanner by remember { mutableStateOf(clipText.length in 7..15) }
     var showOverflowMenu by remember { mutableStateOf(false) }

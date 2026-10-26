@@ -473,8 +473,24 @@ class CallService : InCallService() {
 
         @Volatile private var isMerging = false
 
-        fun setMuted(muted: Boolean) { instance?.setMuted(muted) }
-        fun setAudioRoute(route: Int) { instance?.setAudioRoute(route) }
+        fun setMuted(muted: Boolean) {
+            instance?.let { s ->
+                s.setMuted(muted)
+                val current = _audioState.value
+                val route = current?.route ?: CallAudioState.ROUTE_EARPIECE
+                val mask = current?.supportedRouteMask ?: (CallAudioState.ROUTE_EARPIECE or CallAudioState.ROUTE_SPEAKER or CallAudioState.ROUTE_BLUETOOTH or CallAudioState.ROUTE_WIRED_HEADSET)
+                _audioState.value = CallAudioState(muted, route, mask)
+            }
+        }
+        fun setAudioRoute(route: Int) {
+            instance?.let { s ->
+                s.setAudioRoute(route)
+                val current = _audioState.value
+                val mask = current?.supportedRouteMask ?: (CallAudioState.ROUTE_EARPIECE or CallAudioState.ROUTE_SPEAKER or CallAudioState.ROUTE_BLUETOOTH or CallAudioState.ROUTE_WIRED_HEADSET)
+                val isMuted = current?.isMuted ?: false
+                _audioState.value = CallAudioState(isMuted, route, mask)
+            }
+        }
 
         private fun shouldLaunchOngoingCallUi(context: Context): Boolean {
             val pm = PreferenceManager(context)
@@ -1185,7 +1201,13 @@ class CallService : InCallService() {
             "HOLD_CALL"    -> {
                 val call = _currentCallSession.value?.call
                 try {
-                    if (call?.state == Call.STATE_HOLDING) call.unhold() else call?.hold()
+                    if (call?.state == Call.STATE_HOLDING) {
+                        call.unhold()
+                        _currentCallSession.value = _currentCallSession.value?.copy(state = Call.STATE_ACTIVE)
+                    } else {
+                        call?.hold()
+                        _currentCallSession.value = _currentCallSession.value?.copy(state = Call.STATE_HOLDING)
+                    }
                 } catch (_: Exception) {}
             }
             "BLUETOOTH_CALL" -> {

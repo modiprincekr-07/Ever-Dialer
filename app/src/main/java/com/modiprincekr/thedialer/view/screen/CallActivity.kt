@@ -903,9 +903,16 @@ fun ExpressiveCallScreen(
             }
         }
     }
+    var localAudioRoute by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(audioState?.route) {
+        if (audioState?.route == localAudioRoute) {
+            localAudioRoute = null
+        }
+    }
+    val effectiveAudioRoute = localAudioRoute ?: (audioState?.route ?: CallAudioState.ROUTE_EARPIECE)
     val isMuted = audioState?.isMuted ?: false
-    val isSpeakerOn = audioState?.route == CallAudioState.ROUTE_SPEAKER
-    val isBluetoothActive = audioState?.route == CallAudioState.ROUTE_BLUETOOTH
+    val isSpeakerOn = effectiveAudioRoute == CallAudioState.ROUTE_SPEAKER
+    val isBluetoothActive = effectiveAudioRoute == CallAudioState.ROUTE_BLUETOOTH
     val isAutoRedialActive by CallService.isAutoRedialActive.collectAsState()
 
     // External audio device availability detection (Bluetooth + Wired Headset)
@@ -973,7 +980,15 @@ fun ExpressiveCallScreen(
     // When answered from notification, skip the incoming screen by treating
     // a brief STATE_RINGING flash as already-active for UI purposes
     val effectiveCallState = if (skipIncomingScreen && callState == Call.STATE_RINGING) Call.STATE_ACTIVE else callState
-    val isOnHold = callState == Call.STATE_HOLDING
+    var localHoldState by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(callState) {
+        if (callState == Call.STATE_HOLDING && localHoldState == true) {
+            localHoldState = null
+        } else if (callState == Call.STATE_ACTIVE && localHoldState == false) {
+            localHoldState = null
+        }
+    }
+    val isOnHold = localHoldState ?: (callState == Call.STATE_HOLDING)
     // Manual state for the optional "Record" Feature Button — toggles the bundled call
     // recorder's foreground service on/off for this call. Purely a manual trigger; the
     // recorder's own auto-record setting (Settings → Call Recording) is unaffected.
@@ -1085,28 +1100,19 @@ fun ExpressiveCallScreen(
             CallButtonPrefs.ID_HOLD, CallButtonPrefs.ID_ADD, CallButtonPrefs.ID_DIALPAD,
             CallButtonPrefs.ID_NOTE, CallButtonPrefs.ID_MUTE, CallButtonPrefs.ID_SPEAKER,
             CallButtonPrefs.ID_AUTO_REDIAL,
-            CallButtonPrefs.ID_WHATSAPP_VIDEO,
-            CallButtonPrefs.ID_BLUETOOTH
+            CallButtonPrefs.ID_WHATSAPP_VIDEO
         )
     }
-    // Bluetooth is only actually shown while a headset is connected for this call — otherwise
-    // it's dropped from the grid entirely (not just hidden in an empty slot), so the remaining
-    // buttons reflow to fill the freed-up space instead of leaving a blank row/column behind.
-    // Unlike Bluetooth, Auto Redial and WhatsApp Video MUST be persistently visible at all times.
-    val displayedButtonIds = remember(activeButtonIds, isBluetoothConnected) {
-        var base = if (isBluetoothConnected) activeButtonIds
-        else activeButtonIds.filter { it != CallButtonPrefs.ID_BLUETOOTH }
+    // Legacy standalone Bluetooth button is removed in favor of the newer expandable audio button (ID_SPEAKER).
+    // Auto Redial and WhatsApp Video MUST be persistently visible at all times.
+    val displayedButtonIds = remember(activeButtonIds) {
+        var base = activeButtonIds.filter { it != CallButtonPrefs.ID_BLUETOOTH }
         if (CallButtonPrefs.ID_AUTO_REDIAL !in base) {
-            val btIdx = base.indexOf(CallButtonPrefs.ID_BLUETOOTH)
-            if (btIdx != -1) {
-                base = base.toMutableList().apply { add(btIdx, CallButtonPrefs.ID_AUTO_REDIAL) }
+            val spkIdx = base.indexOf(CallButtonPrefs.ID_SPEAKER)
+            if (spkIdx != -1) {
+                base = base.toMutableList().apply { add(spkIdx + 1, CallButtonPrefs.ID_AUTO_REDIAL) }
             } else {
-                val spkIdx = base.indexOf(CallButtonPrefs.ID_SPEAKER)
-                if (spkIdx != -1) {
-                    base = base.toMutableList().apply { add(spkIdx + 1, CallButtonPrefs.ID_AUTO_REDIAL) }
-                } else {
-                    base = base + CallButtonPrefs.ID_AUTO_REDIAL
-                }
+                base = base + CallButtonPrefs.ID_AUTO_REDIAL
             }
         }
         if (CallButtonPrefs.ID_WHATSAPP_VIDEO !in base) {
@@ -1114,12 +1120,7 @@ fun ExpressiveCallScreen(
             if (autoIdx != -1) {
                 base = base.toMutableList().apply { add(autoIdx + 1, CallButtonPrefs.ID_WHATSAPP_VIDEO) }
             } else {
-                val btIdx = base.indexOf(CallButtonPrefs.ID_BLUETOOTH)
-                if (btIdx != -1) {
-                    base = base.toMutableList().apply { add(btIdx, CallButtonPrefs.ID_WHATSAPP_VIDEO) }
-                } else {
-                    base = base + CallButtonPrefs.ID_WHATSAPP_VIDEO
-                }
+                base = base + CallButtonPrefs.ID_WHATSAPP_VIDEO
             }
         }
         base
@@ -1479,9 +1480,11 @@ fun ExpressiveCallScreen(
                 btnColor = controlBtnColor, activeBtnColor = controlBtnActiveColor,
                 fgColor = controlBtnFg, activeFgColor = controlBtnActiveFg
             ) {
-                if (callState == Call.STATE_HOLDING) {
+                if (isOnHold) {
+                    localHoldState = false
                     try { call.unhold() } catch (_: Exception) {}
                 } else {
+                    localHoldState = true
                     try { call.hold() } catch (_: Exception) {}
                 }
             }
@@ -1550,34 +1553,20 @@ fun ExpressiveCallScreen(
                 }
                 CallService.switchToWhatsAppVideo(context, phoneNumber)
             }
-            // displayedButtonIds already excludes Bluetooth entirely while no headset is
-            // connected, so this branch only ever runs while it actually is connected — no
-            // reserved blank slot needed anymore, the grid simply reflows around its absence.
-            CallButtonPrefs.ID_BLUETOOTH -> if (isBluetoothConnected) {
-                AnimatedCallButton(
-                    icon = if (isBluetoothActive) Icons.Default.Bluetooth else Icons.Default.BluetoothDisabled,
-                    label = "Bluetooth", isActive = isBluetoothActive,
-                    btnColor = controlBtnColor, activeBtnColor = controlBtnActiveColor,
-                    fgColor = controlBtnFg, activeFgColor = controlBtnActiveFg
-                ) {
-                    if (isBluetoothActive) CallService.setAudioRoute(CallAudioState.ROUTE_EARPIECE)
-                    else CallService.setAudioRoute(CallAudioState.ROUTE_BLUETOOTH)
-                }
-            }
             CallButtonPrefs.ID_SPEAKER -> AnimatedCallButton(
                 icon = when {
                     isBluetoothActive -> Icons.Default.Bluetooth
-                    audioState?.route == CallAudioState.ROUTE_WIRED_HEADSET -> Icons.Default.Headset
+                    effectiveAudioRoute == CallAudioState.ROUTE_WIRED_HEADSET -> Icons.Default.Headset
                     isSpeakerOn -> Icons.AutoMirrored.Filled.VolumeUp
                     else -> Icons.Default.VolumeDown
                 },
                 label = when {
                     isBluetoothActive -> "Bluetooth"
-                    audioState?.route == CallAudioState.ROUTE_WIRED_HEADSET -> "Headset"
+                    effectiveAudioRoute == CallAudioState.ROUTE_WIRED_HEADSET -> "Headset"
                     isSpeakerOn -> "Speaker"
                     else -> "Ear speaker"
                 },
-                isActive = isSpeakerOn || isBluetoothActive || audioState?.route == CallAudioState.ROUTE_WIRED_HEADSET,
+                isActive = isSpeakerOn || isBluetoothActive || effectiveAudioRoute == CallAudioState.ROUTE_WIRED_HEADSET,
                 btnColor = controlBtnColor, activeBtnColor = controlBtnActiveColor,
                 fgColor = controlBtnFg, activeFgColor = controlBtnActiveFg,
                 hasDropdown = isExternalConnected,
@@ -1586,7 +1575,9 @@ fun ExpressiveCallScreen(
                 if (isExternalConnected) {
                     showAudioSwitcherPopup = true
                 } else {
-                    CallService.setAudioRoute(if (isSpeakerOn) CallAudioState.ROUTE_EARPIECE else CallAudioState.ROUTE_SPEAKER)
+                    val targetRoute = if (isSpeakerOn) CallAudioState.ROUTE_EARPIECE else CallAudioState.ROUTE_SPEAKER
+                    localAudioRoute = targetRoute
+                    CallService.setAudioRoute(targetRoute)
                 }
             }
             CallButtonPrefs.ID_RECORD -> AnimatedCallButton(
@@ -1689,19 +1680,11 @@ fun ExpressiveCallScreen(
             onPersonSelected = { number ->
                 showAddPersonSheet = false
                 scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                    localHoldState = true
                     try {
                         call.hold()
                     } catch (e: Exception) {
                         android.util.Log.e("EverDialerCall", "Add call: hold() on current call threw", e)
-                    }
-                    var actuallyHeld = call.state == Call.STATE_HOLDING
-                    if (!actuallyHeld) {
-                        val waitStart = System.currentTimeMillis()
-                        while (System.currentTimeMillis() - waitStart < 2000) {
-                            delay(100)
-                            if (call.state == Call.STATE_HOLDING) { actuallyHeld = true; break }
-                            if (call.state == Call.STATE_DISCONNECTED || call.state == Call.STATE_DISCONNECTING) break
-                        }
                     }
                     try {
                         val accountHandle = call.details?.accountHandle
@@ -2669,9 +2652,9 @@ fun ExpressiveCallScreen(
                     }
                     Spacer(Modifier.height(8.dp))
 
-                    val isEarActive = audioState?.route == CallAudioState.ROUTE_EARPIECE
-                    val isSpeakerActive = audioState?.route == CallAudioState.ROUTE_SPEAKER
-                    val isExtActive = audioState?.route == CallAudioState.ROUTE_BLUETOOTH || audioState?.route == CallAudioState.ROUTE_WIRED_HEADSET
+                    val isEarActive = effectiveAudioRoute == CallAudioState.ROUTE_EARPIECE
+                    val isSpeakerActive = effectiveAudioRoute == CallAudioState.ROUTE_SPEAKER
+                    val isExtActive = effectiveAudioRoute == CallAudioState.ROUTE_BLUETOOTH || effectiveAudioRoute == CallAudioState.ROUTE_WIRED_HEADSET
 
                     // Ear speaker
                     PopupSwitcherOptionRow(
@@ -2680,6 +2663,7 @@ fun ExpressiveCallScreen(
                         subtitle = "Phone earpiece",
                         isSelected = isEarActive,
                         onClick = {
+                            localAudioRoute = CallAudioState.ROUTE_EARPIECE
                             CallService.setAudioRoute(CallAudioState.ROUTE_EARPIECE)
                             prefs?.setString(PreferenceManager.KEY_LAST_USED_SPEAKER_ROUTE, PreferenceManager.SPEAKER_ROUTE_EAR)
                             showAudioSwitcherPopup = false
@@ -2693,6 +2677,7 @@ fun ExpressiveCallScreen(
                         subtitle = "Loudspeaker",
                         isSelected = isSpeakerActive,
                         onClick = {
+                            localAudioRoute = CallAudioState.ROUTE_SPEAKER
                             CallService.setAudioRoute(CallAudioState.ROUTE_SPEAKER)
                             prefs?.setString(PreferenceManager.KEY_LAST_USED_SPEAKER_ROUTE, PreferenceManager.SPEAKER_ROUTE_SPEAKER)
                             showAudioSwitcherPopup = false
@@ -2707,6 +2692,7 @@ fun ExpressiveCallScreen(
                         isSelected = isExtActive,
                         onClick = {
                             val route = if (isBluetoothConnected) CallAudioState.ROUTE_BLUETOOTH else CallAudioState.ROUTE_WIRED_HEADSET
+                            localAudioRoute = route
                             CallService.setAudioRoute(route)
                             prefs?.setString(PreferenceManager.KEY_LAST_USED_SPEAKER_ROUTE, PreferenceManager.SPEAKER_ROUTE_EXTERNAL)
                             showAudioSwitcherPopup = false
