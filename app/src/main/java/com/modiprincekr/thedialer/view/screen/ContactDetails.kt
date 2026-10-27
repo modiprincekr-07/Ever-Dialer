@@ -11,11 +11,16 @@ import android.telecom.TelecomManager
 import android.media.RingtoneManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.*
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -126,10 +131,6 @@ import com.modiprincekr.thedialer.controller.util.deduplicatePhoneNumbers
 import com.modiprincekr.thedialer.controller.util.ContactRingtoneUtils
 import com.modiprincekr.thedialer.controller.util.BlockedNumbersManager
 import androidx.compose.material.icons.outlined.Block
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import com.modiprincekr.thedialer.controller.util.ContactMediaManager
 import com.modiprincekr.thedialer.controller.util.ContactMediaBackground
 import com.modiprincekr.thedialer.controller.util.rememberGifImageLoader
@@ -371,6 +372,7 @@ fun ContactDetailsScreen(
 
     val gifImageLoader = rememberGifImageLoader()
     var showTopActionMenu by remember { mutableStateOf(false) }
+    BackHandler(enabled = showTopActionMenu) { showTopActionMenu = false }
     var showMediaOptionsDialog by remember { mutableStateOf(false) }
     var contactMediaPath by remember(contactSimKey, settingsVer) {
         mutableStateOf(ContactMediaManager.getContactMedia(context, contact?.id ?: contactSimKey, phoneNumber))
@@ -1157,14 +1159,13 @@ fun ContactDetailsScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .statusBarsPadding(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(if (isSaturatedActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh),
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isSaturatedActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh),
                                 contentAlignment = Alignment.Center
                             ) {
                                 IconButton(onClick = { closeWithAnimation() }) {
@@ -1176,97 +1177,93 @@ fun ContactDetailsScreen(
                                 }
                             }
 
-                            Box(contentAlignment = Alignment.TopEnd) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isSaturatedActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    IconButton(onClick = { showTopActionMenu = !showTopActionMenu }) {
-                                        Icon(
-                                            Icons.Default.MoreVert,
-                                            contentDescription = "More actions",
-                                            tint = if (isSaturatedActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
+                            Spacer(modifier = Modifier.weight(1f))
 
-                                if (showTopActionMenu) {
-                                    val density = LocalDensity.current
-                                    val popupOffsetY = with(density) { 52.dp.roundToPx() }
-                                    Popup(
-                                        alignment = Alignment.TopEnd,
-                                        offset = IntOffset(0, popupOffsetY),
-                                        onDismissRequest = { showTopActionMenu = false },
-                                        properties = PopupProperties(focusable = true)
+                            AnimatedVisibility(
+                                visible = showTopActionMenu,
+                                enter = slideInHorizontally(initialOffsetX = { it / 2 }) + fadeIn() + expandHorizontally(expandFrom = Alignment.End),
+                                exit = slideOutHorizontally(targetOffsetX = { it / 2 }) + fadeOut() + shrinkHorizontally(shrinkTowards = Alignment.End)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    tonalElevation = 6.dp,
+                                    shadowElevation = 8.dp,
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(50),
-                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                            tonalElevation = 6.dp,
-                                            shadowElevation = 8.dp
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                IconButton(onClick = {
-                                                    showTopActionMenu = false
-                                                    if (shortcutNumbers.isEmpty()) {
-                                                        android.widget.Toast.makeText(context, "No phone number to add", android.widget.Toast.LENGTH_SHORT).show()
-                                                    } else if (shortcutNumbers.size > 1) {
-                                                        showShortcutNumberPicker = true
-                                                    } else {
-                                                        pendingShortcutNumber = shortcutNumbers.first()
-                                                        showShortcutActionPicker = true
-                                                    }
-                                                }) { Icon(Icons.Default.AddToHomeScreen, "Add to Home Screen") }
-                                                IconButton(onClick = {
-                                                    showTopActionMenu = false
-                                                    showQrDialog = true
-                                                }) { Icon(Icons.Outlined.QrCode2, "QR Code") }
-                                                if (contact != null) {
-                                                    IconButton(onClick = {
-                                                        showTopActionMenu = false
-                                                        contactsViewModel.toggleFavorite(contact)
-                                                    }) {
-                                                        Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite", tint = if (isFavorite) Color.Red else LocalContentColor.current)
-                                                    }
-                                                    IconButton(onClick = {
-                                                        showTopActionMenu = false
-                                                        showBlockConfirm = true
-                                                    }) {
-                                                        Icon(
-                                                            if (isContactBlocked) Icons.Default.Block else Icons.Outlined.Block,
-                                                            contentDescription = if (isContactBlocked) "Unblock" else "Block",
-                                                            tint = if (isContactBlocked) MaterialTheme.colorScheme.error else LocalContentColor.current
-                                                        )
-                                                    }
-                                                    IconButton(onClick = {
-                                                        showTopActionMenu = false
-                                                        navigator.navigate(ContactEditScreenDestination(contactId = contact.id))
-                                                    }) { Icon(Icons.Default.Edit, "Edit") }
-                                                } else if (phoneNumber != null && phoneNumber != "Unknown") {
-                                                    IconButton(onClick = {
-                                                        showTopActionMenu = false
-                                                        showBlockConfirm = true
-                                                    }) {
-                                                        Icon(
-                                                            if (isContactBlocked) Icons.Default.Block else Icons.Outlined.Block,
-                                                            contentDescription = if (isContactBlocked) "Unblock" else "Block",
-                                                            tint = if (isContactBlocked) MaterialTheme.colorScheme.error else LocalContentColor.current
-                                                        )
-                                                    }
-                                                    IconButton(onClick = {
-                                                        showTopActionMenu = false
-                                                        showAddContactChoiceDialog = true
-                                                    }) { Icon(Icons.Default.PersonAdd, "Add Contact") }
-                                                }
+                                        IconButton(onClick = {
+                                            showTopActionMenu = false
+                                            if (shortcutNumbers.isEmpty()) {
+                                                android.widget.Toast.makeText(context, "No phone number to add", android.widget.Toast.LENGTH_SHORT).show()
+                                            } else if (shortcutNumbers.size > 1) {
+                                                showShortcutNumberPicker = true
+                                            } else {
+                                                pendingShortcutNumber = shortcutNumbers.first()
+                                                showShortcutActionPicker = true
                                             }
+                                        }) { Icon(Icons.Default.AddToHomeScreen, "Add to Home Screen") }
+                                        IconButton(onClick = {
+                                            showTopActionMenu = false
+                                            showQrDialog = true
+                                        }) { Icon(Icons.Outlined.QrCode2, "QR Code") }
+                                        if (contact != null) {
+                                            IconButton(onClick = {
+                                                showTopActionMenu = false
+                                                contactsViewModel.toggleFavorite(contact)
+                                            }) {
+                                                Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite", tint = if (isFavorite) Color.Red else LocalContentColor.current)
+                                            }
+                                            IconButton(onClick = {
+                                                showTopActionMenu = false
+                                                showBlockConfirm = true
+                                            }) {
+                                                Icon(
+                                                    if (isContactBlocked) Icons.Default.Block else Icons.Outlined.Block,
+                                                    contentDescription = if (isContactBlocked) "Unblock" else "Block",
+                                                    tint = if (isContactBlocked) MaterialTheme.colorScheme.error else LocalContentColor.current
+                                                )
+                                            }
+                                            IconButton(onClick = {
+                                                showTopActionMenu = false
+                                                navigator.navigate(ContactEditScreenDestination(contactId = contact.id))
+                                            }) { Icon(Icons.Default.Edit, "Edit") }
+                                        } else if (phoneNumber != null && phoneNumber != "Unknown") {
+                                            IconButton(onClick = {
+                                                showTopActionMenu = false
+                                                showBlockConfirm = true
+                                            }) {
+                                                Icon(
+                                                    if (isContactBlocked) Icons.Default.Block else Icons.Outlined.Block,
+                                                    contentDescription = if (isContactBlocked) "Unblock" else "Block",
+                                                    tint = if (isContactBlocked) MaterialTheme.colorScheme.error else LocalContentColor.current
+                                                )
+                                            }
+                                            IconButton(onClick = {
+                                                showTopActionMenu = false
+                                                showAddContactChoiceDialog = true
+                                            }) { Icon(Icons.Default.PersonAdd, "Add Contact") }
                                         }
                                     }
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isSaturatedActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                IconButton(onClick = { showTopActionMenu = !showTopActionMenu }) {
+                                    Icon(
+                                        Icons.Default.MoreVert,
+                                        contentDescription = "More actions",
+                                        tint = if (isSaturatedActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
                             }
                         }
