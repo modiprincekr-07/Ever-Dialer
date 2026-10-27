@@ -399,47 +399,43 @@ fun LoopingVideoPlayer(
 ) {
     val context = LocalContext.current
     val exoPlayer = remember(context, videoPath) {
-        ExoPlayer.Builder(context).build().apply {
-            repeatMode = Player.REPEAT_MODE_ALL
-            volume = 0f
-            val uri = if (videoPath.startsWith("content://") || videoPath.startsWith("file://")) {
-                Uri.parse(videoPath)
-            } else {
-                Uri.fromFile(File(videoPath))
+        try {
+            ExoPlayer.Builder(context).build().apply {
+                repeatMode = Player.REPEAT_MODE_ALL
+                volume = 0f
+                val uri = if (videoPath.startsWith("content://") || videoPath.startsWith("file://")) {
+                    Uri.parse(videoPath)
+                } else {
+                    Uri.fromFile(File(videoPath))
+                }
+                setMediaItem(MediaItem.fromUri(uri))
+                prepare()
+                playWhenReady = true
             }
-            setMediaItem(MediaItem.fromUri(uri))
-            prepare()
-            playWhenReady = true
+        } catch (_: Exception) {
+            null
         }
     }
 
     DisposableEffect(exoPlayer) {
         onDispose {
-            exoPlayer.stop()
-            exoPlayer.release()
+            exoPlayer?.stop()
+            exoPlayer?.release()
         }
     }
 
-    val lifecycleOwner = try {
-        androidx.lifecycle.compose.LocalLifecycleOwner.current
-    } catch (_: Exception) {
-        null
-    }
-    if (lifecycleOwner != null) {
-        DisposableEffect(lifecycleOwner, exoPlayer) {
-            val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_START) {
-                    exoPlayer.play()
-                } else if (event == Lifecycle.Event.ON_STOP) {
-                    exoPlayer.pause()
-                }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) {
+                exoPlayer?.play()
+            } else if (event == Lifecycle.Event.ON_STOP) {
+                exoPlayer?.pause()
             }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose {
-                try {
-                    lifecycleOwner.lifecycle.removeObserver(observer)
-                } catch (_: Exception) {}
-            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
