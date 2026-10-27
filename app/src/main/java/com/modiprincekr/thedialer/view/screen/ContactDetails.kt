@@ -126,7 +126,12 @@ import com.modiprincekr.thedialer.controller.util.deduplicatePhoneNumbers
 import com.modiprincekr.thedialer.controller.util.ContactRingtoneUtils
 import com.modiprincekr.thedialer.controller.util.BlockedNumbersManager
 import androidx.compose.material.icons.outlined.Block
-import com.modiprincekr.thedialer.controller.util.ContactGifManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import com.modiprincekr.thedialer.controller.util.ContactMediaManager
+import com.modiprincekr.thedialer.controller.util.ContactMediaBackground
 import com.modiprincekr.thedialer.controller.util.rememberGifImageLoader
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -365,27 +370,30 @@ fun ContactDetailsScreen(
     }
 
     val gifImageLoader = rememberGifImageLoader()
-    var showGifOptionsDialog by remember { mutableStateOf(false) }
-    var contactGifPath by remember(contactSimKey, settingsVer) {
-        mutableStateOf(ContactGifManager.getContactGif(context, contact?.id ?: contactSimKey, phoneNumber))
+    var showTopActionMenu by remember { mutableStateOf(false) }
+    var showMediaOptionsDialog by remember { mutableStateOf(false) }
+    var contactMediaPath by remember(contactSimKey, settingsVer) {
+        mutableStateOf(ContactMediaManager.getContactMedia(context, contact?.id ?: contactSimKey, phoneNumber))
     }
 
-    val gifPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+    val mediaPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
             scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 val key = contact?.id ?: contactSimKey
                 val phones = contactPhoneNumbers.ifEmpty { listOfNotNull(phoneNumber) }
-                val result = ContactGifManager.saveContactGif(context, key, phones, uri)
+                val result = ContactMediaManager.saveContactMedia(context, key, phones, uri)
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     result.fold(
                         onSuccess = { savedPath ->
-                            contactGifPath = savedPath
-                            android.widget.Toast.makeText(context, "GIF background set successfully", android.widget.Toast.LENGTH_SHORT).show()
+                            contactMediaPath = savedPath
+                            val isVid = ContactMediaManager.isVideo(savedPath)
+                            val label = if (isVid) "Video" else "GIF"
+                            android.widget.Toast.makeText(context, "$label background set successfully", android.widget.Toast.LENGTH_SHORT).show()
                         },
                         onFailure = { error ->
-                            android.widget.Toast.makeText(context, error.message ?: "Failed to set GIF", android.widget.Toast.LENGTH_LONG).show()
+                            android.widget.Toast.makeText(context, error.message ?: "Failed to set background", android.widget.Toast.LENGTH_LONG).show()
                         }
                     )
                 }
@@ -1024,10 +1032,10 @@ fun ContactDetailsScreen(
                         Surface(
                             onClick = {
                                 showBackgroundPfpChoiceDialog = false
-                                if (contactGifPath != null) {
-                                    showGifOptionsDialog = true
+                                if (contactMediaPath != null) {
+                                    showMediaOptionsDialog = true
                                 } else {
-                                    gifPickerLauncher.launch("image/gif")
+                                    mediaPickerLauncher.launch(arrayOf("image/gif", "video/*"))
                                 }
                             },
                             shape = RoundedCornerShape(20.dp),
@@ -1051,9 +1059,9 @@ fun ContactDetailsScreen(
                                 }
                                 Spacer(Modifier.width(14.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Contact Background GIF", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                    Text("Contact Background Media", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                     Text(
-                                        if (contactGifPath != null) "Custom GIF active (max 15s) • Tap to manage" else "Looping GIF for header & popups (max 15s)",
+                                        if (contactMediaPath != null) "Custom media active (max 30s) • Tap to manage" else "Looping GIF or video for header & popups (max 30s)",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -1076,36 +1084,36 @@ fun ContactDetailsScreen(
         }
     }
 
-    if (showGifOptionsDialog) {
+    if (showMediaOptionsDialog) {
         AlertDialog(
-            onDismissRequest = { showGifOptionsDialog = false },
-            title = { Text("Contact Background GIF") },
-            text = { Text("Manage the looping background GIF for this contact.") },
+            onDismissRequest = { showMediaOptionsDialog = false },
+            title = { Text("Contact Background Media") },
+            text = { Text("Manage the looping background GIF or video (up to 30s) for this contact.") },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showGifOptionsDialog = false
-                        gifPickerLauncher.launch("image/gif")
+                        showMediaOptionsDialog = false
+                        mediaPickerLauncher.launch(arrayOf("image/gif", "video/*"))
                     }
                 ) {
-                    Text("Change GIF")
+                    Text("Change Media")
                 }
             },
             dismissButton = {
                 Row {
                     TextButton(
                         onClick = {
-                            showGifOptionsDialog = false
+                            showMediaOptionsDialog = false
                             val key = contact?.id ?: contactSimKey
                             val phones = contactPhoneNumbers.ifEmpty { listOfNotNull(phoneNumber) }
-                            ContactGifManager.removeContactGif(context, key, phones)
-                            contactGifPath = null
-                            android.widget.Toast.makeText(context, "GIF background removed", android.widget.Toast.LENGTH_SHORT).show()
+                            ContactMediaManager.removeContactMedia(context, key, phones)
+                            contactMediaPath = null
+                            android.widget.Toast.makeText(context, "Background media removed", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     ) {
                         Text("Remove", color = MaterialTheme.colorScheme.error)
                     }
-                    TextButton(onClick = { showGifOptionsDialog = false }) {
+                    TextButton(onClick = { showMediaOptionsDialog = false }) {
                         Text("Cancel")
                     }
                 }
@@ -1118,11 +1126,10 @@ fun ContactDetailsScreen(
             // Background image layer sits behind the whole column so it shows through
             // the transparent header instead of a solid banner.
             Box(modifier = Modifier.fillMaxWidth().height(340.dp)) {
-                if (!contactGifPath.isNullOrBlank()) {
-                    AsyncImage(
-                        model = contactGifPath,
-                        imageLoader = gifImageLoader,
-                        contentDescription = "Contact GIF background",
+                if (!contactMediaPath.isNullOrBlank()) {
+                    ContactMediaBackground(
+                        mediaPath = contactMediaPath,
+                        contentDescription = "Contact media background",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
@@ -1169,55 +1176,97 @@ fun ContactDetailsScreen(
                                 }
                             }
 
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                IconButton(onClick = { showBackgroundPfpChoiceDialog = true }) {
-                                    Icon(
-                                        Icons.Default.Wallpaper,
-                                        contentDescription = "Change Background & GIF",
-                                        tint = if (contactGifPath != null) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                                    )
+                            Box(contentAlignment = Alignment.TopEnd) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isSaturatedActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    IconButton(onClick = { showTopActionMenu = !showTopActionMenu }) {
+                                        Icon(
+                                            Icons.Default.MoreVert,
+                                            contentDescription = "More actions",
+                                            tint = if (isSaturatedActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
                                 }
-                                IconButton(onClick = {
-                                    if (shortcutNumbers.isEmpty()) {
-                                        android.widget.Toast.makeText(context, "No phone number to add", android.widget.Toast.LENGTH_SHORT).show()
-                                    } else if (shortcutNumbers.size > 1) {
-                                        showShortcutNumberPicker = true
-                                    } else {
-                                        pendingShortcutNumber = shortcutNumbers.first()
-                                        showShortcutActionPicker = true
+
+                                if (showTopActionMenu) {
+                                    val density = LocalDensity.current
+                                    val popupOffsetY = with(density) { 52.dp.roundToPx() }
+                                    Popup(
+                                        alignment = Alignment.TopEnd,
+                                        offset = IntOffset(0, popupOffsetY),
+                                        onDismissRequest = { showTopActionMenu = false },
+                                        properties = PopupProperties(focusable = true)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            tonalElevation = 6.dp,
+                                            shadowElevation = 8.dp
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                IconButton(onClick = {
+                                                    showTopActionMenu = false
+                                                    if (shortcutNumbers.isEmpty()) {
+                                                        android.widget.Toast.makeText(context, "No phone number to add", android.widget.Toast.LENGTH_SHORT).show()
+                                                    } else if (shortcutNumbers.size > 1) {
+                                                        showShortcutNumberPicker = true
+                                                    } else {
+                                                        pendingShortcutNumber = shortcutNumbers.first()
+                                                        showShortcutActionPicker = true
+                                                    }
+                                                }) { Icon(Icons.Default.AddToHomeScreen, "Add to Home Screen") }
+                                                IconButton(onClick = {
+                                                    showTopActionMenu = false
+                                                    showQrDialog = true
+                                                }) { Icon(Icons.Outlined.QrCode2, "QR Code") }
+                                                if (contact != null) {
+                                                    IconButton(onClick = {
+                                                        showTopActionMenu = false
+                                                        contactsViewModel.toggleFavorite(contact)
+                                                    }) {
+                                                        Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite", tint = if (isFavorite) Color.Red else LocalContentColor.current)
+                                                    }
+                                                    IconButton(onClick = {
+                                                        showTopActionMenu = false
+                                                        showBlockConfirm = true
+                                                    }) {
+                                                        Icon(
+                                                            if (isContactBlocked) Icons.Default.Block else Icons.Outlined.Block,
+                                                            contentDescription = if (isContactBlocked) "Unblock" else "Block",
+                                                            tint = if (isContactBlocked) MaterialTheme.colorScheme.error else LocalContentColor.current
+                                                        )
+                                                    }
+                                                    IconButton(onClick = {
+                                                        showTopActionMenu = false
+                                                        navigator.navigate(ContactEditScreenDestination(contactId = contact.id))
+                                                    }) { Icon(Icons.Default.Edit, "Edit") }
+                                                } else if (phoneNumber != null && phoneNumber != "Unknown") {
+                                                    IconButton(onClick = {
+                                                        showTopActionMenu = false
+                                                        showBlockConfirm = true
+                                                    }) {
+                                                        Icon(
+                                                            if (isContactBlocked) Icons.Default.Block else Icons.Outlined.Block,
+                                                            contentDescription = if (isContactBlocked) "Unblock" else "Block",
+                                                            tint = if (isContactBlocked) MaterialTheme.colorScheme.error else LocalContentColor.current
+                                                        )
+                                                    }
+                                                    IconButton(onClick = {
+                                                        showTopActionMenu = false
+                                                        showAddContactChoiceDialog = true
+                                                    }) { Icon(Icons.Default.PersonAdd, "Add Contact") }
+                                                }
+                                            }
+                                        }
                                     }
-                                }) { Icon(Icons.Default.AddToHomeScreen, "Add to Home Screen") }
-                                IconButton(onClick = { showQrDialog = true }) { Icon(Icons.Outlined.QrCode2, "QR Code") }
-                                if (contact != null) {
-                                    IconButton(onClick = { contactsViewModel.toggleFavorite(contact) }) {
-                                        Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite", tint = if (isFavorite) Color.Red else LocalContentColor.current)
-                                    }
-                                    IconButton(onClick = { showBlockConfirm = true }) {
-                                        Icon(
-                                            if (isContactBlocked) Icons.Default.Block else Icons.Outlined.Block,
-                                            contentDescription = if (isContactBlocked) "Unblock" else "Block",
-                                            tint = if (isContactBlocked) MaterialTheme.colorScheme.error else LocalContentColor.current
-                                        )
-                                    }
-                                    IconButton(onClick = {
-                                        navigator.navigate(ContactEditScreenDestination(contactId = contact.id))
-                                    }) { Icon(Icons.Default.Edit, "Edit") }
-                                } else if (phoneNumber != null && phoneNumber != "Unknown") {
-                                    IconButton(onClick = { showBlockConfirm = true }) {
-                                        Icon(
-                                            if (isContactBlocked) Icons.Default.Block else Icons.Outlined.Block,
-                                            contentDescription = if (isContactBlocked) "Unblock" else "Block",
-                                            tint = if (isContactBlocked) MaterialTheme.colorScheme.error else LocalContentColor.current
-                                        )
-                                    }
-                                    IconButton(onClick = {
-                                        showAddContactChoiceDialog = true
-                                    }) { Icon(Icons.Default.PersonAdd, "Add Contact") }
                                 }
                             }
                         }
@@ -1244,7 +1293,7 @@ fun ContactDetailsScreen(
                                         Icon(
                                             Icons.Default.Wallpaper,
                                             contentDescription = "Change GIF Background",
-                                            tint = if (contactGifPath != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                            tint = if (contactMediaPath != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                             modifier = Modifier.size(22.dp)
                                         )
                                     }
@@ -2677,8 +2726,8 @@ fun ContactDetailsScreen(
                                     (ongoingContactBgType != null && ongoingContactBgType != "none" && ongoingContactBgType != "default") ||
                                     (incomingContactPfpType != null && incomingContactPfpType != "none" && incomingContactPfpType != "default") ||
                                     (ongoingContactPfpType != null && ongoingContactPfpType != "none" && ongoingContactPfpType != "default") ||
-                                    (contactGifPath != null)
-                                val customSupporting = if (contactGifPath != null) "Custom GIF background configured" else if (isCustomized) "Custom background & PFP configured" else "According to Settings (Default)"
+                                    (contactMediaPath != null)
+                                val customSupporting = if (contactMediaPath != null) "Custom media background configured" else if (isCustomized) "Custom background & PFP configured" else "According to Settings (Default)"
 
                                 RivoExpressiveCard(title = "Background And Contact PFP Customisation", icon = Icons.Default.Wallpaper) {
                                     RivoListItem(

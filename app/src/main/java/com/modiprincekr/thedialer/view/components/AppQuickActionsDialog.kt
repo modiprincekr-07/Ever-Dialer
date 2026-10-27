@@ -37,8 +37,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import coil.compose.AsyncImage
-import com.modiprincekr.thedialer.controller.util.ContactGifManager
-import com.modiprincekr.thedialer.controller.util.rememberGifImageLoader
+import com.modiprincekr.thedialer.controller.util.ContactMediaManager
+import com.modiprincekr.thedialer.controller.util.ContactMediaBackground
 import kotlinx.coroutines.CancellationException
 import org.koin.compose.koinInject
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
@@ -106,10 +106,9 @@ fun AppQuickActionsDialog(
             }
 
             val context = LocalContext.current
-            val gifUri = remember(contactId, phoneNumber) {
-                ContactGifManager.getContactGif(context, contactId, phoneNumber)
+            val mediaUri = remember(contactId, phoneNumber) {
+                ContactMediaManager.getContactMedia(context, contactId, phoneNumber)
             }
-            val gifImageLoader = rememberGifImageLoader()
 
             Surface(
                 shape = RoundedCornerShape(28.dp),
@@ -121,13 +120,11 @@ fun AppQuickActionsDialog(
                     .alpha(backAlpha.value)
             ) {
                 Box(modifier = Modifier.fillMaxWidth()) {
-                    if (!gifUri.isNullOrBlank()) {
-                        AsyncImage(
-                            model = gifUri,
-                            imageLoader = gifImageLoader,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.matchParentSize()
+                    if (!mediaUri.isNullOrBlank()) {
+                        ContactMediaBackground(
+                            mediaPath = mediaUri,
+                            modifier = Modifier.matchParentSize(),
+                            contentScale = ContentScale.Crop
                         )
                         Box(
                             modifier = Modifier

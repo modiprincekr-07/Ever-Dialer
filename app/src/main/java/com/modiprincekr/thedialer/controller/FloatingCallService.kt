@@ -50,8 +50,8 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import coil.compose.AsyncImage
-import com.modiprincekr.thedialer.controller.util.ContactGifManager
-import com.modiprincekr.thedialer.controller.util.rememberGifImageLoader
+import com.modiprincekr.thedialer.controller.util.ContactMediaManager
+import com.modiprincekr.thedialer.controller.util.ContactMediaBackground
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.view.screen.CallActivity
 import com.modiprincekr.thedialer.view.theme.Rivo4Theme
@@ -507,10 +507,9 @@ class FloatingCallService : Service() {
                     targetOffsetY = { it }
                 ) + fadeOut(tween(300, easing = FastOutLinearInEasing))
             ) {
-                val gifUri = remember(phoneNumber) {
-                    ContactGifManager.getContactGif(context, null, phoneNumber)
+                val mediaUri = remember(phoneNumber) {
+                    ContactMediaManager.getContactMedia(context, null, phoneNumber)
                 }
-                val gifImageLoader = rememberGifImageLoader()
 
                 Surface(
                     modifier        = (if (isLandscape) {
@@ -533,13 +532,11 @@ class FloatingCallService : Service() {
                     shadowElevation = 0.dp
                 ) {
                     Box(modifier = Modifier.fillMaxWidth()) {
-                        if (!gifUri.isNullOrBlank()) {
-                            AsyncImage(
-                                model = gifUri,
-                                imageLoader = gifImageLoader,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.matchParentSize()
+                        if (!mediaUri.isNullOrBlank()) {
+                            ContactMediaBackground(
+                                mediaPath = mediaUri,
+                                modifier = Modifier.matchParentSize(),
+                                contentScale = ContentScale.Crop
                             )
                             Box(
                                 modifier = Modifier
