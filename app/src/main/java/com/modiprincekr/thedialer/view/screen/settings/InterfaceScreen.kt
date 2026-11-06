@@ -5,6 +5,7 @@ import com.ramcosta.composedestinations.generated.destinations.CallLogsSettingsS
 import com.ramcosta.composedestinations.generated.destinations.DialpadSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.ContactInfoSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.FavouritesSettingsScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.NotesSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.NavigationSettingsScreenDestination
 import com.modiprincekr.thedialer.view.theme.AppFontHelper
 import android.app.Activity
@@ -14,6 +15,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.lazy.LazyRow
@@ -129,6 +132,10 @@ private fun triggerRestartPrompt(
 @Destination<RootGraph>(style = SettingsTransitionStyle::class)
 @Composable
 fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = null) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
+    val isInteractive = lifecycleState.isAtLeast(Lifecycle.State.STARTED)
+
     val prefs = koinInject<PreferenceManager>()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -188,11 +195,13 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
         prefs.getBoolean(PreferenceManager.KEY_RATE_REVIEW_HIDDEN_SECRET, false)
     }
     var scrollAnimation     by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_SCROLL_ANIMATION, true)) }
+    var materialThemeStyle  by remember { mutableStateOf(prefs.getMaterialTheme()) }
+    var showMaterialThemeDialog by remember { mutableStateOf(false) }
     var animationStyle      by remember { mutableStateOf(prefs.getString(PreferenceManager.KEY_ANIMATION_STYLE, PreferenceManager.ANIMATION_STYLE_ZOOM) ?: PreferenceManager.ANIMATION_STYLE_ZOOM) }
     var showAnimationStyleDialog by remember { mutableStateOf(false) }
     var motionBlurAnimation by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_MOTION_BLUR_ANIMATION, false)) }
-    var liquidGlass         by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false)) }
-    var blurEffects         by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false)) }
+    val liquidGlass = remember(rateReviewToggleSettingsVersion) { prefs.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) }
+    val blurEffects = remember(rateReviewToggleSettingsVersion) { prefs.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) }
     var hangupAnimation     by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_HANGUP_ANIMATION, true)) }
 
     // App Name preset picker
@@ -400,6 +409,87 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
     }
 
 
+    // ── Material Theme Dialog ─────────────────────────────────────────────────
+    if (showMaterialThemeDialog) {
+        AlertDialog(
+            onDismissRequest = { showMaterialThemeDialog = false },
+            icon = { Icon(Icons.Outlined.Palette, null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Material Theme") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Choose the overall design style for Ever Dialer.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    listOf(
+                        Triple(
+                            PreferenceManager.MATERIAL_THEME_YOU,
+                            "Material You",
+                            "Classic clean design with dynamic colors and rounded corners"
+                        ),
+                        Triple(
+                            PreferenceManager.MATERIAL_THEME_EXPRESSIVE,
+                            "Material Expressive",
+                            "Expressive shapes, fluid bouncy sliders, spring-morphed buttons, and rich icons"
+                        )
+                    ).forEach { (key, label, desc) ->
+                        val isSelected = materialThemeStyle == key
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        materialThemeStyle = key
+                                        prefs.setMaterialTheme(key)
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        label,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                                else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        desc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                                else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = {
+                                        materialThemeStyle = key
+                                        prefs.setMaterialTheme(key)
+                                    },
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = MaterialTheme.colorScheme.primary,
+                                        unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showMaterialThemeDialog = false }) { Text("Done") }
+            }
+        )
+    }
+
     // ── Animation Style Dialog ───────────────────────────────────────────────
     if (showAnimationStyleDialog) {
         AlertDialog(
@@ -416,6 +506,7 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                     Spacer(Modifier.height(8.dp))
                     listOf(
                         PreferenceManager.ANIMATION_STYLE_ZOOM to "Zoom (in/out)",
+                        PreferenceManager.ANIMATION_STYLE_CARDS to "Cards",
                         PreferenceManager.ANIMATION_STYLE_WINDOWS_PHONE to "Windows Phone"
                     ).forEach { (key, label) ->
                         val isSelected = animationStyle == key
@@ -755,9 +846,13 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
         containerColor = MaterialTheme.colorScheme.surface
     ) { padding ->
         val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val scrollState = rememberScrollState()
         Box(modifier = Modifier.padding(top = padding.calculateTopPadding()).fillMaxSize()) {
             Column(
-                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + navBarBottom),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + navBarBottom),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
 
@@ -780,15 +875,21 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                                             rowItems.forEach { option ->
                                                 val selected = themeMode == option.key
                                                 Surface(
-                                                    onClick = {
-                                                        themeMode = option.key
-                                                        prefs.setString(PreferenceManager.KEY_THEME_MODE, option.key)
-                                                        triggerRestartPrompt(scope, snackbarHostState, context)
-                                                    },
                                                     shape = RoundedCornerShape(50),
                                                     color = if (selected) MaterialTheme.colorScheme.primary
                                                             else MaterialTheme.colorScheme.surfaceContainerHighest,
-                                                    modifier = Modifier.weight(1f).height(38.dp)
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(38.dp)
+                                                        .then(
+                                                            if (isInteractive) {
+                                                                Modifier.clickable {
+                                                                    themeMode = option.key
+                                                                    prefs.setString(PreferenceManager.KEY_THEME_MODE, option.key)
+                                                                    triggerRestartPrompt(scope, snackbarHostState, context)
+                                                                }
+                                                            } else Modifier
+                                                        )
                                                 ) {
                                                     val isPillBright = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.primary.toArgb()) > 0.40
                                                     val selectedTextColor = if (isPillBright) Color(0xFF1C1B1F) else Color.White
@@ -953,13 +1054,17 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                                                                 color = MaterialTheme.colorScheme.onSurface,
                                                                 shape = CircleShape
                                                             )
-                                                            .clickable {
-                                                                customPrimaryColor = color.toArgb()
-                                                                prefs.setInt("custom_primary_color", color.toArgb())
-                                                                hexInput = String.format("%06X", 0xFFFFFF and color.toArgb())
-                                                                hexError = false
-                                                                triggerRestartPrompt(scope, snackbarHostState, context)
-                                                            }
+                                                            .then(
+                                                                if (isInteractive) {
+                                                                    Modifier.clickable {
+                                                                        customPrimaryColor = color.toArgb()
+                                                                        prefs.setInt("custom_primary_color", color.toArgb())
+                                                                        hexInput = String.format("%06X", 0xFFFFFF and color.toArgb())
+                                                                        hexError = false
+                                                                        triggerRestartPrompt(scope, snackbarHostState, context)
+                                                                    }
+                                                                } else Modifier
+                                                            )
                                                     )
                                                 }
                                             }
@@ -1381,31 +1486,15 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                                 color = rivoHeadingColor(),
                                 modifier = Modifier.padding(start = 12.dp, bottom = 8.dp))
                             RivoExpressiveCard {
-                                Column(modifier = Modifier
-                                    .clickable { navigator.navigate(CustomFontScreenDestination()) }
-                                    .padding(horizontal = 16.dp, vertical = 14.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                        com.modiprincekr.thedialer.view.components.RivoIconBox(
-                                            icon = Icons.Outlined.TextFormat,
-                                            iconContainerColor = ColorPurple
-                                        )
-                                        Spacer(Modifier.width(16.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text("Fonts", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                                            val currentFontName = AppFontHelper.getFontDisplayName(prefs.getString(PreferenceManager.KEY_CUSTOM_FONT_PATH, null))
-                                            Text(
-                                                currentFontName,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Icon(
-                                            Icons.Default.ChevronRight,
-                                            contentDescription = "Choose font",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                }
+                                val currentFontName = AppFontHelper.getFontDisplayName(prefs.getString(PreferenceManager.KEY_CUSTOM_FONT_PATH, null))
+                                RivoListItem(
+                                    headline = "Fonts",
+                                    supporting = currentFontName,
+                                    leadingIcon = Icons.Outlined.TextFormat,
+                                    iconContainerColor = ColorPurple,
+                                    trailingIcon = Icons.Default.ChevronRight,
+                                    onClick = { navigator.navigate(CustomFontScreenDestination()) }
+                                )
                             }
                         }
                     }
@@ -1428,7 +1517,7 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                                         verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clickable { isRoundnessExpanded = !isRoundnessExpanded }
+                                            .then(if (isInteractive) Modifier.clickable { isRoundnessExpanded = !isRoundnessExpanded } else Modifier)
                                     ) {
                                         com.modiprincekr.thedialer.view.components.RivoIconBox(
                                             icon = Icons.Outlined.RoundedCorner,
@@ -1564,65 +1653,50 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                                 }
                             } else {
                             RivoExpressiveCard {
-                                RivoSwitchListItem(
-                                    headline = "Material Liquid You Glass",
-                                    supporting = "Apply a liquid glass refraction effect to navigation and menus",
-                                    leadingIcon = Icons.Outlined.Lens,
+                                val statusText = when {
+                                    liquidGlass && blurEffects -> "Liquid Glass & Blur active • Tap to configure"
+                                    liquidGlass -> "Liquid Glass active • Tap to configure"
+                                    blurEffects -> "Blur active • Tap to configure"
+                                    else -> "Disabled • Tap to configure"
+                                }
+                                RivoListItem(
+                                    headline = "Liquid and Blur effects",
+                                    supporting = statusText,
+                                    leadingIcon = Icons.Outlined.AutoAwesome,
                                     iconContainerColor = Color(0xFF00BCD4),
-                                    checked = liquidGlass,
-                                    modifier = Modifier.settingsSearchHighlight("liquid_glass_toggle", highlightedKey) { highlightedKey = null },
-                                    onCheckedChange = {
-                                        liquidGlass = it
-                                        prefs.setBoolean(PreferenceManager.KEY_LIQUID_GLASS, it)
-                                    }
-                                )
-                                HorizontalDivider(Modifier.padding(horizontal = 16.dp),
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                RivoListItem(
-                                    headline = "Elements to have liquid glass effect",
-                                    supporting = "Choose which UI elements use the liquid glass effect",
-                                    leadingIcon = Icons.Outlined.Layers,
-                                    iconContainerColor = Color(0xFF0097A7),
                                     trailingIcon = Icons.Default.ChevronRight,
-                                    modifier = Modifier.settingsSearchHighlight("liquid_glass_elements_link", highlightedKey) { highlightedKey = null },
+                                    modifier = Modifier
+                                        .settingsSearchHighlight("liquid_glass_toggle", highlightedKey) { highlightedKey = null }
+                                        .settingsSearchHighlight("liquid_glass_elements_link", highlightedKey) { highlightedKey = null }
+                                        .settingsSearchHighlight("blur_effects_toggle", highlightedKey) { highlightedKey = null }
+                                        .settingsSearchHighlight("blur_effects_elements_link", highlightedKey) { highlightedKey = null },
                                     onClick = {
-                                        navigator.navigate(com.ramcosta.composedestinations.generated.destinations.LiquidGlassElementsScreenDestination)
+                                        navigator.navigate(com.ramcosta.composedestinations.generated.destinations.LiquidGlassElementsScreenDestination())
                                     }
                                 )
                             }
                             Spacer(Modifier.height(12.dp))
                             RivoExpressiveCard {
-                                RivoSwitchListItem(
-                                    headline = "Material Blur Effects",
-                                    supporting = "Apply a background blur effect to navigation and menus",
-                                    leadingIcon = Icons.Outlined.BlurOn,
-                                    iconContainerColor = Color(0xFF5C6BC0),
-                                    checked = blurEffects,
-                                    modifier = Modifier.settingsSearchHighlight("blur_effects_toggle", highlightedKey) { highlightedKey = null },
-                                    onCheckedChange = {
-                                        blurEffects = it
-                                        prefs.setBoolean(PreferenceManager.KEY_BLUR_EFFECTS, it)
-                                    }
-                                )
-                                HorizontalDivider(Modifier.padding(horizontal = 16.dp),
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                 RivoListItem(
-                                    headline = "Elements to have blur effect",
-                                    supporting = "Choose which UI elements use the blur effect",
-                                    leadingIcon = Icons.Outlined.Layers,
-                                    iconContainerColor = Color(0xFF3949AB),
+                                    headline = "Material Theme",
+                                    supporting = if (materialThemeStyle == PreferenceManager.MATERIAL_THEME_EXPRESSIVE) "Material Expressive" else "Material You",
+                                    leadingIcon = Icons.Outlined.Palette,
+                                    iconContainerColor = MaterialTheme.colorScheme.primary,
                                     trailingIcon = Icons.Default.ChevronRight,
-                                    modifier = Modifier.settingsSearchHighlight("blur_effects_elements_link", highlightedKey) { highlightedKey = null },
-                                    onClick = {
-                                        navigator.navigate(com.ramcosta.composedestinations.generated.destinations.BlurEffectsElementsScreenDestination)
-                                    }
+                                    modifier = Modifier.settingsSearchHighlight("material_theme", highlightedKey) { highlightedKey = null },
+                                    onClick = { showMaterialThemeDialog = true }
                                 )
                             }
                             Spacer(Modifier.height(12.dp))
                             RivoExpressiveCard {
+                                val animSupporting = when (animationStyle) {
+                                    PreferenceManager.ANIMATION_STYLE_WINDOWS_PHONE -> "Windows Phone"
+                                    PreferenceManager.ANIMATION_STYLE_CARDS -> "Cards"
+                                    else -> "Zoom (in/out)"
+                                }
                                 RivoListItem(
                                     headline = "Animation Style",
-                                    supporting = if (animationStyle == PreferenceManager.ANIMATION_STYLE_WINDOWS_PHONE) "Windows Phone" else "Zoom (in/out)",
+                                    supporting = animSupporting,
                                     leadingIcon = Icons.Outlined.Animation,
                                     iconContainerColor = ColorTeal,
                                     trailingIcon = Icons.Default.ChevronRight,
@@ -1763,6 +1837,17 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                                     trailingIcon = Icons.Default.ChevronRight,
                                     modifier = Modifier.settingsSearchHighlight("favourites_settings_link", highlightedKey) { highlightedKey = null },
                                     onClick = { navigator.navigate(FavouritesSettingsScreenDestination()) }
+                                )
+                                HorizontalDivider(Modifier.padding(horizontal = 16.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                RivoListItem(
+                                    headline = "Notes",
+                                    supporting = "Customize swipe actions and settings for notes",
+                                    leadingIcon = Icons.Outlined.Description,
+                                    iconContainerColor = ColorOrange,
+                                    trailingIcon = Icons.Default.ChevronRight,
+                                    modifier = Modifier.settingsSearchHighlight("notes_settings_link", highlightedKey) { highlightedKey = null },
+                                    onClick = { navigator.navigate(NotesSettingsScreenDestination()) }
                                 )
                                 HorizontalDivider(Modifier.padding(horizontal = 16.dp),
                                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))

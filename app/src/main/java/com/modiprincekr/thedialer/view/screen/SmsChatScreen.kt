@@ -26,8 +26,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.*
+import com.coolappstore.everdialer.by.svhp.controller.FloatingSmsService
+import com.coolappstore.everdialer.by.svhp.controller.util.BlockedNumbersManager
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -108,7 +109,10 @@ fun SmsChatScreen(
     val allContacts by contactsVM.allContacts.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
-    DisposableEffect(Unit) {
+    val isThreadLoading by smsVM.isThreadLoading.collectAsState()
+
+    DisposableEffect(threadId, address) {
+        smsVM.prepareThread(threadId, address)
         onDispose {
             smsVM.clearActiveThread()
         }
@@ -188,6 +192,15 @@ fun SmsChatScreen(
 
     var messageText by remember(initialText) { mutableStateOf(initialText ?: "") }
     var showMenu by remember { mutableStateOf(false) }
+    var isPinned by remember(settingsVer, effectiveThreadId) {
+        mutableStateOf(prefs.isSmsThreadPinned(effectiveThreadId))
+    }
+    var isMuted by remember(settingsVer, address) {
+        mutableStateOf(prefs.isSmsMuted(address))
+    }
+    var isBlocked by remember(settingsVer, address) {
+        mutableStateOf(BlockedNumbersManager.isBlocked(context, prefs, address))
+    }
     var messageToDelete by remember { mutableStateOf<SmsMessage?>(null) }
     var messageToSelect by remember { mutableStateOf<SmsMessage?>(null) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -300,7 +313,7 @@ fun SmsChatScreen(
                 }
             }
             if (effectiveThreadId > 0) {
-                smsVM.loadThreadMessages(effectiveThreadId)
+                smsVM.loadThreadMessages(effectiveThreadId, address)
             }
             delay(1500)
         }
@@ -312,11 +325,11 @@ fun SmsChatScreen(
                 val resolved = smsVM.getOrCreateThreadId(address)
                 if (resolved > 0) {
                     effectiveThreadId = resolved
-                    smsVM.loadThreadMessages(resolved)
+                    smsVM.loadThreadMessages(resolved, address)
                 }
             } else if (effectiveThreadId > 0) {
                 if (eventThreadId == null || eventThreadId == effectiveThreadId) {
-                    smsVM.loadThreadMessages(effectiveThreadId)
+                    smsVM.loadThreadMessages(effectiveThreadId, address)
                 }
             }
         }
@@ -714,8 +727,111 @@ fun SmsChatScreen(
                                 onDismissRequest = { showMenu = false }
                             ) {
                                 RivoDropdownMenuItem(
+                                    text = "Call",
+                                    icon = Icons.Default.Call,
+                                    iconTint = Color(0xFF4CAF50),
+                                    onClick = {
+                                        showMenu = false
+                                        makeCall(context, address, null)
+                                    }
+                                )
+                                RivoDropdownMenuItem(
+                                    text = "Float",
+                                    icon = Icons.Outlined.PictureInPicture,
+                                    iconTint = Color(0xFF00ACC1),
+                                    onClick = {
+                                        showMenu = false
+                                        if (!android.provider.Settings.canDrawOverlays(context)) {
+                                            try {
+                                                val intent = android.content.Intent(
+                                                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                                    android.net.Uri.parse("package:${context.packageName}")
+                                                )
+                                                context.startActivity(intent)
+                                            } catch (_: Exception) {}
+                                        } else {
+                                            FloatingSmsService.start(
+                                                context = context,
+                                                threadId = effectiveThreadId,
+                                                address = address,
+                                                contactName = contactName ?: matchedContact?.name,
+                                                photoUri = resolvedPhotoUri
+                                            )
+                                        }
+                                    }
+                                )
+                                RivoDropdownMenuItem(
+                                    text = if (matchedContact != null) "Contact details" else "Add to contacts",
+                                    icon = Icons.Outlined.Person,
+                                    iconTint = Color(0xFF2196F3),
+                                    onClick = {
+                                        showMenu = false
+                                        navigator.navigate(
+                                            ContactDetailsScreenDestination(
+                                                phoneNumber = address
+                                            )
+                                        )
+                                    }
+                                )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                )
+                                RivoDropdownMenuItem(
+                                    text = if (isPinned) "Unpin chat" else "Pin chat",
+                                    icon = Icons.Default.PushPin,
+                                    iconTint = Color(0xFFFF9800),
+                                    onClick = {
+                                        showMenu = false
+                                        val next = !isPinned
+                                        isPinned = next
+                                        prefs.setSmsThreadPinned(effectiveThreadId, next)
+                                        Toast.makeText(context, if (next) "Chat pinned" else "Chat unpinned", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                                RivoDropdownMenuItem(
+                                    text = if (isMuted) "Unmute notifications" else "Mute notifications",
+                                    icon = if (isMuted) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
+                                    iconTint = Color(0xFF9C27B0),
+                                    onClick = {
+                                        showMenu = false
+                                        val next = !isMuted
+                                        isMuted = next
+                                        prefs.setSmsMuted(address, next)
+                                        Toast.makeText(context, if (next) "Muted notifications from ${contactName ?: address}" else "Unmuted ${contactName ?: address}", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                                RivoDropdownMenuItem(
+                                    text = "Mark as unread",
+                                    icon = Icons.Outlined.MarkChatUnread,
+                                    iconTint = Color(0xFF3F51B5),
+                                    onClick = {
+                                        showMenu = false
+                                        smsVM.markThreadAsUnread(effectiveThreadId)
+                                        Toast.makeText(context, "Marked as unread", Toast.LENGTH_SHORT).show()
+                                        navigator.navigateUp()
+                                    }
+                                )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                )
+                                RivoDropdownMenuItem(
+                                    text = if (isBlocked) "Unblock number" else "Block number",
+                                    icon = if (isBlocked) Icons.Default.RemoveCircleOutline else Icons.Outlined.Block,
+                                    iconTint = if (isBlocked) Color(0xFF4CAF50) else Color(0xFFFF5722),
+                                    onClick = {
+                                        showMenu = false
+                                        val next = !isBlocked
+                                        isBlocked = next
+                                        BlockedNumbersManager.toggle(context, prefs, address)
+                                        Toast.makeText(context, if (next) "Blocked ${contactName ?: address}" else "Unblocked ${contactName ?: address}", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                                RivoDropdownMenuItem(
                                     text = "Settings",
                                     icon = Icons.Outlined.Settings,
+                                    iconTint = Color(0xFF607D8B),
                                     onClick = {
                                         showMenu = false
                                         navigator.navigate(SmsSettingsScreenDestination())
@@ -728,6 +844,7 @@ fun SmsChatScreen(
                                 RivoDropdownMenuItem(
                                     text = "Delete conversation",
                                     icon = Icons.Outlined.Delete,
+                                    iconTint = MaterialTheme.colorScheme.error,
                                     isDestructive = true,
                                     onClick = {
                                         showMenu = false
@@ -753,6 +870,83 @@ fun SmsChatScreen(
                 .padding(paddingValues)
                 .imePadding()
         ) {
+            // Pinned message banner on top above the chat
+            val pinnedMessages = remember(messages, settingsVer) {
+                messages.filter { prefs.isSmsMessagePinned(it.id) }
+            }
+            AnimatedVisibility(
+                visible = pinnedMessages.isNotEmpty(),
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                val pinnedMsg = pinnedMessages.lastOrNull()
+                if (pinnedMsg != null) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        tonalElevation = 2.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                            .clickable {
+                                val reversedItems = chatListItems.asReversed()
+                                val targetIndex = reversedItems.indexOfFirst {
+                                    it is ChatListItem.Message && it.message.id == pinnedMsg.id
+                                }
+                                if (targetIndex >= 0) {
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(targetIndex)
+                                    }
+                                }
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PushPin,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (pinnedMessages.size > 1) "Pinned message (${pinnedMessages.size})" else "Pinned message",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = pinnedMsg.body.ifBlank { "MMS Message" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            IconButton(
+                                onClick = {
+                                    prefs.setSmsMessagePinned(pinnedMsg.id, false)
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Unpin message",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Message bubbles list
             Box(
                 modifier = Modifier
@@ -764,11 +958,19 @@ fun SmsChatScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "No messages in this conversation",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        if (isThreadLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(32.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 2.5.dp
+                            )
+                        } else {
+                            Text(
+                                text = "No messages in this conversation",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 } else {
                     LazyColumn(
@@ -1089,6 +1291,7 @@ fun SmsChatScreen(
                                 RivoDropdownMenuItem(
                                     text = "Schedule with Clock",
                                     icon = Icons.Default.AccessTime,
+                                    iconTint = Color(0xFF00ACC1),
                                     onClick = {
                                         showScheduleMenu = false
                                         openClockPicker()
@@ -1097,6 +1300,7 @@ fun SmsChatScreen(
                                 RivoDropdownMenuItem(
                                     text = "Schedule with Date",
                                     icon = Icons.Default.CalendarToday,
+                                    iconTint = Color(0xFF4CAF50),
                                     onClick = {
                                         showScheduleMenu = false
                                         openDatePicker()
@@ -1501,6 +1705,7 @@ private fun ChatBubble(
                 RivoDropdownMenuItem(
                     text = if (isPinned) "Unpin message" else "Pin message",
                     icon = Icons.Default.PushPin,
+                    iconTint = Color(0xFFFF9800),
                     onClick = {
                         showMessageMenu = false
                         prefs.setSmsMessagePinned(message.id, !isPinned)
@@ -1523,6 +1728,7 @@ private fun ChatBubble(
                 RivoDropdownMenuItem(
                     text = "Select",
                     icon = Icons.Default.SelectAll,
+                    iconTint = Color(0xFF2196F3),
                     onClick = {
                         showMessageMenu = false
                         onSelectClick()
@@ -1531,14 +1737,20 @@ private fun ChatBubble(
                 RivoDropdownMenuItem(
                     text = "Copy text",
                     icon = Icons.Default.ContentCopy,
+                    iconTint = Color(0xFF009688),
                     onClick = {
                         showMessageMenu = false
                         onCopyClick()
                     }
                 )
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
                 RivoDropdownMenuItem(
                     text = "Delete",
                     icon = Icons.Outlined.Delete,
+                    iconTint = MaterialTheme.colorScheme.error,
                     isDestructive = true,
                     onClick = {
                         showMessageMenu = false

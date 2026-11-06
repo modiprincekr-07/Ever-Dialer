@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
 import com.modiprincekr.thedialer.MainActivity
 import com.modiprincekr.thedialer.R
+import com.modiprincekr.thedialer.controller.FloatingSmsService
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -126,7 +127,10 @@ class SmsReceiver : BroadcastReceiver() {
                 val isBlocked = com.modiprincekr.thedialer.controller.util.BlockedNumbersManager.isBlocked(context, prefs, address)
                 val isMuted = prefs.isSmsMuted(address)
 
-                if (!isBlocked && !isMuted) {
+                val isInSmsSection = MainActivity.isSmsSectionActive
+                val isFloatingChatOpenForThis = FloatingSmsService.isChatOpenFor(address, threadId)
+
+                if (!isBlocked && !isMuted && !isInSmsSection && !isFloatingChatOpenForThis) {
                     val (contactName, photoUri) = resolveContact(context, address)
                     showSmsNotification(
                         context = context,

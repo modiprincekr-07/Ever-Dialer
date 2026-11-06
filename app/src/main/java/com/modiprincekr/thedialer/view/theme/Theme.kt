@@ -31,6 +31,13 @@ import org.koin.compose.koinInject
 import java.io.File
 import kotlin.math.roundToInt
 
+val LocalMaterialThemeStyle = androidx.compose.runtime.compositionLocalOf { PreferenceManager.MATERIAL_THEME_YOU }
+
+@Composable
+fun isMaterialExpressive(): Boolean {
+    return LocalMaterialThemeStyle.current == PreferenceManager.MATERIAL_THEME_EXPRESSIVE
+}
+
 private val DarkColorScheme = darkColorScheme(
     primary = Purple80, secondary = PurpleGrey80, tertiary = Pink80
 )
@@ -484,9 +491,12 @@ fun Rivo4Theme(
         )
     }
 
+    val materialThemeStyle = prefs.getMaterialTheme()
+
     CompositionLocalProvider(
         LocalLayoutDirection provides layoutDirection,
         LocalCardCornerRadius provides cornerRadius.dp,
+        LocalMaterialThemeStyle provides materialThemeStyle,
         com.modiprincekr.thedialer.controller.util.LocalAppLanguage provides appLanguage
     ) {
         MaterialTheme(
@@ -517,4 +527,18 @@ fun ProvideScaledDensity(
         androidx.compose.ui.platform.LocalDensity provides scaledDensity,
         content = content
     )
+}
+
+fun getActiveThemeColor(context: android.content.Context, prefs: PreferenceManager): Int {
+    val dynamicColor = prefs.getBoolean(PreferenceManager.KEY_DYNAMIC_COLORS, true)
+    val customPrimaryInt = prefs.getInt("custom_primary_color", 0)
+    if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        try {
+            return dynamicLightColorScheme(context).primary.toArgb()
+        } catch (_: Throwable) {}
+    }
+    if (customPrimaryInt != 0) {
+        return customPrimaryInt
+    }
+    return 0xFF6750A4.toInt()
 }

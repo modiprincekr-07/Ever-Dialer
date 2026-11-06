@@ -49,6 +49,8 @@
         tools:replace="android:maxSdkVersion" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:node="remove"/>
@@ -1947,6 +1949,16 @@
             <intent-filter>
                 <action android:name="com.modiprincekr.thedialer.SCHEDULED_SMS_TRIGGER" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".controller.util.AutoBackupReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.modiprincekr.thedialer.AUTO_BACKUP_TRIGGER" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

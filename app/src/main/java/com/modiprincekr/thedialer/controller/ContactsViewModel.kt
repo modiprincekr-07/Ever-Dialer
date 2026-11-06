@@ -4,14 +4,17 @@ import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import com.modiprincekr.thedialer.controller.util.CallLogsCache
 import com.modiprincekr.thedialer.controller.util.ContactsCache
 import com.modiprincekr.thedialer.controller.util.ContactsHiderManager
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
+import com.modiprincekr.thedialer.modal.`interface`.ICallLogRepository
 import com.modiprincekr.thedialer.modal.`interface`.IContactsRepository
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.modiprincekr.thedialer.modal.data.Contact
 import com.modiprincekr.thedialer.modal.data.ContactAccount
+import org.koin.java.KoinJavaComponent.getKoin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -546,8 +549,16 @@ class ContactsViewModel(
                 ContactsCache.write(getApplication(), updated)
             }
             contactsRepo.saveContact(contact, accountType, accountName, updateAllAccounts, originalContact)
+            invalidateCallLogs()
             fetchContacts()
         }
+    }
+
+    private fun invalidateCallLogs() {
+        try {
+            CallLogsCache.clear(getApplication())
+            getKoin().getOrNull<ICallLogRepository>()?.invalidateContactIndex()
+        } catch (_: Exception) {}
     }
 
     fun getContactAccounts(contactId: String): List<com.modiprincekr.thedialer.modal.data.ContactAccountInfo> =
@@ -576,6 +587,9 @@ class ContactsViewModel(
     fun saveContactToSim(contact: Contact, simSlotIndex: Int, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
             val success = contactsRepo.saveContactToSim(contact, simSlotIndex)
+            if (success) {
+                invalidateCallLogs()
+            }
             kotlinx.coroutines.withContext(Dispatchers.Main) { onResult(success) }
         }
     }
@@ -586,6 +600,7 @@ class ContactsViewModel(
     fun moveContact(contact: Contact, target: com.modiprincekr.thedialer.modal.data.ContactSaveTarget, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
             val success = runCatching { contactsRepo.moveContact(contact, target) }.getOrDefault(false)
+            invalidateCallLogs()
             fetchContacts()
             fetchAvailableAccounts()
             kotlinx.coroutines.withContext(Dispatchers.Main) { onResult(success) }
@@ -597,6 +612,7 @@ class ContactsViewModel(
     fun deleteContact(contactId: String, onComplete: () -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
             contactsRepo.deleteContact(contactId)
+            invalidateCallLogs()
             fetchContacts()
             withContext(Dispatchers.Main) {
                 onComplete()
@@ -607,6 +623,7 @@ class ContactsViewModel(
     fun deleteRawContact(rawContactId: Long, onComplete: () -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
             contactsRepo.deleteRawContact(rawContactId)
+            invalidateCallLogs()
             fetchContacts()
             withContext(Dispatchers.Main) {
                 onComplete()
@@ -618,6 +635,7 @@ class ContactsViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val success = contactsRepo.deletePhoneNumberFromContact(contactId, phoneNumber)
             if (success) {
+                invalidateCallLogs()
                 fetchContacts()
             }
             withContext(Dispatchers.Main) {

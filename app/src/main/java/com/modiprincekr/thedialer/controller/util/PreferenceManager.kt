@@ -212,6 +212,305 @@ class PreferenceManager(context: Context) {
         setString(KEY_MUTED_SMS_ADDRESSES, current.joinToString(","))
     }
 
+    fun getBlockerEngine(): String =
+        getString(KEY_BLOCKER_ENGINE, BLOCKER_ENGINE_EVER_DIALER) ?: BLOCKER_ENGINE_EVER_DIALER
+
+    fun setBlockerEngine(engine: String) =
+        setString(KEY_BLOCKER_ENGINE, engine)
+
+    fun isEverDialerBlocker(): Boolean =
+        getBlockerEngine() == BLOCKER_ENGINE_EVER_DIALER
+
+    fun getSmsCategoryOrder(): List<String> {
+        val raw = getString(KEY_SMS_CATEGORY_ORDER, null)
+        if (raw.isNullOrBlank()) return DEFAULT_SMS_CATEGORY_ORDER
+        return raw.split(",").map { it.trim() }.filter { it.isNotBlank() }
+    }
+
+    fun setSmsCategoryOrder(order: List<String>) {
+        setString(KEY_SMS_CATEGORY_ORDER, order.joinToString(","))
+    }
+
+    fun getHiddenSmsCategories(): Set<String> {
+        val raw = getString(KEY_SMS_CATEGORY_HIDDEN, null) ?: return emptySet()
+        return raw.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
+    }
+
+    fun setSmsCategoryHidden(categoryId: String, hidden: Boolean) {
+        val current = getHiddenSmsCategories().toMutableSet()
+        if (hidden) current.add(categoryId) else current.remove(categoryId)
+        setString(KEY_SMS_CATEGORY_HIDDEN, current.joinToString(","))
+    }
+
+    fun getCustomSmsCategories(): List<SmsCustomCategory> {
+        val raw = getString(KEY_SMS_CUSTOM_CATEGORIES, null) ?: return emptyList()
+        return try {
+            val array = org.json.JSONArray(raw)
+            val list = mutableListOf<SmsCustomCategory>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val id = obj.optString("id")
+                val name = obj.optString("name")
+                val phonesArray = obj.optJSONArray("contactPhones")
+                val phones = mutableListOf<String>()
+                if (phonesArray != null) {
+                    for (j in 0 until phonesArray.length()) {
+                        phones.add(phonesArray.getString(j))
+                    }
+                }
+                if (id.isNotBlank() && name.isNotBlank()) {
+                    list.add(SmsCustomCategory(id, name, phones))
+                }
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveCustomSmsCategory(category: SmsCustomCategory) {
+        val current = getCustomSmsCategories().toMutableList()
+        val idx = current.indexOfFirst { it.id == category.id }
+        if (idx >= 0) {
+            current[idx] = category
+        } else {
+            current.add(category)
+            val order = getSmsCategoryOrder().toMutableList()
+            if (!order.contains(category.id)) {
+                order.add(category.id)
+                setSmsCategoryOrder(order)
+            }
+        }
+        val array = org.json.JSONArray()
+        for (cat in current) {
+            val obj = org.json.JSONObject()
+            obj.put("id", cat.id)
+            obj.put("name", cat.name)
+            val phonesArray = org.json.JSONArray()
+            for (phone in cat.contactPhones) {
+                phonesArray.put(phone)
+            }
+            obj.put("contactPhones", phonesArray)
+            array.put(obj)
+        }
+        setString(KEY_SMS_CUSTOM_CATEGORIES, array.toString())
+    }
+
+    fun deleteCustomSmsCategory(categoryId: String) {
+        val current = getCustomSmsCategories().filterNot { it.id == categoryId }
+        val array = org.json.JSONArray()
+        for (cat in current) {
+            val obj = org.json.JSONObject()
+            obj.put("id", cat.id)
+            obj.put("name", cat.name)
+            val phonesArray = org.json.JSONArray()
+            for (phone in cat.contactPhones) {
+                phonesArray.put(phone)
+            }
+            obj.put("contactPhones", phonesArray)
+            array.put(obj)
+        }
+        setString(KEY_SMS_CUSTOM_CATEGORIES, array.toString())
+        val order = getSmsCategoryOrder().filterNot { it == categoryId }
+        setSmsCategoryOrder(order)
+        setSmsCategoryHidden(categoryId, false)
+        if (getDefaultSmsCategory() == categoryId) {
+            setDefaultSmsCategory("all")
+        }
+    }
+
+    fun getDefaultSmsCategory(): String =
+        getString(KEY_DEFAULT_SMS_CATEGORY, "all") ?: "all"
+
+    fun setDefaultSmsCategory(id: String) {
+        setString(KEY_DEFAULT_SMS_CATEGORY, id)
+    }
+
+    fun getAllSmsCategories(): List<SmsCategoryItem> {
+        val custom = getCustomSmsCategories().associateBy { it.id }
+        val builtin = mapOf(
+            "all" to "All",
+            "favourites" to "Favourites",
+            "starred" to "Starred",
+            "contacts" to "Contacts",
+            "unknown" to "Unknown",
+            "otp" to "OTP"
+        )
+        val order = getSmsCategoryOrder()
+        val result = mutableListOf<SmsCategoryItem>()
+        for (id in order) {
+            if (custom.containsKey(id)) {
+                val c = custom[id]!!
+                result.add(SmsCategoryItem(c.id, c.name, isCustom = true, contactPhones = c.contactPhones))
+            } else if (builtin.containsKey(id)) {
+                result.add(SmsCategoryItem(id, builtin[id]!!, isCustom = false))
+            }
+        }
+        for ((id, name) in builtin) {
+            if (result.none { it.id == id }) {
+                result.add(SmsCategoryItem(id, name, isCustom = false))
+            }
+        }
+        for ((id, c) in custom) {
+            if (result.none { it.id == id }) {
+                result.add(SmsCategoryItem(c.id, c.name, isCustom = true, contactPhones = c.contactPhones))
+            }
+        }
+        return result
+    }
+
+    fun resetSmsCategoriesToDefault() {
+        setSmsCategoryOrder(DEFAULT_SMS_CATEGORY_ORDER)
+        setString(KEY_SMS_CATEGORY_HIDDEN, "")
+        setDefaultSmsCategory("all")
+    }
+
+    fun getCallCategoryOrder(): List<String> {
+        val raw = getString(KEY_CALL_CATEGORY_ORDER, null)
+        if (raw.isNullOrBlank()) return DEFAULT_CALL_CATEGORY_ORDER
+        return raw.split(",").map { it.trim() }.filter { it.isNotBlank() }
+    }
+
+    fun setCallCategoryOrder(order: List<String>) {
+        setString(KEY_CALL_CATEGORY_ORDER, order.joinToString(","))
+    }
+
+    fun getHiddenCallCategories(): Set<String> {
+        val raw = getString(KEY_CALL_CATEGORY_HIDDEN, null) ?: return emptySet()
+        return raw.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
+    }
+
+    fun setCallCategoryHidden(categoryId: String, hidden: Boolean) {
+        val current = getHiddenCallCategories().toMutableSet()
+        if (hidden) current.add(categoryId) else current.remove(categoryId)
+        setString(KEY_CALL_CATEGORY_HIDDEN, current.joinToString(","))
+    }
+
+    fun getCustomCallCategories(): List<CallCustomCategory> {
+        val raw = getString(KEY_CALL_CUSTOM_CATEGORIES, null) ?: return emptyList()
+        return try {
+            val array = org.json.JSONArray(raw)
+            val list = mutableListOf<CallCustomCategory>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val id = obj.optString("id")
+                val name = obj.optString("name")
+                val phonesArray = obj.optJSONArray("contactPhones")
+                val phones = mutableListOf<String>()
+                if (phonesArray != null) {
+                    for (j in 0 until phonesArray.length()) {
+                        phones.add(phonesArray.getString(j))
+                    }
+                }
+                if (id.isNotBlank() && name.isNotBlank()) {
+                    list.add(CallCustomCategory(id, name, phones))
+                }
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveCustomCallCategory(category: CallCustomCategory) {
+        val current = getCustomCallCategories().toMutableList()
+        val idx = current.indexOfFirst { it.id == category.id }
+        if (idx >= 0) {
+            current[idx] = category
+        } else {
+            current.add(category)
+            val order = getCallCategoryOrder().toMutableList()
+            if (!order.contains(category.id)) {
+                order.add(category.id)
+                setCallCategoryOrder(order)
+            }
+        }
+        val array = org.json.JSONArray()
+        for (cat in current) {
+            val obj = org.json.JSONObject()
+            obj.put("id", cat.id)
+            obj.put("name", cat.name)
+            val phonesArray = org.json.JSONArray()
+            for (phone in cat.contactPhones) {
+                phonesArray.put(phone)
+            }
+            obj.put("contactPhones", phonesArray)
+            array.put(obj)
+        }
+        setString(KEY_CALL_CUSTOM_CATEGORIES, array.toString())
+    }
+
+    fun deleteCustomCallCategory(categoryId: String) {
+        val current = getCustomCallCategories().filterNot { it.id == categoryId }
+        val array = org.json.JSONArray()
+        for (cat in current) {
+            val obj = org.json.JSONObject()
+            obj.put("id", cat.id)
+            obj.put("name", cat.name)
+            val phonesArray = org.json.JSONArray()
+            for (phone in cat.contactPhones) {
+                phonesArray.put(phone)
+            }
+            obj.put("contactPhones", phonesArray)
+            array.put(obj)
+        }
+        setString(KEY_CALL_CUSTOM_CATEGORIES, array.toString())
+        val order = getCallCategoryOrder().filterNot { it == categoryId }
+        setCallCategoryOrder(order)
+        setCallCategoryHidden(categoryId, false)
+        if (getDefaultCallCategory() == categoryId) {
+            setDefaultCallCategory("all")
+        }
+    }
+
+    fun getDefaultCallCategory(): String =
+        getString(KEY_DEFAULT_CALL_CATEGORY, "all") ?: "all"
+
+    fun setDefaultCallCategory(id: String) {
+        setString(KEY_DEFAULT_CALL_CATEGORY, id)
+    }
+
+    fun getAllCallCategories(): List<CallCategoryItem> {
+        val custom = getCustomCallCategories().associateBy { it.id }
+        val builtin = mapOf(
+            "all" to "All",
+            "favourites" to "Favourites",
+            "contacts" to "Contacts",
+            "unknown" to "Unknown",
+            "missed" to "Missed",
+            "incoming" to "Incoming",
+            "outgoing" to "Outgoing"
+        )
+        val order = getCallCategoryOrder()
+        val result = mutableListOf<CallCategoryItem>()
+        for (id in order) {
+            if (custom.containsKey(id)) {
+                val c = custom[id]!!
+                result.add(CallCategoryItem(c.id, c.name, isCustom = true, contactPhones = c.contactPhones))
+            } else if (builtin.containsKey(id)) {
+                result.add(CallCategoryItem(id, builtin[id]!!, isCustom = false))
+            }
+        }
+        for ((id, name) in builtin) {
+            if (result.none { it.id == id }) {
+                result.add(CallCategoryItem(id, name, isCustom = false))
+            }
+        }
+        for ((id, c) in custom) {
+            if (result.none { it.id == id }) {
+                result.add(CallCategoryItem(c.id, c.name, isCustom = true, contactPhones = c.contactPhones))
+            }
+        }
+        return result
+    }
+
+    fun resetCallCategoriesToDefault() {
+        setCallCategoryOrder(DEFAULT_CALL_CATEGORY_ORDER)
+        setString(KEY_CALL_CATEGORY_HIDDEN, "")
+        setDefaultCallCategory("all")
+    }
+
+
 
     /** Returns the user-configured tab order (Settings > Appearance > Tab Sections) as an
      *  ordered list of tab keys (e.g. "favorites", "calls", "contacts", "recordings", "notes").
@@ -235,6 +534,12 @@ class PreferenceManager(context: Context) {
         setString(KEY_SMS_SELECTED_FILTER, tab.id)
 
     fun getContactInfoOrder(): List<String> = parseContactInfoOrder(getString(KEY_CONTACT_INFO_ORDER, null))
+
+    fun getMaterialTheme(): String =
+        getString(KEY_MATERIAL_THEME, MATERIAL_THEME_YOU) ?: MATERIAL_THEME_YOU
+
+    fun setMaterialTheme(theme: String) =
+        setString(KEY_MATERIAL_THEME, theme)
 
     fun getAnimationStyle(): String =
         getString(KEY_ANIMATION_STYLE, ANIMATION_STYLE_ZOOM) ?: ANIMATION_STYLE_ZOOM
@@ -394,6 +699,174 @@ class PreferenceManager(context: Context) {
 
     fun getAppLanguage(): String = getString(KEY_APP_LANGUAGE, LANGUAGE_SYSTEM) ?: LANGUAGE_SYSTEM
     fun setAppLanguage(lang: String) = setString(KEY_APP_LANGUAGE, lang)
+
+    fun getLiquidGlassDefaultConfig(elementKey: String): LiquidGlassElementConfig {
+        val defaultBlur = when (elementKey) {
+            KEY_LG_DROPDOWN_MENU -> 6f
+            KEY_LG_CONTACTS_FAB, KEY_LG_RECENTS_FAB -> 2f
+            else -> 2f
+        }
+        val defaultRefractionHeight = when (elementKey) {
+            KEY_LG_BOTTOM_NAV, KEY_LG_CONTACTS_FAB, KEY_LG_RECENTS_FAB -> 23f
+            KEY_LG_DROPDOWN_MENU -> 40f
+            else -> 18f
+        }
+        val defaultRefractionAmount = when (elementKey) {
+            KEY_LG_BOTTOM_NAV, KEY_LG_CONTACTS_FAB, KEY_LG_RECENTS_FAB -> 64f
+            KEY_LG_DROPDOWN_MENU -> 248f
+            KEY_LG_DIALPAD_CALL_BUTTON -> 52f
+            else -> 48f
+        }
+        val defaultSaturation = when (elementKey) {
+            KEY_LG_BOTTOM_NAV, KEY_LG_DROPDOWN_MENU, KEY_LG_CONTACTS_FAB, KEY_LG_RECENTS_FAB -> 1.4f
+            KEY_LG_DIALPAD_CALL_BUTTON -> 1.3f
+            else -> 1.0f
+        }
+        val defaultBrightness = when (elementKey) {
+            KEY_LG_DROPDOWN_MENU -> -0.13f
+            else -> 0f
+        }
+        return LiquidGlassElementConfig(
+            blurRadiusDp = defaultBlur,
+            refractionHeightDp = defaultRefractionHeight,
+            refractionAmountDp = defaultRefractionAmount,
+            chromaticAberration = false,
+            depthEffect = false,
+            saturation = defaultSaturation,
+            brightness = defaultBrightness
+        )
+    }
+
+    fun getLiquidGlassConfig(elementKey: String): LiquidGlassElementConfig {
+        val def = getLiquidGlassDefaultConfig(elementKey)
+        val rawBrightness = getFloat("${elementKey}_brightness", def.brightness)
+        val brightness = if ((elementKey == KEY_LG_CONTACTS_FAB || elementKey == KEY_LG_RECENTS_FAB) && rawBrightness == -0.15f) {
+            def.brightness
+        } else {
+            rawBrightness
+        }
+        val rawBlur = getFloat("${elementKey}_blur", def.blurRadiusDp)
+        val blurRadiusDp = if ((elementKey == KEY_LG_CONTACTS_FAB || elementKey == KEY_LG_RECENTS_FAB) && rawBlur == 0f) {
+            def.blurRadiusDp
+        } else {
+            rawBlur
+        }
+        val rawSat = getFloat("${elementKey}_saturation", def.saturation)
+        val saturation = if ((elementKey == KEY_LG_CONTACTS_FAB || elementKey == KEY_LG_RECENTS_FAB) && rawSat == 1.0f) {
+            def.saturation
+        } else {
+            rawSat
+        }
+        return LiquidGlassElementConfig(
+            blurRadiusDp = blurRadiusDp,
+            refractionHeightDp = getFloat("${elementKey}_refraction_h", def.refractionHeightDp),
+            refractionAmountDp = getFloat("${elementKey}_refraction_a", def.refractionAmountDp),
+            chromaticAberration = getBoolean("${elementKey}_chromatic", def.chromaticAberration),
+            depthEffect = getBoolean("${elementKey}_depth", def.depthEffect),
+            saturation = saturation,
+            brightness = brightness
+        )
+    }
+
+    fun setLiquidGlassConfig(elementKey: String, config: LiquidGlassElementConfig) {
+        setFloat("${elementKey}_blur", config.blurRadiusDp)
+        setFloat("${elementKey}_refraction_h", config.refractionHeightDp)
+        setFloat("${elementKey}_refraction_a", config.refractionAmountDp)
+        setBoolean("${elementKey}_chromatic", config.chromaticAberration)
+        setBoolean("${elementKey}_depth", config.depthEffect)
+        setFloat("${elementKey}_saturation", config.saturation)
+        setFloat("${elementKey}_brightness", config.brightness)
+    }
+
+    fun resetLiquidGlassConfig(elementKey: String) {
+        remove("${elementKey}_blur")
+        remove("${elementKey}_refraction_h")
+        remove("${elementKey}_refraction_a")
+        remove("${elementKey}_chromatic")
+        remove("${elementKey}_depth")
+        remove("${elementKey}_saturation")
+        remove("${elementKey}_brightness")
+    }
+
+    fun getBlurDefaultConfig(elementKey: String): BlurElementConfig {
+        return BlurElementConfig(
+            blurRadiusDp = 25f,
+            saturation = 1.3f
+        )
+    }
+
+    fun getBlurConfig(elementKey: String): BlurElementConfig {
+        val def = getBlurDefaultConfig(elementKey)
+        return BlurElementConfig(
+            blurRadiusDp = getFloat("${elementKey}_blur_radius", def.blurRadiusDp),
+            saturation = getFloat("${elementKey}_blur_sat", def.saturation)
+        )
+    }
+
+    fun setBlurConfig(elementKey: String, config: BlurElementConfig) {
+        setFloat("${elementKey}_blur_radius", config.blurRadiusDp)
+        setFloat("${elementKey}_blur_sat", config.saturation)
+    }
+
+    fun resetBlurConfig(elementKey: String) {
+        remove("${elementKey}_blur_radius")
+        remove("${elementKey}_blur_sat")
+    }
+
+    // ── Auto Backup Configuration Helpers ─────────────────────────────────
+    fun isAutoBackupEnabled(): Boolean = getBoolean(KEY_AUTO_BACKUP_ENABLED, false)
+    fun setAutoBackupEnabled(enabled: Boolean) = setBoolean(KEY_AUTO_BACKUP_ENABLED, enabled)
+
+    fun getAutoBackupFolderUri(): String? = getString(KEY_AUTO_BACKUP_FOLDER_URI, null)
+    fun setAutoBackupFolderUri(uri: String?) = setString(KEY_AUTO_BACKUP_FOLDER_URI, uri)
+
+    fun getAutoBackupIntervalValue(): Int = getInt(KEY_AUTO_BACKUP_INTERVAL_VALUE, 2)
+    fun setAutoBackupIntervalValue(value: Int) = setInt(KEY_AUTO_BACKUP_INTERVAL_VALUE, value)
+
+    fun getAutoBackupIntervalUnit(): String = getString(KEY_AUTO_BACKUP_INTERVAL_UNIT, "hours") ?: "hours"
+    fun setAutoBackupIntervalUnit(unit: String) = setString(KEY_AUTO_BACKUP_INTERVAL_UNIT, unit)
+
+    fun isAutoBackupItemSettings(): Boolean = getBoolean(KEY_AUTO_BACKUP_ITEMS_SETTINGS, true)
+    fun setAutoBackupItemSettings(enabled: Boolean) = setBoolean(KEY_AUTO_BACKUP_ITEMS_SETTINGS, enabled)
+
+    fun isAutoBackupItemLiquidGlass(): Boolean = getBoolean(KEY_AUTO_BACKUP_ITEMS_LIQUID_GLASS, true)
+    fun setAutoBackupItemLiquidGlass(enabled: Boolean) = setBoolean(KEY_AUTO_BACKUP_ITEMS_LIQUID_GLASS, enabled)
+
+    fun isAutoBackupItemCallingCards(): Boolean = getBoolean(KEY_AUTO_BACKUP_ITEMS_CALLING_CARDS, true)
+    fun setAutoBackupItemCallingCards(enabled: Boolean) = setBoolean(KEY_AUTO_BACKUP_ITEMS_CALLING_CARDS, enabled)
+
+    fun isAutoBackupItemNotes(): Boolean = getBoolean(KEY_AUTO_BACKUP_ITEMS_NOTES, true)
+    fun setAutoBackupItemNotes(enabled: Boolean) = setBoolean(KEY_AUTO_BACKUP_ITEMS_NOTES, enabled)
+
+    fun isAutoBackupItemGroups(): Boolean = getBoolean(KEY_AUTO_BACKUP_ITEMS_GROUPS, false)
+    fun setAutoBackupItemGroups(enabled: Boolean) = setBoolean(KEY_AUTO_BACKUP_ITEMS_GROUPS, enabled)
+
+    fun isAutoBackupItemRecordings(): Boolean = getBoolean(KEY_AUTO_BACKUP_ITEMS_RECORDINGS, true)
+    fun setAutoBackupItemRecordings(enabled: Boolean) = setBoolean(KEY_AUTO_BACKUP_ITEMS_RECORDINGS, enabled)
+
+    fun isAutoBackupItemContacts(): Boolean = getBoolean(KEY_AUTO_BACKUP_ITEMS_CONTACTS, false)
+    fun setAutoBackupItemContacts(enabled: Boolean) = setBoolean(KEY_AUTO_BACKUP_ITEMS_CONTACTS, enabled)
+
+    fun isAutoBackupItemCallLogs(): Boolean = getBoolean(KEY_AUTO_BACKUP_ITEMS_CALL_LOGS, false)
+    fun setAutoBackupItemCallLogs(enabled: Boolean) = setBoolean(KEY_AUTO_BACKUP_ITEMS_CALL_LOGS, enabled)
+
+    fun isAutoBackupItemSms(): Boolean = getBoolean(KEY_AUTO_BACKUP_ITEMS_SMS, false)
+    fun setAutoBackupItemSms(enabled: Boolean) = setBoolean(KEY_AUTO_BACKUP_ITEMS_SMS, enabled)
+
+    fun isAutoDeleteBackupsTimeEnabled(): Boolean = getBoolean(KEY_AUTO_DELETE_BACKUPS_TIME_ENABLED, false)
+    fun setAutoDeleteBackupsTimeEnabled(enabled: Boolean) = setBoolean(KEY_AUTO_DELETE_BACKUPS_TIME_ENABLED, enabled)
+
+    fun getAutoDeleteBackupsTimeValue(): Int = getInt(KEY_AUTO_DELETE_BACKUPS_TIME_VALUE, 7)
+    fun setAutoDeleteBackupsTimeValue(value: Int) = setInt(KEY_AUTO_DELETE_BACKUPS_TIME_VALUE, value)
+
+    fun getAutoDeleteBackupsTimeUnit(): String = getString(KEY_AUTO_DELETE_BACKUPS_TIME_UNIT, "days") ?: "days"
+    fun setAutoDeleteBackupsTimeUnit(unit: String) = setString(KEY_AUTO_DELETE_BACKUPS_TIME_UNIT, unit)
+
+    fun isAutoDeleteBackupsCountEnabled(): Boolean = getBoolean(KEY_AUTO_DELETE_BACKUPS_COUNT_ENABLED, false)
+    fun setAutoDeleteBackupsCountEnabled(enabled: Boolean) = setBoolean(KEY_AUTO_DELETE_BACKUPS_COUNT_ENABLED, enabled)
+
+    fun getAutoDeleteBackupsCountValue(): Int = getInt(KEY_AUTO_DELETE_BACKUPS_COUNT_VALUE, 5)
+    fun setAutoDeleteBackupsCountValue(value: Int) = setInt(KEY_AUTO_DELETE_BACKUPS_COUNT_VALUE, value)
 
     companion object {
         const val KEY_APP_LANGUAGE = "app_language"
@@ -555,6 +1028,9 @@ class PreferenceManager(context: Context) {
         const val KEY_SATURATION_LEVEL_DARK  = "saturation_level_dark"
         const val KEY_BLOCKED_CONTACTS      = "blocked_contacts"
         const val KEY_SHOW_BLOCKED_CALLS_IN_CALL_LOGS = "show_blocked_calls_in_call_logs"
+        const val KEY_BLOCKER_ENGINE        = "blocker_engine"
+        const val BLOCKER_ENGINE_EVER_DIALER = "ever_dialer"
+        const val BLOCKER_ENGINE_SYSTEM     = "system"
         const val KEY_SHOW_INCOMING_CALL_UI = "show_incoming_call_ui"
         const val KEY_SHOW_CALLER_UI        = "show_caller_ui"
         const val KEY_SHOW_FULL_SCREEN_INCOMING_ON_ANY_APPS = "show_fullscreen_call_ui_on_any_apps"
@@ -588,6 +1064,7 @@ class PreferenceManager(context: Context) {
         const val KEY_AUTO_UPDATE_CHECK     = "auto_update_check"
         const val KEY_SCROLL_INDICATION     = "scroll_indication"
         const val KEY_PILL_NAV              = "pill_style_nav"
+        const val KEY_SLIDE_TO_OPEN         = "slide_to_open"
         const val KEY_GROUP_CALLS_BY_LATEST = "group_calls_by_latest"
         const val KEY_SHOW_SIMS_IN_CALL_LOGS = "show_sims_in_call_logs"
         const val KEY_SHOW_TOTAL_CALLS_MADE = "show_total_calls_made"
@@ -653,8 +1130,13 @@ class PreferenceManager(context: Context) {
         // Dialer role popup shown after welcome
         const val KEY_DIALER_POPUP_SHOWN    = "dialer_popup_shown"
         const val KEY_TELEGRAM_SHOWN        = "telegram_shown"
+        const val KEY_MATERIAL_THEME        = "material_theme"
+        const val MATERIAL_THEME_YOU        = "material_you"
+        const val MATERIAL_THEME_EXPRESSIVE = "material_expressive"
+
         const val KEY_ANIMATION_STYLE       = "animation_style"
         const val ANIMATION_STYLE_ZOOM      = "zoom"
+        const val ANIMATION_STYLE_CARDS     = "cards"
         const val ANIMATION_STYLE_WINDOWS_PHONE = "windows_phone"
         const val KEY_MOTION_BLUR_ANIMATION = "motion_blur_animation_enabled"
         const val KEY_PREDICTIVE_BACK_GESTURE = "predictive_back_gesture_enabled"
@@ -675,6 +1157,28 @@ class PreferenceManager(context: Context) {
         const val KEY_BLUR_DIALPAD_CALL_BUTTON = "blur_dialpad_call_button"
         const val KEY_BLUR_CONTACTS_FAB        = "blur_contacts_fab"
         const val KEY_BLUR_RECENTS_FAB         = "blur_recents_fab"
+
+        // ── Auto Backup Configuration ───────────────────────────────────────
+        const val KEY_AUTO_BACKUP_ENABLED              = "auto_backup_enabled"
+        const val KEY_AUTO_BACKUP_FOLDER_URI           = "auto_backup_folder_uri"
+        const val KEY_AUTO_BACKUP_INTERVAL_VALUE       = "auto_backup_interval_value" // default: 2
+        const val KEY_AUTO_BACKUP_INTERVAL_UNIT        = "auto_backup_interval_unit"  // default: "hours"
+        const val KEY_AUTO_BACKUP_ITEMS_SETTINGS       = "auto_backup_items_settings"
+        const val KEY_AUTO_BACKUP_ITEMS_LIQUID_GLASS   = "auto_backup_items_liquid_glass"
+        const val KEY_AUTO_BACKUP_ITEMS_CALLING_CARDS  = "auto_backup_items_calling_cards"
+        const val KEY_AUTO_BACKUP_ITEMS_NOTES          = "auto_backup_items_notes"
+        const val KEY_AUTO_BACKUP_ITEMS_GROUPS         = "auto_backup_items_groups"
+        const val KEY_AUTO_BACKUP_ITEMS_RECORDINGS     = "auto_backup_items_recordings"
+        const val KEY_AUTO_BACKUP_ITEMS_CONTACTS       = "auto_backup_items_contacts"
+        const val KEY_AUTO_BACKUP_ITEMS_CALL_LOGS      = "auto_backup_items_call_logs"
+        const val KEY_AUTO_BACKUP_ITEMS_SMS            = "auto_backup_items_sms"
+
+        // Auto Delete Backups Configuration
+        const val KEY_AUTO_DELETE_BACKUPS_TIME_ENABLED = "auto_delete_backups_time_enabled"
+        const val KEY_AUTO_DELETE_BACKUPS_TIME_VALUE   = "auto_delete_backups_time_value" // default: 7
+        const val KEY_AUTO_DELETE_BACKUPS_TIME_UNIT    = "auto_delete_backups_time_unit"  // default: "days"
+        const val KEY_AUTO_DELETE_BACKUPS_COUNT_ENABLED = "auto_delete_backups_count_enabled"
+        const val KEY_AUTO_DELETE_BACKUPS_COUNT_VALUE   = "auto_delete_backups_count_value" // default: 5
         const val KEY_DEFAULT_TAB              = "default_tab"
         const val KEY_AUTO_SPEAKER             = "auto_speaker"
         const val KEY_FAVORITES_ORDER          = "favorites_order"
@@ -890,8 +1394,11 @@ class PreferenceManager(context: Context) {
         // Favorites display mode (grid vs list)
         const val KEY_FAVORITES_IN_LIST            = "favorites_in_list"
 
-        // Missed Call Notification — false = off (default), true = on
+        // Missed Call Notification — false = off, true = on (default on)
         const val KEY_MISSED_CALL_NOTIFICATION      = "missed_call_notification"
+        const val KEY_MISSED_CALL_NOTIFICATION_PROVIDER = "missed_call_notification_provider"
+        const val MISSED_CALL_PROVIDER_SYSTEM       = "system"
+        const val MISSED_CALL_PROVIDER_EVER_DIALER  = "ever_dialer"
 
         // Missed Call Popup (display over other apps)
         const val KEY_MISSED_CALL_POPUP_ENABLED    = "missed_call_popup_enabled"
@@ -925,9 +1432,63 @@ class PreferenceManager(context: Context) {
         const val KEY_PC_SYNC_SMS                  = "pc_sync_sms"
         const val KEY_PC_SYNC_NOTES                = "pc_sync_notes"
         const val KEY_PC_SYNC_CONTACT_PFP          = "pc_sync_contact_pfp"
+        const val KEY_PC_SYNC_DYNAMIC_COLORS       = "pc_sync_dynamic_colors"
         const val KEY_PC_SYNC_BLUETOOTH_ENABLED    = "pc_sync_bluetooth_enabled"
+        const val KEY_PC_SYNC_SHOW_NOTIFICATION   = "pc_sync_show_notification"
+
+        // SMS Categories
+        const val KEY_SMS_CATEGORY_ORDER           = "sms_category_order"
+        const val KEY_SMS_CATEGORY_HIDDEN          = "sms_category_hidden"
+        const val KEY_SMS_CUSTOM_CATEGORIES        = "sms_custom_categories"
+        const val KEY_DEFAULT_SMS_CATEGORY         = "default_sms_category"
+        val DEFAULT_SMS_CATEGORY_ORDER             = listOf("all", "favourites", "starred", "contacts", "unknown", "otp")
+
+        // Call Categories
+        const val KEY_CALL_CATEGORY_ORDER          = "call_category_order"
+        const val KEY_CALL_CATEGORY_HIDDEN         = "call_category_hidden"
+        const val KEY_CALL_CUSTOM_CATEGORIES       = "call_custom_categories"
+        const val KEY_DEFAULT_CALL_CATEGORY        = "default_call_category"
+        val DEFAULT_CALL_CATEGORY_ORDER            = listOf("all", "favourites", "contacts", "unknown", "missed", "incoming", "outgoing")
     }
 }
 
+data class SmsCustomCategory(
+    val id: String,
+    val name: String,
+    val contactPhones: List<String> = emptyList()
+)
 
+data class SmsCategoryItem(
+    val id: String,
+    val name: String,
+    val isCustom: Boolean,
+    val contactPhones: List<String> = emptyList()
+)
 
+data class CallCustomCategory(
+    val id: String,
+    val name: String,
+    val contactPhones: List<String> = emptyList()
+)
+
+data class CallCategoryItem(
+    val id: String,
+    val name: String,
+    val isCustom: Boolean,
+    val contactPhones: List<String> = emptyList()
+)
+
+data class LiquidGlassElementConfig(
+    val blurRadiusDp: Float,
+    val refractionHeightDp: Float,
+    val refractionAmountDp: Float,
+    val chromaticAberration: Boolean,
+    val depthEffect: Boolean,
+    val saturation: Float,
+    val brightness: Float
+)
+
+data class BlurElementConfig(
+    val blurRadiusDp: Float,
+    val saturation: Float
+)

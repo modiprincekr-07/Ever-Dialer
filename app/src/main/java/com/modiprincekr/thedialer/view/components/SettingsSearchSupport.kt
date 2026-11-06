@@ -107,7 +107,7 @@ import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.filled.Favorite
 import com.ramcosta.composedestinations.generated.destinations.AboutAppScreenDestination
-import com.ramcosta.composedestinations.generated.destinations.DebugSettingsScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.BackupSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.LanguageSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.AnswerStyleScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.AppSettingsScreenDestination
@@ -131,6 +131,12 @@ import com.ramcosta.composedestinations.generated.destinations.SoundVibrationScr
 import com.ramcosta.composedestinations.generated.destinations.SwipeActionsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.UpdatesScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.VolumeDndScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.PcConnectScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.PcSyncSettingsScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.NotificationsSettingsScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.SmsSettingsScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.CreateCallCategoryScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.CreateSmsCategoryScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.collectAsState
@@ -239,12 +245,11 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Call Recording", "Open Ever Call Recorder", "call_recording", Icons.Default.FiberManualRecord, Color(0xFFE53935)),
         GlobalSettingsSearchEntry("Silence Unknown Callers", "Automatically decline calls from unknown numbers", "silence_unknown", Icons.Outlined.PhoneDisabled, GsColorRed),
         GlobalSettingsSearchEntry("Blocked Numbers", "Numbers you've blocked from calling you", "blocked_numbers", Icons.Outlined.PersonOff, GsColorBluGrey),
+        GlobalSettingsSearchEntry("Notifications", "PC Connect, Call Recording, and 4G/5G Switcher notifications", "notifications", Icons.Outlined.Notifications, GsColorOrange) { it.navigate(NotificationsSettingsScreenDestination()) },
         GlobalSettingsSearchEntry("Show blocked numbers in call logs", "Display calls from blocked numbers in your call history", "show_blocked_calls_in_call_logs", Icons.Outlined.PersonOff, GsColorBluGrey),
         GlobalSettingsSearchEntry("Auto Check For Updates", "Automatically check for updates when the app opens", "auto_check_updates", Icons.Default.Autorenew, GsColorAmber) { it.navigate(UpdatesScreenDestination) },
-        GlobalSettingsSearchEntry("Create Backup", "Save app configuration, settings and calling cards", "create_backup", Icons.Default.Backup, GsColorGreen),
-        GlobalSettingsSearchEntry("Restore Backup", "Restore app configuration, settings and calling cards", "restore_backup", Icons.Default.Restore, GsColorBrown),
+        GlobalSettingsSearchEntry("Backup And Restore", "Save or restore app configuration, settings and calling cards", "backup_and_restore", Icons.Default.Backup, GsColorGreen) { it.navigate(BackupSettingsScreenDestination(initialTab = 0)) },
         GlobalSettingsSearchEntry("About The Dialer", "Version $APP_VERSION · Developer info", "about_app", Icons.Outlined.Info, GsColorBluGrey),
-        GlobalSettingsSearchEntry("Debug", "Developer & experimental options", "debug_settings", Icons.Outlined.BugReport, GsColorAmber) { it.navigate(DebugSettingsScreenDestination()) },
 
         // ── App Settings screen ──────────────────────────────────────────────────
         GlobalSettingsSearchEntry("Interesting Settings !", "Call features, Volume DND, network switcher, notes", "app_settings", Icons.Outlined.Tune, GsColorTeal) { it.navigate(AppSettingsScreenDestination()) },
@@ -354,8 +359,8 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Context Menu Elements", "UI Elements: Customize Favourites, Call Logs, and Contacts context menus", "context_menu_elements", Icons.Default.MoreVert, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "context_menu_elements")) },
         GlobalSettingsSearchEntry("Contact Info Elements", "UI Elements: Toggle and drag to reorder elements in contact details", "contact_info_elements", Icons.Default.Contacts, GsColorAmber) { it.navigate(ContactInfoSettingsScreenDestination(highlightKey = "contact_info_elements")) },
         GlobalSettingsSearchEntry("Tab Sections", "UI Elements: Choose which bottom tabs are visible", "tab_sections", Icons.Outlined.Palette, GsColorAmber) { it.navigate(NavigationSettingsScreenDestination(highlightKey = "tab_sections")) },
-        GlobalSettingsSearchEntry("Default Tab Section", "UI Elements: Which tab opens when you launch the app", "default_tab_section", Icons.Outlined.Palette, GsColorAmber) { it.navigate(NavigationSettingsScreenDestination(highlightKey = "default_tab_section")) },
-        GlobalSettingsSearchEntry("Animation Style", "Zoom (in/out) or Windows Phone transition", "animation_style", Icons.Outlined.Animation, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "animation_style")) },
+        GlobalSettingsSearchEntry("Material Theme", "Material You or Material Expressive theme style", "material_theme", Icons.Outlined.Palette, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "material_theme")) },
+        GlobalSettingsSearchEntry("Animation Style", "Zoom (in/out), Cards, or Windows Phone transition", "animation_style", Icons.Outlined.Animation, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "animation_style")) },
         GlobalSettingsSearchEntry("Motion Blur in Animation", "Apply dynamic motion blur during page transitions", "motion_blur_animation", Icons.Outlined.BlurOn, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "motion_blur_animation")) },
         GlobalSettingsSearchEntry("Scroll Animation", "Animate list scrolling", "scroll_animation", Icons.Outlined.Palette, GsColorBlue) { it.navigate(InterfaceScreenDestination(highlightKey = "scroll_animation")) },
         GlobalSettingsSearchEntry("Scroll Indication", "UI Elements: Show floating line indicator when tabs are scrollable", "scroll_indication", Icons.Outlined.Palette, GsColorPurple) { it.navigate(NavigationSettingsScreenDestination(highlightKey = "scroll_indication")) },
@@ -415,7 +420,45 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Source Code", "View The Dialer's source on GitHub", "source_code", Icons.Outlined.Info, GsColorBluGrey) { it.navigate(AboutAppScreenDestination(highlightKey = "source_code")) },
         GlobalSettingsSearchEntry("Telegram App Support Group", "Get help and discuss the app", "telegram_support", Icons.Outlined.Info, GsColorBlue) { it.navigate(AboutAppScreenDestination(highlightKey = "telegram_support")) },
         GlobalSettingsSearchEntry("App Recommending Channel in Telegram", "Follow for app announcements", "telegram_channel", Icons.Outlined.Info, GsColorBlue) { it.navigate(AboutAppScreenDestination(highlightKey = "telegram_channel")) },
-        GlobalSettingsSearchEntry("My Other App (Everlasting Android Tweak)", "Check out the developer's other app", "other_app_link", Icons.Outlined.Info, GsColorIndigo) { it.navigate(AboutAppScreenDestination(highlightKey = "other_app_link")) }
+        GlobalSettingsSearchEntry("My Other App (Everlasting Android Tweak)", "Check out the developer's other app", "other_app_link", Icons.Outlined.Info, GsColorIndigo) { it.navigate(AboutAppScreenDestination(highlightKey = "other_app_link")) },
+
+        // ── PC Connect & PC Sync ─────────────────────────────────────────────────
+        GlobalSettingsSearchEntry("PC Connect", "Connect and sync with Ever Dialer PC over Bluetooth", "pc_connect", Icons.Outlined.Devices, GsColorBlue) { it.navigate(PcConnectScreenDestination()) },
+        GlobalSettingsSearchEntry("Bluetooth PC Sync", "PC Connect: Synchronize data and enable desktop landscape view in Ever Dialer PC", "pc_bluetooth_sync", Icons.Outlined.BluetoothSearching, GsColorBlue) { it.navigate(PcSyncSettingsScreenDestination(highlightKey = "pc_bluetooth_sync")) },
+        GlobalSettingsSearchEntry("Sync Favourites", "PC Connect: Sync starred & favorite contacts to PC", "pc_sync_favourites", Icons.Default.Favorite, Color(0xFFE91E63)) { it.navigate(PcConnectScreenDestination(highlightKey = "pc_sync_favourites")) },
+        GlobalSettingsSearchEntry("Sync Call Logs", "PC Connect: Sync incoming, outgoing, and missed call history to PC", "pc_sync_call_logs", Icons.Default.History, GsColorGreen) { it.navigate(PcConnectScreenDestination(highlightKey = "pc_sync_call_logs")) },
+        GlobalSettingsSearchEntry("Sync Contacts", "PC Connect: Sync full contact list and details to PC", "pc_sync_contacts", Icons.Default.Person, GsColorBlue) { it.navigate(PcConnectScreenDestination(highlightKey = "pc_sync_contacts")) },
+        GlobalSettingsSearchEntry("Sync SMS", "PC Connect: Sync text message conversations and chats to PC", "pc_sync_sms", Icons.Default.Chat, GsColorPurple) { it.navigate(PcConnectScreenDestination(highlightKey = "pc_sync_sms")) },
+        GlobalSettingsSearchEntry("Sync Notes", "PC Connect: Sync call notes and custom notes to PC", "pc_sync_notes", Icons.Default.Note, GsColorOrange) { it.navigate(PcConnectScreenDestination(highlightKey = "pc_sync_notes")) },
+        GlobalSettingsSearchEntry("Sync Contact PFP", "PC Connect: Sync contact profile pictures to PC", "pc_sync_contact_pfp", Icons.Default.AccountCircle, GsColorTeal) { it.navigate(PcConnectScreenDestination(highlightKey = "pc_sync_contact_pfp")) },
+        GlobalSettingsSearchEntry("Dynamic colors", "PC Connect: Sync phone's theme color to desktop version", "pc_sync_dynamic_colors", Icons.Default.Palette, GsColorPurple) { it.navigate(PcConnectScreenDestination(highlightKey = "pc_sync_dynamic_colors")) },
+        GlobalSettingsSearchEntry("PC Sync Settings", "PC Connect: Bluetooth connection status, device pairing, and manual sync", "pc_sync_settings", Icons.Outlined.BluetoothConnected, GsColorBlue) { it.navigate(PcSyncSettingsScreenDestination()) },
+
+        // ── Categories & Default Category (Call Logs & SMS) ──────────────────────
+        GlobalSettingsSearchEntry("Category (Call Logs)", "Call Logs: Customize pills, reorder, visibility & custom categories", "call_category", Icons.Default.Category, GsColorPurple) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "call_category")) },
+        GlobalSettingsSearchEntry("Default Category (Call Logs)", "Call Logs: Choose which category opens when call logs screen starts", "call_default_category", Icons.Default.Tab, GsColorPurple) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "call_default_category")) },
+        GlobalSettingsSearchEntry("Create Call Category", "Call Logs: Create custom category and choose contacts to display in call logs", "create_call_category", Icons.Default.Category, GsColorPurple) { it.navigate(CreateCallCategoryScreenDestination()) },
+        GlobalSettingsSearchEntry("SMS Settings", "Quik SMS settings, appearance, sending, and gestures", "sms_settings_link", Icons.Outlined.Sms, GsColorPurple) { it.navigate(SmsSettingsScreenDestination()) },
+        GlobalSettingsSearchEntry("Category (SMS)", "SMS: Customize pills, reorder, visibility & custom categories", "sms_category", Icons.Default.Category, GsColorPurple) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_category")) },
+        GlobalSettingsSearchEntry("Default Category (SMS)", "SMS: Choose which category opens when SMS screen starts", "sms_default_category", Icons.Default.Tab, GsColorPurple) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_default_category")) },
+        GlobalSettingsSearchEntry("Create SMS Category", "SMS: Create custom category and choose contacts to display in SMS logs", "create_sms_category", Icons.Default.Category, GsColorPurple) { it.navigate(CreateSmsCategoryScreenDestination()) },
+
+        // ── SMS Nested Settings ──────────────────────────────────────────────────
+        GlobalSettingsSearchEntry("Message Text Size", "SMS: Customize message font size in chats", "sms_text_size", Icons.Outlined.FormatSize, GsColorPurple) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_text_size")) },
+        GlobalSettingsSearchEntry("Automatic Avatar Colors", "SMS: Generate distinct avatar colors for contacts", "sms_auto_color_avatars", Icons.Outlined.Palette, GsColorGreen) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_auto_color_avatars")) },
+        GlobalSettingsSearchEntry("Show Avatar in SMS", "SMS: Show contact avatars in message logs", "sms_show_avatar", Icons.Outlined.AccountCircle, GsColorPurple) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_show_avatar")) },
+        GlobalSettingsSearchEntry("Show Speech-to-Text Button", "SMS: Display microphone button in message composer", "sms_show_stt", Icons.Outlined.Mic, GsColorAmber) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_show_stt")) },
+        GlobalSettingsSearchEntry("Prevent Screenshots in SMS", "SMS: Block screen captures and screen recording in SMS", "sms_prevent_screenshots", Icons.Outlined.Security, GsColorRed) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_prevent_screenshots")) },
+        GlobalSettingsSearchEntry("Floating SMS", "SMS: Float bubble on incoming messages to chat without leaving apps", "sms_floating_bubble", Icons.Outlined.SpeakerNotes, GsColorBlue) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_floating_bubble")) },
+        GlobalSettingsSearchEntry("SMS App Icon in App Drawer", "SMS: Show dedicated icon in app drawer to launch SMS directly", "sms_app_icon_drawer", Icons.Outlined.Apps, GsColorIndigo) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_app_icon_drawer")) },
+        GlobalSettingsSearchEntry("SMS App Name", "SMS: Customize launcher name for the dedicated SMS shortcut", "sms_app_name", Icons.Outlined.Badge, GsColorTeal) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_app_name")) },
+        GlobalSettingsSearchEntry("Delay Sending SMS", "SMS: Delay outgoing messages for a few seconds to allow cancelling", "sms_send_delay", Icons.Outlined.Timer, GsColorAmber) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_send_delay")) },
+        GlobalSettingsSearchEntry("SMS Delivery Reports", "SMS: Request delivery confirmation for sent text messages", "sms_delivery_reports", Icons.Outlined.DoneAll, GsColorGreen) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_delivery_reports")) },
+        GlobalSettingsSearchEntry("SMS Signature", "SMS: Automatically append custom text signature to messages", "sms_signature", Icons.Outlined.Notes, GsColorPurple) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_signature")) },
+        GlobalSettingsSearchEntry("Strip Unicode Characters", "SMS: Replace accented characters with standard ones to save characters", "sms_strip_unicode", Icons.Outlined.TextFormat, GsColorBlue) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_strip_unicode")) },
+        GlobalSettingsSearchEntry("Send to Mobile-Only Numbers", "SMS: Prevent sending SMS to landlines or non-mobile numbers", "sms_mobile_only", Icons.Outlined.PhoneAndroid, GsColorIndigo) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_mobile_only")) },
+        GlobalSettingsSearchEntry("Send Long Messages as MMS", "SMS: Automatically convert multi-part long text messages to MMS", "sms_long_as_mms", Icons.Outlined.Attachment, GsColorOrange) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_long_as_mms")) },
+        GlobalSettingsSearchEntry("Maximum MMS Size", "SMS: Choose file size limit for outgoing multimedia messages", "sms_max_mms_size", Icons.Outlined.PhotoSizeSelectActual, GsColorTeal) { it.navigate(SmsSettingsScreenDestination(highlightKey = "sms_max_mms_size")) }
     )
 }
 

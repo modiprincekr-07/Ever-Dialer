@@ -66,6 +66,7 @@ import com.modiprincekr.thedialer.modal.data.CallLogEntry
 import com.modiprincekr.thedialer.controller.util.formatDateHeader
 import com.modiprincekr.thedialer.controller.util.makeCall
 import com.modiprincekr.thedialer.controller.util.placeCallHonoringContactSim
+import com.modiprincekr.thedialer.controller.util.numbersLikelyMatch
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.modal.data.CallLogFilter
 import com.modiprincekr.thedialer.view.components.*
@@ -89,8 +90,11 @@ import com.modiprincekr.thedialer.controller.ContactsViewModel
 import android.os.Build
 import com.modiprincekr.thedialer.liquidglass.drawBackdrop
 import com.modiprincekr.thedialer.liquidglass.effects.lens
+import com.modiprincekr.thedialer.liquidglass.effects.blur
 import com.modiprincekr.thedialer.liquidglass.effects.colorControls
 import com.modiprincekr.thedialer.liquidglass.highlight.Highlight
+import com.modiprincekr.thedialer.liquidglass.backdrops.rememberLayerBackdrop
+import com.modiprincekr.thedialer.liquidglass.backdrops.layerBackdrop
 import com.modiprincekr.thedialer.liquidglass.LocalLiquidGlassBackdrop
 import org.koin.compose.viewmodel.koinActivityViewModel
 import java.util.Calendar
@@ -299,6 +303,7 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
     }
 
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+    val recentsBackdrop = rememberLayerBackdrop()
 
     Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
@@ -352,12 +357,13 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
             },
         topBar = { TopBar(navController, navigator) },
         floatingActionButton = {
-            val globalBackdrop = LocalLiquidGlassBackdrop.current
             val settingsVer by prefs.settingsChanged.collectAsState()
-            val liquidGlass = remember(settingsVer) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_LIQUID_GLASS, false) }
-            val lgRecentsFab = remember(settingsVer) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_LG_RECENTS_FAB, false) }
-            val blurEffects = remember(settingsVer) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_BLUR_EFFECTS, false) }
-            val blurRecentsFab = remember(settingsVer) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_BLUR_RECENTS_FAB, false) }
+            val liquidGlass = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) }
+            val lgRecentsFab = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_LG_RECENTS_FAB, false) }
+            val blurEffects = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) }
+            val blurRecentsFab = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_BLUR_RECENTS_FAB, false) }
+            val lgRecentsConfig = remember(settingsVer) { prefs.getLiquidGlassConfig(PreferenceManager.KEY_LG_RECENTS_FAB) }
+            val blurRecentsConfig = remember(settingsVer) { prefs.getBlurConfig(PreferenceManager.KEY_BLUR_RECENTS_FAB) }
             val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
             val isSaturatedActive = remember(settingsVer, isDark) { prefs.isSaturatedForTheme(isDark) }
             val isDynamic = remember(settingsVer) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_DYNAMIC_COLORS, true) }
@@ -365,8 +371,8 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
             val fabBg = if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
             val fabFg = if (isSaturatedActive && isDark) Color.Black else if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
             val fabShape = RoundedCornerShape(17.dp)
-            val useLiquidGlass = liquidGlass && lgRecentsFab && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && globalBackdrop != null
-            val useBlur = blurEffects && blurRecentsFab && !useLiquidGlass
+            val useLiquidGlass = liquidGlass && lgRecentsFab && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            val useBlur = blurEffects && blurRecentsFab && !useLiquidGlass && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             val onOpenDialpad: () -> Unit = {
                 try {
                     performAppHaptic(
@@ -385,39 +391,70 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
                 .scale(fabScale * dialpadExpandScale)
                 .then(if (pillNav) Modifier.navigationBarsPadding().padding(bottom = 92.dp) else Modifier.navigationBarsPadding().padding(bottom = 80.dp))
                 .then(if (isLandscape) Modifier.navigationBarsPadding().padding(bottom = 8.dp) else Modifier)
-            if (useLiquidGlass && globalBackdrop != null) {
-                Box(
+            if (useLiquidGlass) {
+                FloatingActionButton(
+                    onClick = onOpenDialpad,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.35f),
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    shape = fabShape,
+                    elevation = FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 0.dp,
+                        pressedElevation = 0.dp,
+                        focusedElevation = 0.dp,
+                        hoveredElevation = 0.dp
+                    ),
                     modifier = baseModifier.drawBackdrop(
-                        backdrop = globalBackdrop,
+                        backdrop = recentsBackdrop,
                         shape = { fabShape },
                         effects = {
                             val d = density
-                            colorControls(brightness = -0.15f)
-                            lens(refractionHeight = 46f * d, refractionAmount = 64f * d)
+                            colorControls(brightness = lgRecentsConfig.brightness, saturation = lgRecentsConfig.saturation)
+                            if (lgRecentsConfig.blurRadiusDp > 0f) blur(lgRecentsConfig.blurRadiusDp * d)
+                            lens(
+                                refractionHeight = lgRecentsConfig.refractionHeightDp * d,
+                                refractionAmount = lgRecentsConfig.refractionAmountDp * d,
+                                chromaticAberration = lgRecentsConfig.chromaticAberration,
+                                depthEffect = lgRecentsConfig.depthEffect
+                            )
+                        },
+                        highlight = { Highlight.Default }
+                    )
+                ) { Icon(Icons.Default.Dialpad, "Dialpad") }
+            } else if (useBlur) {
+                Box(
+                    modifier = baseModifier.drawBackdrop(
+                        backdrop = recentsBackdrop,
+                        shape = { fabShape },
+                        effects = {
+                            val d = density
+                            colorControls(saturation = blurRecentsConfig.saturation)
+                            blur(blurRecentsConfig.blurRadiusDp * d)
                         },
                         highlight = { Highlight.Default }
                     )
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(fabBg.copy(alpha = 0.35f), fabShape)
+                    )
                     FloatingActionButton(
                         onClick = onOpenDialpad,
-                        containerColor = fabBg.copy(alpha = 0.0f),
+                        containerColor = Color.Transparent,
                         contentColor = fabFg,
                         shape = fabShape,
                         elevation = FloatingActionButtonDefaults.elevation(
-                            defaultElevation = dialpadFabElevation,
-                            pressedElevation = dialpadFabElevation,
-                            focusedElevation = dialpadFabElevation,
-                            hoveredElevation = dialpadFabElevation
+                            defaultElevation = 0.dp,
+                            pressedElevation = 0.dp,
+                            focusedElevation = 0.dp,
+                            hoveredElevation = 0.dp
                         ),
                     ) { Icon(Icons.Default.Dialpad, "Dialpad") }
                 }
             } else {
                 FloatingActionButton(
                     onClick = onOpenDialpad,
-                    containerColor = if (useBlur)
-                        fabBg.copy(alpha = 0.75f)
-                    else
-                        fabBg,
+                    containerColor = fabBg,
                     contentColor = fabFg,
                     shape = fabShape,
                     elevation = FloatingActionButtonDefaults.elevation(
@@ -433,7 +470,20 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0)
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+        val settingsVer by prefs.settingsChanged.collectAsState()
+        val needBackdropContent = remember(settingsVer) {
+            val lg = prefs.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) &&
+                     prefs.getBoolean(PreferenceManager.KEY_LG_RECENTS_FAB, true)
+            val bl = prefs.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) &&
+                     prefs.getBoolean(PreferenceManager.KEY_BLUR_RECENTS_FAB, true)
+            (lg || bl) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+        }
+        Box(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .then(if (needBackdropContent) Modifier.layerBackdrop(recentsBackdrop) else Modifier)
+        ) {
             CallLogFullContent(
                 navController = navController,
                 navigator = navigator,
@@ -661,6 +711,22 @@ fun CallLogFullContent(
         val isLoadingMore by viewModel.isLoadingMore.collectAsState()
         val contacts by contactsViewModel.allContacts.collectAsState()
         val selectedFilter by viewModel.selectedFilter.collectAsState()
+        val selectedCategoryId by viewModel.selectedCategoryId.collectAsState()
+        val allCategories = remember(settingsVersion) { prefs.getAllCallCategories() }
+        val hiddenCategories = remember(settingsVersion) { prefs.getHiddenCallCategories() }
+        val visibleCategories = remember(allCategories, hiddenCategories) {
+            allCategories.filterNot { hiddenCategories.contains(it.id) }
+        }
+        val customCategories = remember(settingsVersion) { prefs.getCustomCallCategories() }
+
+        LaunchedEffect(visibleCategories) {
+            val def = prefs.getDefaultCallCategory()
+            if (visibleCategories.isNotEmpty() && visibleCategories.none { it.id == selectedCategoryId }) {
+                val fallback = if (visibleCategories.any { it.id == def }) def else visibleCategories.first().id
+                viewModel.setCategoryId(fallback)
+            }
+        }
+
         val context = LocalContext.current
         val telecomManager = remember { context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager }
 
@@ -673,7 +739,7 @@ fun CallLogFullContent(
 
         // Track previous filter index for slide direction
         val filterEntries = CallLogFilter.entries
-        var previousFilterIndex by remember { mutableIntStateOf(filterEntries.indexOf(selectedFilter)) }
+        var previousFilterIndex by remember { mutableIntStateOf(0) }
 
         val hiddenIds = remember(settingsVersion) {
             val raw = prefs.getString(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_CONTACTS_HIDER_IDS, "") ?: ""
@@ -683,21 +749,29 @@ fun CallLogFullContent(
         val favoriteContactIds = remember(contacts) { contacts.filter { it.isFavorite }.map { it.id }.toSet() }
         val favoritePhoneNumbers = remember(contacts) { contacts.filter { it.isFavorite }.flatMap { it.phoneNumbers }.toSet() }
 
-        val filteredLogs = remember(logs, selectedFilter, hiddenIds, favoriteContactIds, favoritePhoneNumbers) {
+        val filteredLogs = remember(logs, selectedCategoryId, hiddenIds, favoriteContactIds, favoritePhoneNumbers, customCategories) {
             val base = if (hiddenIds.isEmpty()) logs else logs.filter { it.contactId == null || it.contactId !in hiddenIds }
-            when (selectedFilter) {
-                CallLogFilter.All -> base
-                CallLogFilter.Contacts -> base.filter { it.name != null && it.name != it.number && !it.isCallerIdName }
-                CallLogFilter.Favourites -> {
-                    base.filter { log ->
-                        (log.contactId != null && log.contactId in favoriteContactIds) ||
-                        log.number in favoritePhoneNumbers
-                    }
+            val custom = customCategories.firstOrNull { it.id == selectedCategoryId }
+            if (custom != null) {
+                base.filter { entry ->
+                    custom.contactPhones.any { numbersLikelyMatch(entry.number, it) }
                 }
-                CallLogFilter.Unknown -> base.filter { it.contactId.isNullOrBlank() || it.name.isNullOrEmpty() || it.name == it.number || it.isCallerIdName }
-                CallLogFilter.Missed -> base.filter { it.type == CallLog.Calls.MISSED_TYPE }
-                CallLogFilter.Incoming -> base.filter { it.type == CallLog.Calls.INCOMING_TYPE }
-                CallLogFilter.Outgoing -> base.filter { it.type == CallLog.Calls.OUTGOING_TYPE }
+            } else {
+                when (selectedCategoryId) {
+                    "all" -> base
+                    "contacts" -> base.filter { it.name != null && it.name != it.number && !it.isCallerIdName }
+                    "favourites" -> {
+                        base.filter { log ->
+                            (log.contactId != null && log.contactId in favoriteContactIds) ||
+                            log.number in favoritePhoneNumbers
+                        }
+                    }
+                    "unknown" -> base.filter { it.contactId.isNullOrBlank() || it.name.isNullOrEmpty() || it.name == it.number || it.isCallerIdName }
+                    "missed" -> base.filter { it.type == CallLog.Calls.MISSED_TYPE }
+                    "incoming" -> base.filter { it.type == CallLog.Calls.INCOMING_TYPE }
+                    "outgoing" -> base.filter { it.type == CallLog.Calls.OUTGOING_TYPE }
+                    else -> base
+                }
             }
         }
         val totalCallsMap = remember(logs) {
@@ -1015,8 +1089,8 @@ fun CallLogFullContent(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(CallLogFilter.entries) { filter ->
-                            val isSelected = selectedFilter == filter
+                        items(visibleCategories, key = { it.id }) { cat ->
+                            val isSelected = selectedCategoryId == cat.id
                             val containerColor by animateColorAsState(
                                 targetValue = if (isSelected) activeChipBg
                                               else MaterialTheme.colorScheme.surfaceContainerLow,
@@ -1043,10 +1117,10 @@ fun CallLogFullContent(
                                         .clip(RoundedCornerShape(50.dp))
                                         .combinedClickable(
                                             onClick = {
-                                                previousFilterIndex = filterEntries.indexOf(selectedFilter)
-                                                viewModel.setFilter(filter)
+                                                previousFilterIndex = visibleCategories.indexOfFirst { it.id == selectedCategoryId }
+                                                viewModel.setCategoryId(cat.id)
                                             },
-                                            onLongClick = if (filter == CallLogFilter.All) {
+                                            onLongClick = if (cat.id == "all") {
                                                 {
                                                     if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
                                                         performAppHaptic(context, prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light", prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f))
@@ -1063,14 +1137,14 @@ fun CallLogFullContent(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            com.modiprincekr.thedialer.controller.util.tr(filter.displayName),
+                                            com.modiprincekr.thedialer.controller.util.tr(cat.name),
                                             color = labelColor,
                                             style = MaterialTheme.typography.labelLarge
                                         )
                                     }
                                 }
 
-                                if (filter == CallLogFilter.All) {
+                                if (cat.id == "all") {
                                     DropdownMenu(
                                         expanded = showAllGroupMenuPortrait,
                                         onDismissRequest = { showAllGroupMenuPortrait = false },
@@ -1127,7 +1201,7 @@ fun CallLogFullContent(
                 // actual filter change (All/Missed/etc.) gets the slide transition.
                 var hasLoadedOnce by remember { mutableStateOf(false) }
                 AnimatedContent(
-                    targetState = selectedFilter,
+                    targetState = selectedCategoryId,
                     transitionSpec = {
                         val filterChanged = initialState != targetState
                         if (!hasLoadedOnce) {
@@ -1138,8 +1212,8 @@ fun CallLogFullContent(
                             // Data-only refresh: instant, no animation whatsoever
                             EnterTransition.None togetherWith ExitTransition.None
                         } else {
-                            val currentIdx = filterEntries.indexOf(targetState)
-                            val prevIdx = filterEntries.indexOf(initialState)
+                            val currentIdx = visibleCategories.indexOfFirst { it.id == targetState }
+                            val prevIdx = visibleCategories.indexOfFirst { it.id == initialState }
                             val goingRight = currentIdx > prevIdx
                             if (goingRight) {
                                 slideInHorizontally(
@@ -1210,8 +1284,8 @@ fun CallLogFullContent(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    items(CallLogFilter.entries) { filter ->
-                                        val isSelected = selectedFilter == filter
+                                    items(visibleCategories, key = { it.id }) { cat ->
+                                        val isSelected = selectedCategoryId == cat.id
                                         val containerColor by animateColorAsState(
                                             targetValue = if (isSelected) activeChipBg
                                                           else MaterialTheme.colorScheme.surfaceContainerLow,
@@ -1238,10 +1312,10 @@ fun CallLogFullContent(
                                                     .clip(RoundedCornerShape(50.dp))
                                                     .combinedClickable(
                                                         onClick = {
-                                                            previousFilterIndex = filterEntries.indexOf(selectedFilter)
-                                                            viewModel.setFilter(filter)
+                                                            previousFilterIndex = visibleCategories.indexOfFirst { it.id == selectedCategoryId }
+                                                            viewModel.setCategoryId(cat.id)
                                                         },
-                                                        onLongClick = if (filter == CallLogFilter.All) {
+                                                        onLongClick = if (cat.id == "all") {
                                                             {
                                                                 if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
                                                                     performAppHaptic(context, prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light", prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f))
@@ -1258,14 +1332,14 @@ fun CallLogFullContent(
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     Text(
-                                                        filter.displayName,
+                                                        com.modiprincekr.thedialer.controller.util.tr(cat.name),
                                                         color = labelColor,
                                                         style = MaterialTheme.typography.labelLarge
                                                     )
                                                 }
                                             }
 
-                                            if (filter == CallLogFilter.All) {
+                                            if (cat.id == "all") {
                                                 DropdownMenu(
                                                     expanded = showAllGroupMenuLandscape,
                                                     onDismissRequest = { showAllGroupMenuLandscape = false },

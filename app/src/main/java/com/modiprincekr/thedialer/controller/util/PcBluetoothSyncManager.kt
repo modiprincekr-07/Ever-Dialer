@@ -18,9 +18,15 @@ import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.net.wifi.WifiManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
+import android.telephony.TelephonyManager
 import android.util.Base64
 import java.io.ByteArrayOutputStream
 import android.os.Looper
@@ -89,6 +95,13 @@ class PcBluetoothSyncManager(
     init {
         NoteManager.onNotesChanged = {
             triggerImmediateSync()
+        }
+        scope.launch {
+            prefs.settingsChanged.collect {
+                if (_status.value == PcSyncStatus.CONNECTED) {
+                    triggerImmediateSync()
+                }
+            }
         }
         val isEnabled = prefs.getBoolean(PreferenceManager.KEY_PC_SYNC_BLUETOOTH_ENABLED, false)
         if (isEnabled) {
@@ -370,18 +383,31 @@ class PcBluetoothSyncManager(
                 arrayOf(
                     ContactsContract.Contacts._ID,
                     ContactsContract.Contacts.STARRED,
+                    ContactsContract.Contacts.PHOTO_ID,
                     ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP
                 ),
                 null, null,
                 "${ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP} DESC LIMIT 1"
             )?.use { c ->
-                sb.append("cnt:").append(c.count).append(",")
                 if (c.moveToFirst()) {
                     val sIdx = c.getColumnIndex(ContactsContract.Contacts.STARRED)
+                    val pIdx = c.getColumnIndex(ContactsContract.Contacts.PHOTO_ID)
                     val tIdx = c.getColumnIndex(ContactsContract.Contacts.CONTACT_LAST_UPDATED_TIMESTAMP)
                     if (sIdx >= 0) sb.append(c.getInt(sIdx)).append(",")
+                    if (pIdx >= 0) sb.append(c.getLong(pIdx)).append(",")
                     if (tIdx >= 0) sb.append(c.getLong(tIdx)).append(";")
                 }
+            }
+        } catch (_: Exception) {}
+
+        // Total contacts count
+        try {
+            context.contentResolver.query(
+                ContactsContract.Contacts.CONTENT_URI,
+                arrayOf(ContactsContract.Contacts._ID),
+                null, null, null
+            )?.use { c ->
+                sb.append("cnt:").append(c.count).append(";")
             }
         } catch (_: Exception) {}
 
@@ -435,6 +461,15 @@ class PcBluetoothSyncManager(
 
         // 5. Settings that affect PC
         sb.append(";confirm_call:").append(prefs.getBoolean(PreferenceManager.KEY_CONFIRM_PLACING_CALL, false))
+        sb.append(";pin_msg:").append(prefs.getString(PreferenceManager.KEY_PINNED_SMS_MESSAGES, ""))
+        sb.append(";star_msg:").append(prefs.getString(PreferenceManager.KEY_STARRED_SMS_MESSAGES, ""))
+        sb.append(";pin_thr:").append(prefs.getString(PreferenceManager.KEY_PINNED_SMS_THREADS, ""))
+
+        try {
+            val cg = prefs.getContactGroups()
+            val hiddenCg = prefs.getHiddenContactGroupIds()
+            sb.append(";cgroups:").append(cg.size).append("-").append(hiddenCg.size)
+        } catch (_: Exception) {}
 
         return sb.toString()
     }
@@ -474,6 +509,7 @@ class PcBluetoothSyncManager(
                         if (newFp != lastFingerprint) {
                             Log.i(TAG, "ContentObserver: data change detected on phone, syncing to PC...")
                             lastFingerprint = newFp
+                            photoCache.clear()
                             sendSyncData(writer)
                         }
                     }
@@ -497,6 +533,14 @@ class PcBluetoothSyncManager(
                 triggerImmediateSync()
             }
         }
+        val statusReceiver = object : BroadcastReceiver() {
+            override fun onReceive(pContext: Context?, intent: Intent?) {
+                scope.launch(Dispatchers.IO) {
+                    val w = activeWriter ?: return@launch
+                    sendTelemetry(w)
+                }
+            }
+        }
         try {
             val filter = IntentFilter().apply {
                 addAction(Telephony.Sms.Intents.SMS_RECEIVED_ACTION)
@@ -506,8 +550,19 @@ class PcBluetoothSyncManager(
         } catch (e: Exception) {
             Log.w(TAG, "Could not register dynamic SMS receiver: ${e.message}")
         }
+        try {
+            val statusFilter = IntentFilter().apply {
+                addAction("android.media.VOLUME_CHANGED_ACTION")
+                addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
+            }
+            ContextCompat.registerReceiver(context, statusReceiver, statusFilter, ContextCompat.RECEIVER_EXPORTED)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not register volume/hotspot receiver: ${e.message}")
+        }
 
-        // 3. Periodic change-detector coroutine (runs every 800ms for notes or missed provider events)
+        // 3. Periodic change-detector coroutine (runs every 800ms for notes or missed provider events + telemetry)
+        var ticks = 0
+        var lastTelemFp = ""
         val periodicSyncJob = scope.launch(Dispatchers.IO) {
             while (isActive && socket.isConnected) {
                 delay(800)
@@ -516,7 +571,17 @@ class PcBluetoothSyncManager(
                 if (newFp != lastFingerprint) {
                     Log.i(TAG, "Periodic check detected data change on phone: syncing to PC...")
                     lastFingerprint = newFp
+                    photoCache.clear()
                     sendSyncData(writer)
+                }
+                ticks++
+                if (ticks % 4 == 0) { // Every ~3.2 seconds check if telemetry (battery, wifi, signal) changed
+                    val telem = getDeviceTelemetry()
+                    val telemFp = telem.toString()
+                    if (telemFp != lastTelemFp) {
+                        lastTelemFp = telemFp
+                        sendTelemetry(writer)
+                    }
                 }
             }
         }
@@ -534,19 +599,47 @@ class PcBluetoothSyncManager(
                     val cmd = cmdObj.optString("cmd")
                     when (cmd) {
                         "request_sync" -> {
+                            photoCache.clear()
                             lastFingerprint = computeStateFingerprint()
                             sendSyncData(writer)
                         }
+                        "request_telemetry" -> {
+                            sendTelemetry(writer)
+                        }
+                        "set_volume" -> {
+                            val stream = cmdObj.optString("stream")
+                            val level = cmdObj.optInt("level", -1)
+                            val streamType = when (stream) {
+                                "ring" -> AudioManager.STREAM_RING
+                                "notification" -> AudioManager.STREAM_NOTIFICATION
+                                "call" -> AudioManager.STREAM_VOICE_CALL
+                                "alarm" -> AudioManager.STREAM_ALARM
+                                "media" -> AudioManager.STREAM_MUSIC
+                                else -> -1
+                            }
+                            Log.i(TAG, "Executing set_volume stream=$stream ($streamType) level=$level")
+                            if (streamType != -1 && level >= 0) {
+                                val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                                try {
+                                    audioManager?.setStreamVolume(streamType, level, 0)
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Failed to set stream volume for $stream: ${e.message}")
+                                }
+                                sendTelemetry(writer)
+                            }
+                        }
                         "make_call" -> {
                             val number = cmdObj.optString("number")
-                            Log.i(TAG, "Executing make_call for $number via Ever Dialer")
+                            val requestedSimSlot = if (cmdObj.has("simSlot")) cmdObj.optInt("simSlot", 0) else 0
+                            Log.i(TAG, "Executing make_call for $number (simSlot=$requestedSimSlot) via Ever Dialer")
                             if (number.isNotBlank()) {
                                 withContext(Dispatchers.Main) {
                                     val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
                                     val accounts = try { telecomManager?.callCapablePhoneAccounts ?: emptyList() } catch (_: Throwable) { emptyList() }
                                     val defaultSim = prefs.getInt(PreferenceManager.KEY_DEFAULT_SIM, 1)
+                                    val effectiveSim = if (requestedSimSlot in 1..2) requestedSimSlot else defaultSim
                                     val handle = if (accounts.isNotEmpty()) {
-                                        getPhoneAccountForSimSlot(context, accounts, if (defaultSim == 2) 1 else 0)
+                                        getPhoneAccountForSimSlot(context, accounts, if (effectiveSim == 2) 1 else 0)
                                     } else null
                                     makeCall(context, number, accountHandle = handle, skipConfirm = true)
                                 }
@@ -664,6 +757,50 @@ class PcBluetoothSyncManager(
                                 sendSyncData(writer)
                             }
                         }
+                        "pin_sms_thread" -> {
+                            val threadId = cmdObj.optLong("threadId", -1L).takeIf { it != -1L }
+                                ?: cmdObj.optString("threadId").toLongOrNull()
+                            val pinned = cmdObj.optBoolean("pinned", true)
+                            Log.i(TAG, "Executing pin_sms_thread threadId=$threadId pinned=$pinned")
+                            if (threadId != null) {
+                                prefs.setSmsThreadPinned(threadId, pinned)
+                                lastFingerprint = computeStateFingerprint()
+                                sendSyncData(writer)
+                            }
+                        }
+                        "pin_sms_message" -> {
+                            val messageIdStr = cmdObj.optString("messageId").replace("msg_", "")
+                            val messageId = messageIdStr.toLongOrNull()
+                            val pinned = cmdObj.optBoolean("pinned", true)
+                            Log.i(TAG, "Executing pin_sms_message messageId=$messageId pinned=$pinned")
+                            if (messageId != null) {
+                                prefs.setSmsMessagePinned(messageId, pinned)
+                                lastFingerprint = computeStateFingerprint()
+                                sendSyncData(writer)
+                            }
+                        }
+                        "star_sms_message" -> {
+                            val messageIdStr = cmdObj.optString("messageId").replace("msg_", "")
+                            val messageId = messageIdStr.toLongOrNull()
+                            val starred = cmdObj.optBoolean("starred", true)
+                            Log.i(TAG, "Executing star_sms_message messageId=$messageId starred=$starred")
+                            if (messageId != null) {
+                                prefs.setSmsMessageStarred(messageId, starred)
+                                lastFingerprint = computeStateFingerprint()
+                                sendSyncData(writer)
+                            }
+                        }
+                        "delete_sms_message" -> {
+                            val messageIdStr = cmdObj.optString("messageId").replace("msg_", "")
+                            val messageId = messageIdStr.toLongOrNull()
+                            val isMms = cmdObj.optBoolean("isMms", false)
+                            Log.i(TAG, "Executing delete_sms_message messageId=$messageId isMms=$isMms")
+                            if (messageId != null) {
+                                smsRepository.deleteMessage(messageId, isMms)
+                                lastFingerprint = computeStateFingerprint()
+                                sendSyncData(writer)
+                            }
+                        }
                         "block_number" -> {
                             val number = cmdObj.optString("number")
                             Log.i(TAG, "Executing block_number for $number")
@@ -719,6 +856,9 @@ class PcBluetoothSyncManager(
         } finally {
             try {
                 context.unregisterReceiver(smsReceiver)
+            } catch (_: Exception) {}
+            try {
+                context.unregisterReceiver(statusReceiver)
             } catch (_: Exception) {}
             periodicSyncJob.cancel()
             try {
@@ -852,11 +992,58 @@ class PcBluetoothSyncManager(
                 }
             }
 
-            // 2. Real Call Logs
+            // 1b. Contact Groups
+            val contactGroupsArray = JSONArray()
+            if (syncContacts) {
+                try {
+                    val rawLocalGroups = prefs.getContactGroups()
+                    val sysGroups = runCatching { contactsRepository.getSystemContactGroups() }.getOrDefault(emptyList())
+                    val localGroupMap = rawLocalGroups.associateBy { it.id }.toMutableMap()
+                    for (sg in sysGroups) {
+                        val name = sg.name.trim()
+                        if (name.isBlank() || name.startsWith("System Group:", ignoreCase = true) ||
+                            name.equals("Starred in Android", ignoreCase = true) || name.equals("My Contacts", ignoreCase = true)) {
+                            continue
+                        }
+                        val existing = localGroupMap[sg.id]
+                        if (existing == null) {
+                            localGroupMap[sg.id] = sg
+                        } else {
+                            localGroupMap[sg.id] = existing.copy(
+                                accountType = sg.accountType ?: existing.accountType,
+                                accountName = sg.accountName ?: existing.accountName,
+                                targetLabel = sg.targetLabel ?: existing.targetLabel,
+                                contactIds = if (existing.contactIds.isEmpty() && sg.contactIds.isNotEmpty()) sg.contactIds else existing.contactIds
+                            )
+                        }
+                    }
+                    val allGroups = localGroupMap.values.filter { it.name.isNotBlank() }
+                    val hiddenGroupIds = prefs.getHiddenContactGroupIds()
+                    for (g in allGroups) {
+                        if (g.id in hiddenGroupIds) continue
+                        val gObj = JSONObject().apply {
+                            put("id", g.id)
+                            put("name", g.name)
+                            val ids = JSONArray()
+                            for (id in g.contactIds) {
+                                ids.put(id)
+                            }
+                            put("contactIds", ids)
+                            if (g.accountType != null) put("accountType", g.accountType)
+                            if (g.accountName != null) put("accountName", g.accountName)
+                        }
+                        contactGroupsArray.put(gObj)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error serializing contact groups: ${e.message}")
+                }
+            }
+
+            // 2. Real Call Logs (only latest 50)
             val callLogsArray = JSONArray()
             if (syncCallLogs) {
                 val realLogs = try {
-                    callLogRepository.getCallLogs(limit = 100)
+                    callLogRepository.getCallLogs(limit = 50).take(50)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error fetching call logs: ${e.message}")
                     emptyList()
@@ -875,6 +1062,7 @@ class PcBluetoothSyncManager(
                         put("timestamp", log.date)
                         put("duration", log.duration)
                         put("simSlot", log.simSlot)
+                        put("count", log.count)
                     }
                     callLogsArray.put(lObj)
                 }
@@ -904,6 +1092,8 @@ class PcBluetoothSyncManager(
                             put("body", m.body)
                             put("timestamp", m.date)
                             put("isOutgoing", m.isOutgoing)
+                            put("isPinned", prefs.isSmsMessagePinned(m.id))
+                            put("isStarred", prefs.isSmsMessageStarred(m.id))
                         }
                         msgsArray.put(mObj)
                     }
@@ -915,6 +1105,7 @@ class PcBluetoothSyncManager(
                         put("snippet", conv.snippet)
                         put("timestamp", conv.date)
                         put("unreadCount", conv.unreadCount)
+                        put("isPinned", prefs.getPinnedSmsThreads().contains(conv.threadId))
                         put("messages", msgsArray)
                     }
                     smsArray.put(tObj)
@@ -943,6 +1134,17 @@ class PcBluetoothSyncManager(
             }
 
             val confirmPlacingCall = prefs.getBoolean(PreferenceManager.KEY_CONFIRM_PLACING_CALL, false)
+            val syncDynamicColors = prefs.getBoolean(PreferenceManager.KEY_PC_SYNC_DYNAMIC_COLORS, true)
+            val activeThemeColor = com.coolappstore.everdialer.by.svhp.view.theme.getActiveThemeColor(context, prefs)
+            val themeColorHex = if (syncDynamicColors) String.format("#%06X", 0xFFFFFF and activeThemeColor) else null
+
+            val defaultSim = prefs.getInt(PreferenceManager.KEY_DEFAULT_SIM, 1)
+            val sim1ColorInt = prefs.getInt(PreferenceManager.KEY_SIM1_COLOR, PreferenceManager.DEFAULT_SIM1_COLOR)
+            val sim2ColorInt = prefs.getInt(PreferenceManager.KEY_SIM2_COLOR, PreferenceManager.DEFAULT_SIM2_COLOR)
+            val telecomMgr = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+            val phoneAccounts = try { telecomMgr?.callCapablePhoneAccounts ?: emptyList() } catch (_: Throwable) { emptyList() }
+            val simCount = phoneAccounts.size.coerceAtLeast(1)
+
             val enabledFeatures = JSONObject().apply {
                 put("favourites", syncFavorites)
                 put("callLogs", syncCallLogs)
@@ -950,18 +1152,71 @@ class PcBluetoothSyncManager(
                 put("sms", syncSms)
                 put("notes", syncNotes)
                 put("contactPfp", syncContactPfp)
+                put("dynamicColors", syncDynamicColors)
                 put("confirmPlacingCall", confirmPlacingCall)
+            }
+
+            val starredMsgIds = JSONArray(prefs.getStarredSmsMessages().map { it.toString() })
+            val pinnedMsgIds = JSONArray(prefs.getPinnedSmsMessages().map { it.toString() })
+            val pinnedThreadIds = JSONArray(prefs.getPinnedSmsThreads().map { it.toString() })
+
+            val categories = prefs.getAllSmsCategories()
+            val hiddenCategories = prefs.getHiddenSmsCategories()
+            val smsCategoriesArray = JSONArray()
+            for (c in categories) {
+                val obj = JSONObject()
+                obj.put("id", c.id)
+                obj.put("name", c.name)
+                obj.put("isCustom", c.isCustom)
+                obj.put("isVisible", !hiddenCategories.contains(c.id))
+                val phones = JSONArray()
+                for (p in c.contactPhones) {
+                    phones.put(p)
+                }
+                obj.put("contactPhones", phones)
+                smsCategoriesArray.put(obj)
+            }
+
+            val callCategories = prefs.getAllCallCategories()
+            val hiddenCallCategories = prefs.getHiddenCallCategories()
+            val callCategoriesArray = JSONArray()
+            for (c in callCategories) {
+                val obj = JSONObject()
+                obj.put("id", c.id)
+                obj.put("name", c.name)
+                obj.put("isCustom", c.isCustom)
+                obj.put("isVisible", !hiddenCallCategories.contains(c.id))
+                val phones = JSONArray()
+                for (p in c.contactPhones) {
+                    phones.put(p)
+                }
+                obj.put("contactPhones", phones)
+                callCategoriesArray.put(obj)
             }
 
             // Build wrapper payload
             val payload = JSONObject().apply {
                 put("contacts", contactsArray)
+                put("contactGroups", contactGroupsArray)
                 put("callLogs", callLogsArray)
+                put("callCategories", callCategoriesArray)
                 put("smsThreads", smsArray)
+                put("smsCategories", smsCategoriesArray)
                 put("notes", notesArray)
+                put("starredSmsMessageIds", starredMsgIds)
+                put("pinnedSmsMessageIds", pinnedMsgIds)
+                put("pinnedSmsThreadIds", pinnedThreadIds)
                 put("enabledFeatures", enabledFeatures)
                 put("confirmPlacingCall", confirmPlacingCall)
+                put("themeColor", themeColorHex)
+                put("syncDynamicColors", syncDynamicColors)
+                put("favoritesInList", prefs.getBoolean(PreferenceManager.KEY_FAVORITES_IN_LIST, false))
+                put("defaultSim", defaultSim)
+                put("simCount", simCount)
+                put("sim1Color", String.format("#%06X", 0xFFFFFF and sim1ColorInt))
+                put("sim2Color", String.format("#%06X", 0xFFFFFF and sim2ColorInt))
                 put("deviceName", Build.MODEL)
+                put("telemetry", getDeviceTelemetry())
                 put("timestamp", System.currentTimeMillis())
             }
 
@@ -980,6 +1235,172 @@ class PcBluetoothSyncManager(
         } catch (e: Exception) {
             Log.e(TAG, "Error sending sync data: ${e.message}", e)
             _status.value = PcSyncStatus.ERROR
+        }
+    }
+
+    private fun isHotspotEnabled(): Boolean {
+        return try {
+            val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return false
+            val method = wm.javaClass.getDeclaredMethod("isWifiApEnabled")
+            method.isAccessible = true
+            method.invoke(wm) as? Boolean ?: false
+        } catch (_: Throwable) {
+            try {
+                val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return false
+                val method = wm.javaClass.getDeclaredMethod("getWifiApState")
+                method.isAccessible = true
+                val state = method.invoke(wm) as? Int ?: -1
+                state == 13 // WIFI_AP_STATE_ENABLED
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
+
+    private fun getDataNetworkTypeName(): String {
+        val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return ""
+        try {
+            val networkType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                tm.dataNetworkType
+            } else {
+                @Suppress("DEPRECATION")
+                tm.networkType
+            }
+            val typeStr = when (networkType) {
+                TelephonyManager.NETWORK_TYPE_NR -> "5G"
+                TelephonyManager.NETWORK_TYPE_LTE -> "4G"
+                TelephonyManager.NETWORK_TYPE_HSPAP -> "H+"
+                TelephonyManager.NETWORK_TYPE_HSPA,
+                TelephonyManager.NETWORK_TYPE_HSDPA,
+                TelephonyManager.NETWORK_TYPE_HSUPA,
+                TelephonyManager.NETWORK_TYPE_UMTS -> "3G"
+                TelephonyManager.NETWORK_TYPE_EDGE -> "E"
+                TelephonyManager.NETWORK_TYPE_GPRS,
+                TelephonyManager.NETWORK_TYPE_CDMA,
+                TelephonyManager.NETWORK_TYPE_1xRTT -> "2G"
+                else -> {
+                    val voiceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        try { tm.voiceNetworkType } catch (_: Throwable) { TelephonyManager.NETWORK_TYPE_UNKNOWN }
+                    } else {
+                        TelephonyManager.NETWORK_TYPE_UNKNOWN
+                    }
+                    when (voiceType) {
+                        TelephonyManager.NETWORK_TYPE_NR -> "5G"
+                        TelephonyManager.NETWORK_TYPE_LTE -> "4G"
+                        TelephonyManager.NETWORK_TYPE_HSPAP -> "H+"
+                        TelephonyManager.NETWORK_TYPE_HSPA,
+                        TelephonyManager.NETWORK_TYPE_HSDPA,
+                        TelephonyManager.NETWORK_TYPE_HSUPA,
+                        TelephonyManager.NETWORK_TYPE_UMTS -> "3G"
+                        TelephonyManager.NETWORK_TYPE_EDGE -> "E"
+                        TelephonyManager.NETWORK_TYPE_GPRS -> "2G"
+                        else -> ""
+                    }
+                }
+            }
+            return typeStr
+        } catch (_: Throwable) {
+            return ""
+        }
+    }
+
+    private fun getDeviceTelemetry(): JSONObject {
+        val obj = JSONObject()
+        try {
+            // 1. Battery
+            val batteryFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+            val batteryIntent = context.registerReceiver(null, batteryFilter)
+            val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    status == BatteryManager.BATTERY_STATUS_FULL
+            val batteryPct = if (level >= 0 && scale > 0) (level * 100 / scale) else -1
+            obj.put("batteryLevel", batteryPct)
+            obj.put("isCharging", isCharging)
+
+            // 2. Wi-Fi
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val activeNet = cm?.activeNetwork
+            val caps = cm?.getNetworkCapabilities(activeNet)
+            val isWifiConnected = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            if (isWifiConnected) {
+                val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                val rssi = wm?.connectionInfo?.rssi ?: -127
+                val wifiLevel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    wm?.calculateSignalLevel(rssi) ?: 4
+                } else {
+                    @Suppress("DEPRECATION")
+                    WifiManager.calculateSignalLevel(rssi, 5)
+                }
+                obj.put("wifiLevel", wifiLevel.coerceIn(0, 4))
+                obj.put("isWifiConnected", true)
+            } else {
+                obj.put("wifiLevel", -1)
+                obj.put("isWifiConnected", false)
+            }
+
+            // 3. Cellular Signal
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            val cellLevel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try {
+                    tm?.signalStrength?.level ?: -1
+                } catch (_: Throwable) { -1 }
+            } else {
+                -1
+            }
+            obj.put("cellularLevel", cellLevel.coerceIn(-1, 4))
+
+            // 4. Hotspot & Network Data Type
+            obj.put("isHotspotOn", isHotspotEnabled())
+            obj.put("dataNetworkType", getDataNetworkTypeName())
+
+            // 5. Volume Streams
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (audioManager != null) {
+                val volObj = JSONObject().apply {
+                    put("ring", JSONObject().apply {
+                        put("current", audioManager.getStreamVolume(AudioManager.STREAM_RING))
+                        put("max", audioManager.getStreamMaxVolume(AudioManager.STREAM_RING))
+                    })
+                    put("notification", JSONObject().apply {
+                        put("current", audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION))
+                        put("max", audioManager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION))
+                    })
+                    put("call", JSONObject().apply {
+                        put("current", audioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL))
+                        put("max", audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL))
+                    })
+                    put("alarm", JSONObject().apply {
+                        put("current", audioManager.getStreamVolume(AudioManager.STREAM_ALARM))
+                        put("max", audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM))
+                    })
+                    put("media", JSONObject().apply {
+                        put("current", audioManager.getStreamVolume(AudioManager.STREAM_MUSIC))
+                        put("max", audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC))
+                    })
+                }
+                obj.put("volume", volObj)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error gathering telemetry: ${e.message}")
+        }
+        return obj
+    }
+
+    private fun sendTelemetry(writer: BufferedWriter) {
+        try {
+            val telem = getDeviceTelemetry()
+            val root = JSONObject().apply {
+                put("type", "telemetry")
+                put("payload", telem)
+            }
+            writer.write(root.toString())
+            writer.write("\n")
+            writer.flush()
+            Log.d(TAG, "Telemetry update sent: $telem")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error sending telemetry: ${e.message}")
         }
     }
 }

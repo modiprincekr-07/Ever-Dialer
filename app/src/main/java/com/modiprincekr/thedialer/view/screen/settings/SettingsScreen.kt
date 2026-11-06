@@ -124,12 +124,11 @@ private val settingsSectionKeyGroups: List<List<String>> = listOf(
     listOf("tap_haptics", "scroll_haptics"),
     listOf("authentication"),
     listOf("sms_settings_link"),
-    listOf("app_settings", "contacts_hider", "fake_call", "call_recording"),
+    listOf("app_settings", "pc_connect", "sim_and_call_placement", "contacts_hider", "fake_call", "call_recording"),
     listOf("silence_unknown", "blocked_numbers"),
     listOf("create_backup", "restore_backup"),
     listOf("app_language"),
-    listOf("about_app"),
-    listOf("debug_settings")
+    listOf("about_app")
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1340,6 +1339,18 @@ fun SettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                                 onClick = { navigator.navigate(BlockedNumbersScreenDestination()) }
                             )
                         }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        RivoExpressiveCard {
+                            RivoListItem(
+                                headline = "Notifications",
+                                supporting = "PC Connect, Call Recording, and 4G/5G Switcher notifications",
+                                leadingIcon = Icons.Outlined.Notifications,
+                                iconContainerColor = ColorOrange,
+                                trailingIcon = Icons.Default.ChevronRight,
+                                modifier = Modifier.settingsSearchHighlight("notifications", highlightedSettingKey) { highlightedSettingKey = null },
+                                onClick = { navigator.navigate(NotificationsSettingsScreenDestination()) }
+                            )
+                        }
                     }
                 }
             }
@@ -1352,18 +1363,16 @@ fun SettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                         SectionLabel("Backup & Restore")
                         RivoExpressiveCard {
                             RivoListItem(
-                                headline   = "Create Backup",
-                                supporting = "Save app configuration, settings and calling cards",
+                                headline   = "Backup And Restore",
+                                supporting = "Save or restore app configuration, liquid glass, settings and calling cards",
                                 leadingIcon = Icons.Default.Backup,
                                 iconContainerColor = ColorGreen,
                                 trailingIcon = Icons.Default.ChevronRight,
-                                modifier = Modifier.settingsSearchHighlight("create_backup", highlightedSettingKey) { highlightedSettingKey = null },
+                                modifier = Modifier.settingsSearchHighlight("backup_and_restore", highlightedSettingKey) { highlightedSettingKey = null },
                                 onClick = {
-                                    showBackupDialog = true
+                                    navigator.navigate(BackupSettingsScreenDestination(initialTab = 0))
                                 }
                             )
-                            CardDivider()
-                            RivoListItem(headline = "Restore Backup", supporting = "Restore app configuration, settings and calling cards", leadingIcon = Icons.Default.Restore, iconContainerColor = ColorBrown, trailingIcon = Icons.Default.ChevronRight, modifier = Modifier.settingsSearchHighlight("restore_backup", highlightedSettingKey) { highlightedSettingKey = null }, onClick = { restoreLauncher.launch("*/*") })
                         }
                     }
                 }
@@ -1408,25 +1417,6 @@ fun SettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                 }
             }
 
-            // ── Debug ────────────────────────────────────────────────────────
-            item {
-                RivoAnimatedSection(delayMs = 320L) {
-                    Column {
-                        SectionLabel("Debug")
-                        RivoExpressiveCard {
-                            RivoListItem(
-                                headline = "Debug",
-                                supporting = "Developer & experimental options",
-                                leadingIcon = Icons.Outlined.BugReport,
-                                iconContainerColor = ColorOrange,
-                                trailingIcon = Icons.Default.ChevronRight,
-                                modifier = Modifier.settingsSearchHighlight("debug_settings", highlightedSettingKey) { highlightedSettingKey = null },
-                                onClick = { navigator.navigate(DebugSettingsScreenDestination()) }
-                            )
-                        }
-                    }
-                }
-            }
 
             }
 
@@ -1552,7 +1542,7 @@ private fun CreateBackupDialog(
                         ) {
                             RivoSwitchListItem(
                                 headline = "Backup settings",
-                                supporting = "App preferences, Call Recorder & Network Switcher settings",
+                                supporting = "All app preferences, widgets, Call Recorder & Network Switcher settings",
                                 leadingIcon = Icons.Outlined.Settings,
                                 iconContainerColor = Color(0xFF4CAF50),
                                 checked = backupSettings,
@@ -1561,7 +1551,7 @@ private fun CreateBackupDialog(
                             CardDivider()
                             RivoSwitchListItem(
                                 headline = "Backup calling cards",
-                                supporting = "Saved calling cards, contact backgrounds and PFP customization",
+                                supporting = "Saved calling cards, contact backgrounds, caller UI & PFP customization",
                                 leadingIcon = Icons.Outlined.ContactPhone,
                                 iconContainerColor = Color(0xFF2196F3),
                                 checked = backupCallingCards,
@@ -1765,7 +1755,7 @@ private fun RestoreBackupDialog(
                         ) {
                             RivoSwitchListItem(
                                 headline = "Restore settings",
-                                supporting = if (contents.hasSettings) "App preferences, Call Recorder & Network Switcher settings" else "Not present in this backup",
+                                supporting = if (contents.hasSettings) "All app preferences, widgets, Call Recorder & Network Switcher settings" else "Not present in this backup",
                                 leadingIcon = Icons.Outlined.Settings,
                                 iconContainerColor = Color(0xFF4CAF50),
                                 checked = restoreSettings,
@@ -1775,7 +1765,7 @@ private fun RestoreBackupDialog(
                             CardDivider()
                             RivoSwitchListItem(
                                 headline = "Restore calling cards",
-                                supporting = if (contents.hasCallingCards) "Saved calling cards, contact backgrounds and PFP customization" else "Not present in this backup",
+                                supporting = if (contents.hasCallingCards) "Saved calling cards, contact backgrounds, caller UI & PFP customization" else "Not present in this backup",
                                 leadingIcon = Icons.Outlined.ContactPhone,
                                 iconContainerColor = Color(0xFF2196F3),
                                 checked = restoreCallingCards,

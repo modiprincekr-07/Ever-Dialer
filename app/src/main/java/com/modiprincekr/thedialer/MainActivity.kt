@@ -592,8 +592,10 @@ class MainActivity : FragmentActivity() {
                             route.startsWith("sms_screen") ||
                             route.startsWith("sms_chat_screen") ||
                             route.startsWith("new_message_screen") ||
+                            route.startsWith("sms_settings_screen") ||
                             route.startsWith("blocked_sms_screen")
                         )
+                        isCurrentRouteSmsSection = isSmsSection
                         if (disableSmsScreenshots && isSmsSection) {
                             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
                         } else {
@@ -831,6 +833,7 @@ class MainActivity : FragmentActivity() {
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
+                                    .layerBackdrop(liquidGlassBackdropLandscape)
                             ) {
                                 DestinationsNavHost(navGraph = NavGraphs.root, navController = navController, start = startDestination, defaultTransitions = TabTransitionStyle)
                             }
@@ -1416,12 +1419,18 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        isAppInForeground = true
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED) {
             com.modiprincekr.thedialer.controller.util.MissedCallBadgeManager.markMissedCallsAsRead(this)
             try {
                 org.koin.core.context.GlobalContext.get().getOrNull<com.modiprincekr.thedialer.controller.CallLogViewModel>()?.refreshLogs()
             } catch (_: Throwable) {}
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isAppInForeground = false
     }
 
     private var touchDownX = 0f
@@ -1475,6 +1484,19 @@ class MainActivity : FragmentActivity() {
             }
         }
         return super.dispatchTouchEvent(ev)
+    }
+
+    companion object {
+        @Volatile
+        var isAppInForeground: Boolean = false
+            private set
+
+        @Volatile
+        var isCurrentRouteSmsSection: Boolean = false
+            private set
+
+        val isSmsSectionActive: Boolean
+            get() = isAppInForeground && isCurrentRouteSmsSection
     }
 }
 

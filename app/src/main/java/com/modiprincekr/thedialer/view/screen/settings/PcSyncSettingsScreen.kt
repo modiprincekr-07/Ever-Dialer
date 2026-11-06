@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BluetoothConnected
 import androidx.compose.material.icons.outlined.BluetoothSearching
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.*
@@ -23,8 +24,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.modiprincekr.thedialer.controller.PcSyncService
 import com.modiprincekr.thedialer.controller.util.PcBluetoothSyncManager
 import com.modiprincekr.thedialer.controller.util.PcSyncStatus
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
@@ -34,6 +37,7 @@ import com.modiprincekr.thedialer.view.components.RivoSwitchListItem
 import com.modiprincekr.thedialer.view.components.SettingsPillTopAppBar
 import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
 import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
+import com.modiprincekr.thedialer.view.components.settingsSearchHighlight
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
@@ -45,13 +49,19 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Destination<RootGraph>(style = SettingsTransitionStyle::class)
 @Composable
-fun PcSyncSettingsScreen(navigator: DestinationsNavigator) {
+fun PcSyncSettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = null) {
     val prefs = koinInject<PreferenceManager>()
     val syncManager = koinInject<PcBluetoothSyncManager>()
+    val context = LocalContext.current
     val scrollState = rememberScrollState()
+    var highlightedKey by remember { mutableStateOf(highlightKey) }
 
     var bluetoothSyncEnabled by remember {
         mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_PC_SYNC_BLUETOOTH_ENABLED, false))
+    }
+
+    var showNotification by remember {
+        mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_PC_SYNC_SHOW_NOTIFICATION, true))
     }
 
     var hasPermission by remember {
@@ -163,6 +173,7 @@ fun PcSyncSettingsScreen(navigator: DestinationsNavigator) {
                             leadingIcon = Icons.Outlined.BluetoothSearching,
                             iconContainerColor = Color(0xFF1E88E5),
                             checked = bluetoothSyncEnabled,
+                            modifier = Modifier.settingsSearchHighlight("pc_bluetooth_sync", highlightedKey) { highlightedKey = null },
                             onCheckedChange = { isChecked ->
                                 bluetoothSyncEnabled = isChecked
                                 if (isChecked && !hasPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -280,6 +291,22 @@ fun PcSyncSettingsScreen(navigator: DestinationsNavigator) {
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Sync Now")
+                            }
+
+                            // Notification Container
+                            RivoExpressiveCard {
+                                RivoSwitchListItem(
+                                    headline = "Notification",
+                                    supporting = "Show connected to PC notification in notification bar",
+                                    leadingIcon = Icons.Outlined.Notifications,
+                                    iconContainerColor = Color(0xFF1E88E5),
+                                    checked = showNotification,
+                                    onCheckedChange = { isChecked ->
+                                        showNotification = isChecked
+                                        prefs.setBoolean(PreferenceManager.KEY_PC_SYNC_SHOW_NOTIFICATION, isChecked)
+                                        PcSyncService.updateNotificationVisibility(context, isChecked)
+                                    }
+                                )
                             }
                         }
                     }

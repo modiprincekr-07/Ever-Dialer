@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.background
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -61,8 +62,11 @@ import com.modiprincekr.thedialer.view.components.*
 import android.os.Build
 import com.modiprincekr.thedialer.liquidglass.drawBackdrop
 import com.modiprincekr.thedialer.liquidglass.effects.lens
+import com.modiprincekr.thedialer.liquidglass.effects.blur
 import com.modiprincekr.thedialer.liquidglass.effects.colorControls
 import com.modiprincekr.thedialer.liquidglass.highlight.Highlight
+import com.modiprincekr.thedialer.liquidglass.backdrops.rememberLayerBackdrop
+import com.modiprincekr.thedialer.liquidglass.backdrops.layerBackdrop
 import com.modiprincekr.thedialer.liquidglass.LocalLiquidGlassBackdrop
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -151,6 +155,7 @@ fun ContactScreen(navController: NavController, navigator: DestinationsNavigator
     }
 
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+    val contactBackdrop = rememberLayerBackdrop()
 
     Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
@@ -190,12 +195,13 @@ fun ContactScreen(navController: NavController, navigator: DestinationsNavigator
             },
         topBar = { TopBar(navController, navigator) },
         floatingActionButton = {
-            val globalBackdrop = LocalLiquidGlassBackdrop.current
             val settingsVer by prefs_ui.settingsChanged.collectAsState()
             val liquidGlass = remember(settingsVer) { prefs_ui.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) }
-            val lgContactsFab = remember(settingsVer) { prefs_ui.getBoolean(PreferenceManager.KEY_LG_CONTACTS_FAB, false) }
+            val lgContactsFab = remember(settingsVer) { prefs_ui.getBoolean(PreferenceManager.KEY_LG_CONTACTS_FAB, true) }
             val blurEffects = remember(settingsVer) { prefs_ui.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) }
-            val blurContactsFab = remember(settingsVer) { prefs_ui.getBoolean(PreferenceManager.KEY_BLUR_CONTACTS_FAB, false) }
+            val blurContactsFab = remember(settingsVer) { prefs_ui.getBoolean(PreferenceManager.KEY_BLUR_CONTACTS_FAB, true) }
+            val lgContactsConfig = remember(settingsVer) { prefs_ui.getLiquidGlassConfig(PreferenceManager.KEY_LG_CONTACTS_FAB) }
+            val blurContactsConfig = remember(settingsVer) { prefs_ui.getBlurConfig(PreferenceManager.KEY_BLUR_CONTACTS_FAB) }
             val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
             val isSaturatedActive = remember(settingsVer, isDark) { prefs_ui.isSaturatedForTheme(isDark) }
             val isDynamic = remember(settingsVer) { prefs_ui.getBoolean(PreferenceManager.KEY_DYNAMIC_COLORS, true) }
@@ -203,8 +209,8 @@ fun ContactScreen(navController: NavController, navigator: DestinationsNavigator
             val fabBg = if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
             val fabFg = if (isSaturatedActive && isDark) Color.Black else if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
             val fabShape = RoundedCornerShape(17.dp)
-            val useLiquidGlass = liquidGlass && lgContactsFab && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && globalBackdrop != null
-            val useBlur = blurEffects && blurContactsFab && !useLiquidGlass
+            val useLiquidGlass = liquidGlass && lgContactsFab && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            val useBlur = blurEffects && blurContactsFab && !useLiquidGlass && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             val baseModifier = Modifier
                 .scale(fabScale)
                 .then(if (pillNav) Modifier.navigationBarsPadding().padding(bottom = 92.dp) else Modifier.navigationBarsPadding().padding(bottom = 80.dp))
@@ -213,39 +219,70 @@ fun ContactScreen(navController: NavController, navigator: DestinationsNavigator
                 val intent = Intent(Intent.ACTION_INSERT, ContactsContract.Contacts.CONTENT_URI)
                 context.startActivity(intent)
             }
-            if (useLiquidGlass && globalBackdrop != null) {
-                Box(
+            if (useLiquidGlass) {
+                FloatingActionButton(
+                    onClick = fabOnClick,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.35f),
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    shape = fabShape,
+                    elevation = FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 0.dp,
+                        pressedElevation = 0.dp,
+                        focusedElevation = 0.dp,
+                        hoveredElevation = 0.dp
+                    ),
                     modifier = baseModifier.drawBackdrop(
-                        backdrop = globalBackdrop,
+                        backdrop = contactBackdrop,
                         shape = { fabShape },
                         effects = {
                             val d = density
-                            colorControls(brightness = -0.15f)
-                            lens(refractionHeight = 46f * d, refractionAmount = 64f * d)
+                            colorControls(brightness = lgContactsConfig.brightness, saturation = lgContactsConfig.saturation)
+                            if (lgContactsConfig.blurRadiusDp > 0f) blur(lgContactsConfig.blurRadiusDp * d)
+                            lens(
+                                refractionHeight = lgContactsConfig.refractionHeightDp * d,
+                                refractionAmount = lgContactsConfig.refractionAmountDp * d,
+                                chromaticAberration = lgContactsConfig.chromaticAberration,
+                                depthEffect = lgContactsConfig.depthEffect
+                            )
+                        },
+                        highlight = { Highlight.Default }
+                    )
+                ) { Icon(Icons.Default.PersonAdd, "Add Contact") }
+            } else if (useBlur) {
+                Box(
+                    modifier = baseModifier.drawBackdrop(
+                        backdrop = contactBackdrop,
+                        shape = { fabShape },
+                        effects = {
+                            val d = density
+                            colorControls(saturation = blurContactsConfig.saturation)
+                            blur(blurContactsConfig.blurRadiusDp * d)
                         },
                         highlight = { Highlight.Default }
                     )
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(fabBg.copy(alpha = 0.35f), fabShape)
+                    )
                     FloatingActionButton(
                         onClick = fabOnClick,
-                        containerColor = fabBg.copy(alpha = 0.0f),
+                        containerColor = Color.Transparent,
                         contentColor = fabFg,
                         shape = fabShape,
                         elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 6.dp,
-                        pressedElevation = 6.dp,
-                        focusedElevation = 6.dp,
-                        hoveredElevation = 6.dp
-                    ),
+                            defaultElevation = 0.dp,
+                            pressedElevation = 0.dp,
+                            focusedElevation = 0.dp,
+                            hoveredElevation = 0.dp
+                        ),
                     ) { Icon(Icons.Default.PersonAdd, "Add Contact") }
                 }
             } else {
                 FloatingActionButton(
                     onClick = fabOnClick,
-                    containerColor = if (useBlur)
-                        fabBg.copy(alpha = 0.75f)
-                    else
-                        fabBg,
+                    containerColor = fabBg,
                     contentColor = fabFg,
                     shape = fabShape,
                     elevation = FloatingActionButtonDefaults.elevation(
@@ -261,7 +298,19 @@ fun ContactScreen(navController: NavController, navigator: DestinationsNavigator
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0)
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+        val settingsVer by prefs_ui.settingsChanged.collectAsState()
+        val needBackdropContent = remember(settingsVer) {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && (
+                (prefs_ui.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) && prefs_ui.getBoolean(PreferenceManager.KEY_LG_CONTACTS_FAB, true)) ||
+                (prefs_ui.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) && prefs_ui.getBoolean(PreferenceManager.KEY_BLUR_CONTACTS_FAB, true))
+            )
+        }
+        Box(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .then(if (needBackdropContent) Modifier.layerBackdrop(contactBackdrop) else Modifier)
+        ) {
             ContactContent(
                 navigator = navigator,
                 isGranted = permState.status == PermissionStatus.Granted,

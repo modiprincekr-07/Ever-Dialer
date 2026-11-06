@@ -14,12 +14,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallMissed
 import androidx.compose.material.icons.automirrored.filled.CallReceived
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -92,6 +94,9 @@ fun CallLogsSettingsScreen(
 
     // Call UI section checkboxes dialog
     var showCallUIDialog   by remember { mutableStateOf(false) }
+    var showCategoriesDialog by remember { mutableStateOf(false) }
+    var showDefaultCategoryDialog by remember { mutableStateOf(false) }
+    var defaultCallCategory by remember { mutableStateOf(prefs.getDefaultCallCategory()) }
     var callUIShowToday    by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_CALL_UI_SHOW_TODAY, true)) }
     var callUIShowMissed   by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_CALL_UI_SHOW_MISSED, true)) }
     var callUIShowOutgoing by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_CALL_UI_SHOW_OUTGOING, true)) }
@@ -278,6 +283,93 @@ fun CallLogsSettingsScreen(
         )
     }
 
+    if (showCategoriesDialog) {
+        com.coolappstore.everdialer.by.svhp.view.components.CallCategoriesDialog(
+            onDismissRequest = { showCategoriesDialog = false },
+            onAddClick = {
+                showCategoriesDialog = false
+                navigator.navigate(com.ramcosta.composedestinations.generated.destinations.CreateCallCategoryScreenDestination())
+            },
+            onEditClick = { categoryId ->
+                showCategoriesDialog = false
+                navigator.navigate(com.ramcosta.composedestinations.generated.destinations.CreateCallCategoryScreenDestination(categoryId = categoryId))
+            }
+        )
+    }
+
+    if (showDefaultCategoryDialog) {
+        val visibleCategories = remember(showDefaultCategoryDialog) {
+            val all = prefs.getAllCallCategories()
+            val hidden = prefs.getHiddenCallCategories()
+            all.filterNot { hidden.contains(it.id) }
+        }
+        AlertDialog(
+            onDismissRequest = { showDefaultCategoryDialog = false },
+            icon = { Icon(Icons.Default.Tab, null, tint = ColorPurple) },
+            title = { Text("Default Category") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Choose which category opens when the call logs screen starts.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    visibleCategories.forEach { option ->
+                        val isSelected = defaultCallCategory == option.id
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        defaultCallCategory = option.id
+                                        prefs.setDefaultCallCategory(option.id)
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (option.isCustom) Icons.Default.People else Icons.Default.Category,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    option.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.weight(1f),
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                    else MaterialTheme.colorScheme.onSurface
+                                )
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = {
+                                        defaultCallCategory = option.id
+                                        prefs.setDefaultCallCategory(option.id)
+                                    },
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = MaterialTheme.colorScheme.primary,
+                                        unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDefaultCategoryDialog = false }) { Text("Done") }
+            }
+        )
+    }
+
     Scaffold(
         modifier = Modifier.settingsMotionBlur(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -315,8 +407,44 @@ fun CallLogsSettingsScreen(
                             modifier = Modifier.settingsSearchHighlight("calls_section_elements", highlightedKey) { highlightedKey = null },
                             onClick = { showCallUIDialog = true }
                         )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                        )
+                        RivoListItem(
+                            headline = "Category",
+                            supporting = "Customize pills, reorder, visibility & custom categories",
+                            leadingIcon = Icons.Default.Category,
+                            iconContainerColor = ColorPurple,
+                            trailingIcon = Icons.Default.ChevronRight,
+                            modifier = Modifier.settingsSearchHighlight("call_category", highlightedKey) { highlightedKey = null },
+                            onClick = { showCategoriesDialog = true }
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                        )
+                        val allCallCategories = remember(showCategoriesDialog, showDefaultCategoryDialog) {
+                            prefs.getAllCallCategories()
+                        }
+                        val currentCallCategoryLabel = remember(defaultCallCategory, allCallCategories) {
+                            allCallCategories.firstOrNull { it.id == defaultCallCategory }?.name ?: "All"
+                        }
+                        RivoListItem(
+                            headline = "Default Category",
+                            supporting = "Choose which category opens when the call logs screen starts (currently: $currentCallCategoryLabel)",
+                            leadingIcon = Icons.Default.Tab,
+                            iconContainerColor = ColorPurple,
+                            trailingIcon = Icons.Default.ChevronRight,
+                            modifier = Modifier.settingsSearchHighlight("call_default_category", highlightedKey) { highlightedKey = null },
+                            onClick = { showDefaultCategoryDialog = true }
+                        )
                     }
                 }
+            }
+
+            RivoAnimatedSection(delayMs = 35L) {
+                SwipeActionConfigSection(sectionKey = "call_logs")
             }
 
             RivoAnimatedSection(delayMs = 40L) {

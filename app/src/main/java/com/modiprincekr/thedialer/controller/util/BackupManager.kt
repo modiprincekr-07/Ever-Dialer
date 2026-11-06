@@ -29,10 +29,11 @@ object BackupManager {
         val hasRecordings: Boolean = false,
         val hasContacts: Boolean = false,
         val hasCallLogs: Boolean = false,
-        val hasSms: Boolean = false
+        val hasSms: Boolean = false,
+        val hasLiquidGlass: Boolean = false
     ) {
         val hasAny: Boolean
-            get() = hasSettings || hasCallingCards || hasNotes || hasContactGroups || hasRecordings || hasContacts || hasCallLogs || hasSms
+            get() = hasSettings || hasCallingCards || hasNotes || hasContactGroups || hasRecordings || hasContacts || hasCallLogs || hasSms || hasLiquidGlass
     }
 
     const val PREFS_RIVO = "rivo_prefs"
@@ -45,6 +46,8 @@ object BackupManager {
     const val PREFS_NS_AUTO = "network_switch_automation_flags"
     const val PREFS_MISSED_CALL_DURATION = "missed_call_durations"
     const val PREFS_WIDGET = "recent_calls_widget_prefs"
+    const val PREFS_DIRECT_CALL_WIDGET = "direct_call_widget_prefs"
+    const val PREFS_CONTACT_INFO_WIDGET = "contact_info_widget_prefs"
 
     val KNOWN_PREFS = listOf(
         PREFS_RIVO,
@@ -56,7 +59,9 @@ object BackupManager {
         PREFS_NS_MASTER,
         PREFS_NS_AUTO,
         PREFS_MISSED_CALL_DURATION,
-        PREFS_WIDGET
+        PREFS_WIDGET,
+        PREFS_DIRECT_CALL_WIDGET,
+        PREFS_CONTACT_INFO_WIDGET
     )
 
     fun getBackupDir(context: Context): File {
@@ -73,25 +78,51 @@ object BackupManager {
 
     fun isCallingCardKey(key: String): Boolean {
         return key.startsWith("contact_") ||
-                key.startsWith("incoming_bg_") ||
-                key.startsWith("ongoing_bg_") ||
-                key.startsWith("incoming_font_") ||
-                key.startsWith("ongoing_font_") ||
-                key.startsWith("incoming_elements_") ||
-                key.startsWith("ongoing_elements_") ||
-                key.startsWith("incoming_custom_pfp_") ||
-                key.startsWith("ongoing_custom_pfp_") ||
-                key.startsWith("incoming_auto_refresh_wallpaper") ||
-                key.startsWith("ongoing_auto_refresh_wallpaper") ||
-                key == PreferenceManager.KEY_INCOMING_SHOW_CONTACT_PFP ||
-                key == PreferenceManager.KEY_ONGOING_SHOW_CONTACT_PFP ||
-                key == PreferenceManager.KEY_INCOMING_SHOW_PHONE_NUMBER ||
-                key == PreferenceManager.KEY_ONGOING_SHOW_PHONE_NUMBER
+                key.startsWith("incoming_") ||
+                key.startsWith("ongoing_") ||
+                key.startsWith("call_ui_") ||
+                key.startsWith("caller_ui_") ||
+                key.startsWith("banner_") ||
+                key.startsWith("show_incoming_") ||
+                key.startsWith("show_ongoing_") ||
+                key.startsWith("show_fullscreen_") ||
+                key == PreferenceManager.KEY_SHOW_INCOMING_CALL_UI ||
+                key == PreferenceManager.KEY_SHOW_CALLER_UI ||
+                key == PreferenceManager.KEY_SHOW_FULL_SCREEN_INCOMING_ON_ANY_APPS ||
+                key == PreferenceManager.KEY_SHOW_ONGOING_CALL_UI_WHEN_ANSWERED ||
+                key == PreferenceManager.KEY_SHOW_ONGOING_CALL_UI_ON_LOCKSCREEN_WHEN_ANSWERED ||
+                key == PreferenceManager.KEY_CALL_UI_ORDER
     }
 
     fun isContactGroupKey(key: String): Boolean {
         return key == PreferenceManager.KEY_CONTACT_GROUPS ||
                 key == PreferenceManager.KEY_HIDDEN_CONTACT_GROUPS
+    }
+
+    fun isLiquidGlassKey(key: String): Boolean {
+        return key == PreferenceManager.KEY_LIQUID_GLASS ||
+                key == PreferenceManager.KEY_BLUR_EFFECTS ||
+                key.startsWith("lg_") ||
+                key.startsWith("blur_") ||
+                key.endsWith("_blur") ||
+                key.endsWith("_refraction_h") ||
+                key.endsWith("_refraction_a") ||
+                key.endsWith("_chromatic") ||
+                key.endsWith("_depth") ||
+                key.endsWith("_saturation") ||
+                key.endsWith("_brightness") ||
+                key.endsWith("_blur_radius") ||
+                key.endsWith("_blur_sat")
+    }
+
+    fun filterLiquidGlassPrefs(prefs: SharedPreferences): Map<String, Any> {
+        val result = mutableMapOf<String, Any>()
+        prefs.all.forEach { (key, value) ->
+            if (value != null && isLiquidGlassKey(key)) {
+                result[key] = value
+            }
+        }
+        return result
     }
 
     fun writeBackup(
@@ -104,7 +135,8 @@ object BackupManager {
         backupRecordings: Boolean = true,
         backupContacts: Boolean = false,
         backupCallLogs: Boolean = false,
-        backupSms: Boolean = false
+        backupSms: Boolean = false,
+        backupLiquidGlass: Boolean = true
     ): Boolean {
         return try {
             ZipOutputStream(outputStream).use { zip ->
@@ -125,8 +157,12 @@ object BackupManager {
                     prefsToBackup.forEach { prefName ->
                         val prefs = context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
                         if (prefs.all.isNotEmpty() || prefName == PREFS_RIVO) {
-                            val prefsJson = if (prefName == PREFS_RIVO && !backupContactGroups) {
-                                prefsToJsonFiltered(prefs) { key -> !isContactGroupKey(key) }
+                            val prefsJson = if (prefName == PREFS_RIVO) {
+                                prefsToJsonFiltered(prefs) { key ->
+                                    val groupOk = backupContactGroups || !isContactGroupKey(key)
+                                    val lgOk = backupLiquidGlass || !isLiquidGlassKey(key)
+                                    groupOk && lgOk
+                                }
                             } else {
                                 prefsToJson(prefs)
                             }
@@ -140,6 +176,18 @@ object BackupManager {
                                 zip.write(prefsJson.toByteArray(Charsets.UTF_8))
                                 zip.closeEntry()
                             }
+                        }
+                    }
+
+                    // Also backup standalone liquid_glass.json
+                    if (backupLiquidGlass) {
+                        val rivoPrefs = context.getSharedPreferences(PREFS_RIVO, Context.MODE_PRIVATE)
+                        val lgPrefs = filterLiquidGlassPrefs(rivoPrefs)
+                        if (lgPrefs.isNotEmpty()) {
+                            val lgJson = mapToJson(lgPrefs)
+                            zip.putNextEntry(ZipEntry("prefs/liquid_glass.json"))
+                            zip.write(lgJson.toByteArray(Charsets.UTF_8))
+                            zip.closeEntry()
                         }
                     }
 
@@ -166,15 +214,26 @@ object BackupManager {
                             zip.closeEntry()
                         }
                     } catch (_: Exception) {}
-                } else if (backupCallingCards) {
-                    // Backup calling cards contact preferences only if settings backup is not selected
-                    val rivoPrefs = context.getSharedPreferences(PREFS_RIVO, Context.MODE_PRIVATE)
-                    val callingCardPrefs = filterCallingCardPrefs(rivoPrefs)
-                    if (callingCardPrefs.isNotEmpty()) {
-                        val prefsJson = mapToJson(callingCardPrefs)
-                        zip.putNextEntry(ZipEntry("prefs/$PREFS_RIVO.json"))
-                        zip.write(prefsJson.toByteArray(Charsets.UTF_8))
-                        zip.closeEntry()
+                } else {
+                    if (backupLiquidGlass) {
+                        val rivoPrefs = context.getSharedPreferences(PREFS_RIVO, Context.MODE_PRIVATE)
+                        val lgPrefs = filterLiquidGlassPrefs(rivoPrefs)
+                        if (lgPrefs.isNotEmpty()) {
+                            val lgJson = mapToJson(lgPrefs)
+                            zip.putNextEntry(ZipEntry("prefs/liquid_glass.json"))
+                            zip.write(lgJson.toByteArray(Charsets.UTF_8))
+                            zip.closeEntry()
+                        }
+                    }
+                    if (backupCallingCards) {
+                        val rivoPrefs = context.getSharedPreferences(PREFS_RIVO, Context.MODE_PRIVATE)
+                        val callingCardPrefs = filterCallingCardPrefs(rivoPrefs)
+                        if (callingCardPrefs.isNotEmpty()) {
+                            val prefsJson = mapToJson(callingCardPrefs)
+                            zip.putNextEntry(ZipEntry("prefs/$PREFS_RIVO.json"))
+                            zip.write(prefsJson.toByteArray(Charsets.UTF_8))
+                            zip.closeEntry()
+                        }
                     }
                 }
 
@@ -208,6 +267,19 @@ object BackupManager {
                             }
                         }
                     }
+                }
+
+                // 4.5. Backup hidden contact photos
+                if (backupSettings || backupContacts) {
+                    try {
+                        context.filesDir.listFiles()?.forEach { file ->
+                            if (file.isFile && file.name.startsWith("hidden_contact_") && file.name.endsWith(".jpg")) {
+                                zip.putNextEntry(ZipEntry("hidden_contacts/${file.name}"))
+                                FileInputStream(file).use { it.copyTo(zip) }
+                                zip.closeEntry()
+                            }
+                        }
+                    } catch (_: Exception) {}
                 }
 
                 // 5. Backup notes (contact notes & general notes)
@@ -468,13 +540,14 @@ object BackupManager {
         backupRecordings: Boolean = true,
         backupContacts: Boolean = false,
         backupCallLogs: Boolean = false,
-        backupSms: Boolean = false
+        backupSms: Boolean = false,
+        backupLiquidGlass: Boolean = true
     ): File? {
         return try {
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val backupFile = File(getBackupDir(context), "EverDialer_Backup_$timestamp.everdialer")
             val ok = FileOutputStream(backupFile).use { outputStream ->
-                writeBackup(context, outputStream, backupSettings, backupCallingCards, backupNotes, backupContactGroups, backupRecordings, backupContacts, backupCallLogs, backupSms)
+                writeBackup(context, outputStream, backupSettings, backupCallingCards, backupNotes, backupContactGroups, backupRecordings, backupContacts, backupCallLogs, backupSms, backupLiquidGlass)
             }
             if (ok) backupFile else null
         } catch (_: Exception) {
@@ -491,6 +564,7 @@ object BackupManager {
         var hasContacts = false
         var hasCallLogs = false
         var hasSms = false
+        var hasLiquidGlass = false
 
         try {
             ZipInputStream(FileInputStream(backupFile)).use { zip ->
@@ -498,9 +572,39 @@ object BackupManager {
                 while (entry != null) {
                     val name = entry.name
                     when {
-                        name.startsWith("prefs/") || name == "prefs.json" -> {
+                        name == "prefs/liquid_glass.json" -> {
+                            hasLiquidGlass = true
+                        }
+                        name.startsWith("prefs/") && name.endsWith(".json") -> {
+                            val prefName = name.removePrefix("prefs/").removeSuffix(".json")
+                            if (prefName == PREFS_RIVO) {
+                                hasSettings = true
+                                val jsonStr = zip.readBytes().toString(Charsets.UTF_8)
+                                val jsonObj = runCatching {
+                                    val r = JSONObject(jsonStr)
+                                    if (r.has("data")) r.getJSONObject("data") else r
+                                }.getOrNull()
+                                jsonObj?.keys()?.forEach { k ->
+                                    if (isCallingCardKey(k)) hasCallingCards = true
+                                    if (isContactGroupKey(k)) hasContactGroups = true
+                                    if (isLiquidGlassKey(k)) hasLiquidGlass = true
+                                }
+                            } else {
+                                hasSettings = true
+                            }
+                        }
+                        name == "prefs.json" -> {
                             hasSettings = true
-                            hasCallingCards = true
+                            val jsonStr = zip.readBytes().toString(Charsets.UTF_8)
+                            val jsonObj = runCatching {
+                                val r = JSONObject(jsonStr)
+                                if (r.has("data")) r.getJSONObject("data") else r
+                            }.getOrNull()
+                            jsonObj?.keys()?.forEach { k ->
+                                if (isCallingCardKey(k)) hasCallingCards = true
+                                if (isContactGroupKey(k)) hasContactGroups = true
+                                if (isLiquidGlassKey(k)) hasLiquidGlass = true
+                            }
                         }
                         name.startsWith("datastore/") || name == "custom_font.ttf" -> {
                             hasSettings = true
@@ -526,6 +630,10 @@ object BackupManager {
                         name.startsWith("sms/") && !name.endsWith("/") -> {
                             hasSms = true
                         }
+                        name.startsWith("hidden_contacts/") -> {
+                            hasSettings = true
+                            hasContacts = true
+                        }
                     }
                     zip.closeEntry()
                     entry = zip.nextEntry
@@ -541,7 +649,8 @@ object BackupManager {
             hasRecordings = hasRecordings,
             hasContacts = hasContacts,
             hasCallLogs = hasCallLogs,
-            hasSms = hasSms
+            hasSms = hasSms,
+            hasLiquidGlass = hasLiquidGlass
         )
     }
 
@@ -555,7 +664,8 @@ object BackupManager {
         restoreRecordings: Boolean = true,
         restoreContacts: Boolean = true,
         restoreCallLogs: Boolean = true,
-        restoreSms: Boolean = true
+        restoreSms: Boolean = true,
+        restoreLiquidGlass: Boolean = true
     ): Boolean {
         return try {
             var restoredAny = false
@@ -570,17 +680,28 @@ object BackupManager {
                 while (entry != null) {
                     val name = entry.name
                     when {
+                        name == "prefs/liquid_glass.json" -> {
+                            val json = zip.readBytes().toString(Charsets.UTF_8)
+                            if (restoreLiquidGlass || restoreSettings) {
+                                restorePrefs(context, PREFS_RIVO, json, onlyCallingCardKeys = false, restoreContactGroups = false, restoreLiquidGlass = true, onlyLiquidGlassKeys = true)
+                                restoredAny = true
+                            }
+                        }
                         name.startsWith("prefs/") && name.endsWith(".json") -> {
                             val prefName = name.removePrefix("prefs/").removeSuffix(".json")
                             val json = zip.readBytes().toString(Charsets.UTF_8)
                             if (restoreSettings) {
-                                restorePrefs(context, prefName, json, onlyCallingCardKeys = false, restoreContactGroups = restoreContactGroups)
+                                restorePrefs(context, prefName, json, onlyCallingCardKeys = false, restoreContactGroups = restoreContactGroups, restoreLiquidGlass = restoreLiquidGlass)
                                 if (prefName == PREFS_RIVO) {
                                     restoredRivoFromPrefsDir = true
                                 }
                                 restoredAny = true
+                            } else if (restoreLiquidGlass && prefName == PREFS_RIVO) {
+                                restorePrefs(context, prefName, json, onlyCallingCardKeys = false, restoreContactGroups = false, restoreLiquidGlass = true, onlyLiquidGlassKeys = true)
+                                restoredRivoFromPrefsDir = true
+                                restoredAny = true
                             } else if (restoreCallingCards && prefName == PREFS_RIVO) {
-                                restorePrefs(context, prefName, json, onlyCallingCardKeys = true, restoreContactGroups = false)
+                                restorePrefs(context, prefName, json, onlyCallingCardKeys = true, restoreContactGroups = false, restoreLiquidGlass = false)
                                 restoredRivoFromPrefsDir = true
                                 restoredAny = true
                             }
@@ -589,10 +710,13 @@ object BackupManager {
                             val json = zip.readBytes().toString(Charsets.UTF_8)
                             if (!restoredRivoFromPrefsDir) {
                                 if (restoreSettings) {
-                                    restorePrefs(context, PREFS_RIVO, json, onlyCallingCardKeys = false, restoreContactGroups = restoreContactGroups)
+                                    restorePrefs(context, PREFS_RIVO, json, onlyCallingCardKeys = false, restoreContactGroups = restoreContactGroups, restoreLiquidGlass = restoreLiquidGlass)
+                                    restoredAny = true
+                                } else if (restoreLiquidGlass) {
+                                    restorePrefs(context, PREFS_RIVO, json, onlyCallingCardKeys = false, restoreContactGroups = false, restoreLiquidGlass = true, onlyLiquidGlassKeys = true)
                                     restoredAny = true
                                 } else if (restoreCallingCards) {
-                                    restorePrefs(context, PREFS_RIVO, json, onlyCallingCardKeys = true, restoreContactGroups = false)
+                                    restorePrefs(context, PREFS_RIVO, json, onlyCallingCardKeys = true, restoreContactGroups = false, restoreLiquidGlass = false)
                                     restoredAny = true
                                 }
                             }
@@ -625,6 +749,17 @@ object BackupManager {
                                     val bgFile = File(bgDir, fileName)
                                     bgFile.parentFile?.mkdirs()
                                     FileOutputStream(bgFile).use { zip.copyTo(it) }
+                                    restoredAny = true
+                                }
+                            }
+                        }
+                        name.startsWith("hidden_contacts/") -> {
+                            if (restoreSettings || restoreContacts) {
+                                val fileName = name.removePrefix("hidden_contacts/")
+                                if (fileName.isNotEmpty()) {
+                                    val photoFile = File(context.filesDir, fileName)
+                                    photoFile.parentFile?.mkdirs()
+                                    FileOutputStream(photoFile).use { zip.copyTo(it) }
                                     restoredAny = true
                                 }
                             }
@@ -1068,6 +1203,23 @@ object BackupManager {
                 }
             } catch (_: Throwable) {}
 
+            if (restoreSettings) {
+                try {
+                    com.coolappstore.everdialer.by.svhp.widget.RecentCallsWidgetProvider.refresh(context)
+                } catch (_: Throwable) {}
+                try {
+                    val mgr = android.appwidget.AppWidgetManager.getInstance(context)
+                    val directComp = android.content.ComponentName(context, com.coolappstore.everdialer.by.svhp.widget.DirectCallWidgetProvider::class.java)
+                    mgr.getAppWidgetIds(directComp)?.forEach { id ->
+                        com.coolappstore.everdialer.by.svhp.widget.DirectCallWidgetProvider.updateWidget(context, mgr, id)
+                    }
+                    val contactComp = android.content.ComponentName(context, com.coolappstore.everdialer.by.svhp.widget.ContactInfoWidgetProvider::class.java)
+                    mgr.getAppWidgetIds(contactComp)?.forEach { id ->
+                        com.coolappstore.everdialer.by.svhp.widget.ContactInfoWidgetProvider.updateWidget(context, mgr, id)
+                    }
+                } catch (_: Throwable) {}
+            }
+
             restoredAny
         } catch (_: Exception) {
             false
@@ -1208,7 +1360,9 @@ object BackupManager {
         prefName: String,
         json: String,
         onlyCallingCardKeys: Boolean = false,
-        restoreContactGroups: Boolean = true
+        restoreContactGroups: Boolean = true,
+        restoreLiquidGlass: Boolean = true,
+        onlyLiquidGlassKeys: Boolean = false
     ) {
         try {
             val prefs = context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
@@ -1240,6 +1394,12 @@ object BackupManager {
 
             jsonObj.keys().forEach { key ->
                 if (onlyCallingCardKeys && !isCallingCardKey(key)) {
+                    return@forEach
+                }
+                if (onlyLiquidGlassKeys && !isLiquidGlassKey(key)) {
+                    return@forEach
+                }
+                if (!restoreLiquidGlass && isLiquidGlassKey(key)) {
                     return@forEach
                 }
                 if (!restoreContactGroups && isContactGroupKey(key)) {
@@ -1306,7 +1466,7 @@ object BackupManager {
                     }
                 }
             }
-            editor.apply()
+            editor.commit()
         } catch (_: Exception) {}
     }
 

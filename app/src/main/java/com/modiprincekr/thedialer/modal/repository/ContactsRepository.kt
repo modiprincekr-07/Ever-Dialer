@@ -274,6 +274,9 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
             ContactsContract.Data.DATA1,
             ContactsContract.Data.DATA2,
             ContactsContract.Data.DATA3,
+            ContactsContract.Data.DATA4,
+            ContactsContract.Data.DATA5,
+            ContactsContract.Data.DATA6,
             ContactsContract.Data.STARRED
         )
 
@@ -293,12 +296,16 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
             val data1Idx = cursor.getColumnIndex(ContactsContract.Data.DATA1)
             val data2Idx = cursor.getColumnIndex(ContactsContract.Data.DATA2)
             val data3Idx = cursor.getColumnIndex(ContactsContract.Data.DATA3)
+            val data4Idx = cursor.getColumnIndex(ContactsContract.Data.DATA4)
+            val data5Idx = cursor.getColumnIndex(ContactsContract.Data.DATA5)
+            val data6Idx = cursor.getColumnIndex(ContactsContract.Data.DATA6)
             val starredIdx = cursor.getColumnIndex(ContactsContract.Data.STARRED)
 
             while (cursor.moveToNext()) {
                 val id = cursor.getString(idIdx) ?: continue
                 val mimeType = cursor.getString(mimeIdx)
-                val data1 = cursor.getString(data1Idx) ?: continue
+                val data1 = cursor.getString(data1Idx)
+                if (data1 == null && mimeType != ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE) continue
                 val isStarred = cursor.getInt(starredIdx) == 1
 
                 val currentContact = contact ?: Contact(
@@ -313,9 +320,15 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
                     ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE -> {
                         val givenName = cursor.getString(data2Idx)
                         val familyName = cursor.getString(data3Idx)
+                        val prefix = cursor.getString(data4Idx)
+                        val middleName = cursor.getString(data5Idx)
+                        val suffix = cursor.getString(data6Idx)
                         currentContact.copy(
+                            prefix = prefix,
                             firstName = givenName,
-                            lastName = familyName
+                            middleName = middleName,
+                            lastName = familyName,
+                            suffix = suffix
                         )
                     }
                     ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE -> {
@@ -662,8 +675,11 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
         ops: ArrayList<ContentProviderOperation>,
         rawId: Long,
         displayName: String,
+        prefix: String? = null,
         givenName: String? = null,
-        familyName: String? = null
+        middleName: String? = null,
+        familyName: String? = null,
+        suffix: String? = null
     ) {
         var existingDataId: Long? = null
         var existingDisplayName: String? = null
@@ -689,16 +705,22 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
             android.util.Log.e("ContactsRepo", "Error querying StructuredName for rawId $rawId", e)
         }
 
+        val pName = prefix?.trim()?.ifEmpty { null }
         val gName = givenName?.trim()?.ifEmpty { null } ?: displayName
+        val mName = middleName?.trim()?.ifEmpty { null }
         val fName = familyName?.trim()?.ifEmpty { null }
+        val sName = suffix?.trim()?.ifEmpty { null }
 
         if (existingDataId != null) {
             ops.add(
                 ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
                     .withSelection("${ContactsContract.Data._ID} = ?", arrayOf(existingDataId.toString()))
                     .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, displayName)
+                    .withValue(ContactsContract.CommonDataKinds.StructuredName.PREFIX, pName)
                     .withValue(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, gName)
+                    .withValue(ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME, mName)
                     .withValue(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, fName)
+                    .withValue(ContactsContract.CommonDataKinds.StructuredName.SUFFIX, sName)
                     .build()
             )
         } else {
@@ -707,8 +729,11 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
                     .withValue(ContactsContract.Data.RAW_CONTACT_ID, rawId)
                     .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
                     .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, displayName)
+                    .withValue(ContactsContract.CommonDataKinds.StructuredName.PREFIX, pName)
                     .withValue(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, gName)
+                    .withValue(ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME, mName)
                     .withValue(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, fName)
+                    .withValue(ContactsContract.CommonDataKinds.StructuredName.SUFFIX, sName)
                     .build()
             )
         }
@@ -947,6 +972,90 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
         }
     }
 
+    private fun updateEvents(ops: ArrayList<ContentProviderOperation>, rawId: Long, events: List<ContactEvent>) {
+        val cleanEvents = events.filter { it.date.isNotBlank() }
+        val existingRows = mutableListOf<Triple<Long, String?, Int>>()
+        try {
+            contentResolver.query(
+                ContactsContract.Data.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.Data._ID,
+                    ContactsContract.CommonDataKinds.Event.START_DATE,
+                    ContactsContract.CommonDataKinds.Event.TYPE
+                ),
+                "${ContactsContract.Data.RAW_CONTACT_ID} = ? AND ${ContactsContract.Data.MIMETYPE} = ?",
+                arrayOf(rawId.toString(), ContactsContract.CommonDataKinds.Event.CONTENT_ITEM_TYPE),
+                null
+            )?.use { cursor ->
+                val idIdx = cursor.getColumnIndex(ContactsContract.Data._ID)
+                val dateIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Event.START_DATE)
+                val typeIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Event.TYPE)
+                while (cursor.moveToNext()) {
+                    if (idIdx >= 0) {
+                        existingRows.add(
+                            Triple(
+                                cursor.getLong(idIdx),
+                                if (dateIdx >= 0) cursor.getString(dateIdx) else null,
+                                if (typeIdx >= 0) cursor.getInt(typeIdx) else ContactsContract.CommonDataKinds.Event.TYPE_OTHER
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ContactsRepo", "Error querying events for rawId $rawId", e)
+        }
+
+        val minCount = minOf(existingRows.size, cleanEvents.size)
+        for (i in 0 until minCount) {
+            val existing = existingRows[i]
+            val newEvent = cleanEvents[i]
+            if (existing.second?.trim() != newEvent.date.trim() || existing.third != newEvent.type) {
+                ops.add(
+                    ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+                        .withSelection("${ContactsContract.Data._ID} = ?", arrayOf(existing.first.toString()))
+                        .withValue(ContactsContract.CommonDataKinds.Event.START_DATE, newEvent.date.trim())
+                        .withValue(ContactsContract.CommonDataKinds.Event.TYPE, newEvent.type)
+                        .apply {
+                            if (!newEvent.label.isNullOrBlank()) {
+                                withValue(ContactsContract.CommonDataKinds.Event.LABEL, newEvent.label)
+                            }
+                        }
+                        .build()
+                )
+            }
+        }
+
+        if (cleanEvents.size > existingRows.size) {
+            for (i in existingRows.size until cleanEvents.size) {
+                val newEvent = cleanEvents[i]
+                ops.add(
+                    ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                        .withValue(ContactsContract.Data.RAW_CONTACT_ID, rawId)
+                        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Event.CONTENT_ITEM_TYPE)
+                        .withValue(ContactsContract.CommonDataKinds.Event.START_DATE, newEvent.date.trim())
+                        .withValue(ContactsContract.CommonDataKinds.Event.TYPE, newEvent.type)
+                        .apply {
+                            if (!newEvent.label.isNullOrBlank()) {
+                                withValue(ContactsContract.CommonDataKinds.Event.LABEL, newEvent.label)
+                            }
+                        }
+                        .build()
+                )
+            }
+        }
+
+        if (existingRows.size > cleanEvents.size) {
+            for (i in cleanEvents.size until existingRows.size) {
+                ops.add(
+                    ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
+                        .withSelection("${ContactsContract.Data._ID} = ?", arrayOf(existingRows[i].first.toString()))
+                        .build()
+                )
+            }
+        }
+    }
+
     private fun updateNote(ops: ArrayList<ContentProviderOperation>, rawId: Long, note: String?) {
         val existingRows = mutableListOf<Pair<Long, String?>>()
         try {
@@ -1110,8 +1219,11 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
                 .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContactIndex)
                 .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
                 .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, contact.name)
+                .withValue(ContactsContract.CommonDataKinds.StructuredName.PREFIX, contact.prefix?.trim()?.ifEmpty { null })
                 .withValue(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, contact.firstName?.trim()?.ifEmpty { null } ?: contact.name)
+                .withValue(ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME, contact.middleName?.trim()?.ifEmpty { null })
                 .withValue(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, contact.lastName?.trim()?.ifEmpty { null })
+                .withValue(ContactsContract.CommonDataKinds.StructuredName.SUFFIX, contact.suffix?.trim()?.ifEmpty { null })
                 .build())
 
             val phonesToInsert = if (contact.phones.isNotEmpty()) {
@@ -1201,8 +1313,11 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
                     .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContactIndex)
                     .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
                     .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, contact.name)
+                    .withValue(ContactsContract.CommonDataKinds.StructuredName.PREFIX, contact.prefix?.trim()?.ifEmpty { null })
                     .withValue(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, contact.firstName?.trim()?.ifEmpty { null } ?: contact.name)
+                    .withValue(ContactsContract.CommonDataKinds.StructuredName.MIDDLE_NAME, contact.middleName?.trim()?.ifEmpty { null })
                     .withValue(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, contact.lastName?.trim()?.ifEmpty { null })
+                    .withValue(ContactsContract.CommonDataKinds.StructuredName.SUFFIX, contact.suffix?.trim()?.ifEmpty { null })
                     .build())
 
                 val fallbackPhones = if (contact.phones.isNotEmpty()) {
@@ -1250,6 +1365,20 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
                         .build())
                 }
 
+                contact.events.forEach { event ->
+                    ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContactIndex)
+                        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Event.CONTENT_ITEM_TYPE)
+                        .withValue(ContactsContract.CommonDataKinds.Event.START_DATE, event.date)
+                        .withValue(ContactsContract.CommonDataKinds.Event.TYPE, event.type)
+                        .apply {
+                            if (!event.label.isNullOrBlank()) {
+                                withValue(ContactsContract.CommonDataKinds.Event.LABEL, event.label)
+                            }
+                        }
+                        .build())
+                }
+
                 val photoBytes = loadPhotoBytes(contact.photoUri)
                 if (photoBytes != null) {
                     ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
@@ -1282,7 +1411,7 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
                 // without destroying row IDs (Data._ID), which preserves sync adapter anchors (e.g. WhatsApp, Google Sync).
                 val allWritableIds = writableRawContacts.map { it.id }.distinct()
                 allWritableIds.forEach { rawId ->
-                    updateStructuredName(ops, rawId, contact.name, contact.firstName, contact.lastName)
+                    updateStructuredName(ops, rawId, contact.name, contact.prefix, contact.firstName, contact.middleName, contact.lastName, contact.suffix)
                 }
 
                 // Update data rows (phones, emails, addresses, notes) across target raw contacts in place
@@ -1311,6 +1440,7 @@ class ContactsRepository(private val contentResolver: ContentResolver, private v
                     if (!isSim) {
                         updateEmails(ops, rawId, contact.emails)
                         updateAddresses(ops, rawId, contact.addresses)
+                        updateEvents(ops, rawId, contact.events)
                         updateNote(ops, rawId, contact.note)
                     }
                 }

@@ -42,6 +42,9 @@ class CallLogViewModel(
     private val _selectedFilter = MutableStateFlow(CallLogFilter.All)
     val selectedFilter = _selectedFilter.asStateFlow()
 
+    private val _selectedCategoryId = MutableStateFlow(prefs.getDefaultCallCategory())
+    val selectedCategoryId = _selectedCategoryId.asStateFlow()
+
     private val _isFullHistoryLoaded = MutableStateFlow(false)
     val isFullHistoryLoaded = _isFullHistoryLoaded.asStateFlow()
 
@@ -84,6 +87,7 @@ class CallLogViewModel(
             debounceJob?.cancel()
             debounceJob = viewModelScope.launch(Dispatchers.IO) {
                 delay(300)
+                callLogRepo.invalidateContactIndex()
                 fetchLogsInternal()
             }
         }
@@ -115,6 +119,11 @@ class CallLogViewModel(
             ) {
                 getApplication<Application>().contentResolver.registerContentObserver(
                     ContactsContract.Contacts.CONTENT_URI,
+                    true,
+                    contactsObserver
+                )
+                getApplication<Application>().contentResolver.registerContentObserver(
+                    ContactsContract.Data.CONTENT_URI,
                     true,
                     contactsObserver
                 )
@@ -200,8 +209,32 @@ class CallLogViewModel(
         } catch (_: Exception) {}
     }
 
+    fun setCategoryId(id: String) {
+        _selectedCategoryId.value = id
+        val filter = when (id) {
+            "all" -> CallLogFilter.All
+            "favourites" -> CallLogFilter.Favourites
+            "contacts" -> CallLogFilter.Contacts
+            "unknown" -> CallLogFilter.Unknown
+            "missed" -> CallLogFilter.Missed
+            "incoming" -> CallLogFilter.Incoming
+            "outgoing" -> CallLogFilter.Outgoing
+            else -> CallLogFilter.All
+        }
+        _selectedFilter.value = filter
+    }
+
     fun setFilter(newFilter: CallLogFilter) {
         _selectedFilter.value = newFilter
+        _selectedCategoryId.value = when (newFilter) {
+            CallLogFilter.All -> "all"
+            CallLogFilter.Favourites -> "favourites"
+            CallLogFilter.Contacts -> "contacts"
+            CallLogFilter.Unknown -> "unknown"
+            CallLogFilter.Missed -> "missed"
+            CallLogFilter.Incoming -> "incoming"
+            CallLogFilter.Outgoing -> "outgoing"
+        }
     }
 
     fun refreshLogs() {

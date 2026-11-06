@@ -54,9 +54,11 @@ import com.modiprincekr.thedialer.view.components.RivoSwitchListItem
 import com.modiprincekr.thedialer.view.components.SettingsPillTopAppBar
 import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
 import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
+import com.modiprincekr.thedialer.view.components.settingsSearchHighlight
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.generated.destinations.BlockedSmsScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.CreateSmsCategoryScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.SmsAppIconScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import org.koin.compose.koinInject
@@ -177,11 +179,12 @@ private fun updateSmsLauncherAlias(
 @OptIn(ExperimentalMaterial3Api::class)
 @Destination<RootGraph>(style = SettingsTransitionStyle::class)
 @Composable
-fun SmsSettingsScreen(navigator: DestinationsNavigator) {
+fun SmsSettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = null) {
     val context = LocalContext.current
     val prefs = koinInject<PreferenceManager>()
     val smsVM: SmsViewModel = koinActivityViewModel()
     val settingsVer by prefs.settingsChanged.collectAsState()
+    var highlightedKey by remember { mutableStateOf(highlightKey) }
 
     var isDefaultSms by remember { mutableStateOf(DefaultSmsManager.isDefaultSms(context)) }
     val defaultSmsLauncher = rememberLauncherForActivityResult(
@@ -267,6 +270,9 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
 
     // Dialog state controllers
     var showAppNameDialog by remember { mutableStateOf(false) }
+    var showCategoriesDialog by remember { mutableStateOf(false) }
+    var showDefaultCategoryDialog by remember { mutableStateOf(false) }
+    var defaultSmsCategory by remember { mutableStateOf(prefs.getDefaultSmsCategory()) }
     var showTextSizeDialog by remember { mutableStateOf(false) }
     var showSendDelayDialog by remember { mutableStateOf(false) }
     var showSignatureDialog by remember { mutableStateOf(false) }
@@ -362,6 +368,44 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
                                     Text("Set Default")
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // Category Section (above Appearance)
+            item {
+                RivoAnimatedSection(delayMs = 35L) {
+                    Column {
+                        RivoExpressiveCard {
+                            RivoListItem(
+                                headline = "Category",
+                                supporting = "Customize pills, reorder, visibility & custom categories",
+                                leadingIcon = Icons.Default.Category,
+                                iconContainerColor = ColorPurple,
+                                trailingIcon = Icons.Default.ChevronRight,
+                                modifier = Modifier.settingsSearchHighlight("sms_category", highlightedKey) { highlightedKey = null },
+                                onClick = { showCategoriesDialog = true }
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            )
+                            val allSmsCategories = remember(showCategoriesDialog, showDefaultCategoryDialog) {
+                                prefs.getAllSmsCategories()
+                            }
+                            val currentSmsCategoryLabel = remember(defaultSmsCategory, allSmsCategories) {
+                                allSmsCategories.firstOrNull { it.id == defaultSmsCategory }?.name ?: "All"
+                            }
+                            RivoListItem(
+                                headline = "Default Category",
+                                supporting = "Choose which category opens when SMS screen starts (currently: $currentSmsCategoryLabel)",
+                                leadingIcon = Icons.Default.Tab,
+                                iconContainerColor = ColorPurple,
+                                trailingIcon = Icons.Default.ChevronRight,
+                                modifier = Modifier.settingsSearchHighlight("sms_default_category", highlightedKey) { highlightedKey = null },
+                                onClick = { showDefaultCategoryDialog = true }
+                            )
                         }
                     }
                 }
@@ -984,6 +1028,93 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator) {
             },
             confirmButton = {
                 TextButton(onClick = { showAppNameDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showCategoriesDialog) {
+        com.modiprincekr.thedialer.view.components.SmsCategoriesDialog(
+            onDismissRequest = { showCategoriesDialog = false },
+            onAddClick = {
+                showCategoriesDialog = false
+                navigator.navigate(CreateSmsCategoryScreenDestination())
+            },
+            onEditClick = { categoryId ->
+                showCategoriesDialog = false
+                navigator.navigate(CreateSmsCategoryScreenDestination(categoryId = categoryId))
+            }
+        )
+    }
+
+    if (showDefaultCategoryDialog) {
+        val visibleCategories = remember(showDefaultCategoryDialog) {
+            val all = prefs.getAllSmsCategories()
+            val hidden = prefs.getHiddenSmsCategories()
+            all.filterNot { hidden.contains(it.id) }
+        }
+        AlertDialog(
+            onDismissRequest = { showDefaultCategoryDialog = false },
+            icon = { Icon(Icons.Default.Tab, null, tint = ColorPurple) },
+            title = { Text("Default Category") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Choose which category opens when SMS starts.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    visibleCategories.forEach { option ->
+                        val isSelected = defaultSmsCategory == option.id
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        defaultSmsCategory = option.id
+                                        prefs.setDefaultSmsCategory(option.id)
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (option.isCustom) Icons.Default.People else Icons.Default.Category,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    option.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.weight(1f),
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                    else MaterialTheme.colorScheme.onSurface
+                                )
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = {
+                                        defaultSmsCategory = option.id
+                                        prefs.setDefaultSmsCategory(option.id)
+                                    },
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = MaterialTheme.colorScheme.primary,
+                                        unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDefaultCategoryDialog = false }) { Text("Done") }
             }
         )
     }

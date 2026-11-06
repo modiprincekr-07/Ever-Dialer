@@ -78,6 +78,12 @@ import com.modiprincekr.thedialer.controller.util.NoteManager
 import com.modiprincekr.thedialer.controller.util.makeCall
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.controller.util.getSimSlotForAccountHandle
+import com.modiprincekr.thedialer.controller.util.getSimSlotForCall
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.PowerManager
+import com.modiprincekr.thedialer.view.theme.isMaterialExpressive
+import com.modiprincekr.thedialer.view.theme.expressive.PetalMaterialShapes
 import com.modiprincekr.thedialer.modal.`interface`.ICallLogRepository
 import com.modiprincekr.thedialer.modal.`interface`.IContactsRepository
 import com.modiprincekr.thedialer.modal.data.CallLogEntry
@@ -134,25 +140,108 @@ class CallActivity : FragmentActivity() {
     // Pocket mode prevention
     private var sensorManager: SensorManager? = null
     private var proximitySensor: Sensor? = null
+    private var accelerometerSensor: Sensor? = null
+    private var activityProxWakeLock: PowerManager.WakeLock? = null
     private var isPocketBlocked = false
     // Auto-speaker proximity tracking
     private var autoSpeakerActive = false
 
-    // Note: the real near-ear screen-off (both the plain "Proximity Sensor" mode and the
-    // "Device Orientation with Proximity Sensor" mode) is now owned entirely by CallService,
-    // which runs continuously as a foreground service for the whole call regardless of which
-    // Activity is on top — see CallService.updateProximityScreenOffGate(). It used to live here,
-    // but the PROXIMITY_SCREEN_OFF_WAKE_LOCK it drives only reliably takes effect while the
-    // acquiring app has a foregrounded window, so it would silently stop working the moment the
-    // user switched to the main app during a call, and only "fix itself" once this call screen
-    // was brought back on top. CallActivity no longer needs to track any of that state.
+    private var mLastProximityNear: Boolean? = null
+    private var mInclinationValue: Int? = null
+    private var mIsSlanted: Boolean = false
+    val isNearScreenOff = mutableStateOf(false)
+
+    private fun acquireActivityProxWakeLock() {
+        if (activityProxWakeLock?.isHeld == false) {
+            try { activityProxWakeLock?.acquire() } catch (_: Throwable) {}
+        }
+    }
+
+    private fun releaseActivityProxWakeLock() {
+        if (activityProxWakeLock?.isHeld == true) {
+            try { activityProxWakeLock?.release() } catch (_: Throwable) {}
+        }
+    }
+
+    fun updateActivityProximityScreenOffGate() {
+        val session = CallService.currentCallSession.value
+        val callState = session?.state
+        val audioState = CallService.audioState.value
+        val currentRoute = audioState?.route
+        val isEarActive = when (currentRoute) {
+            CallAudioState.ROUTE_EARPIECE -> true
+            CallAudioState.ROUTE_SPEAKER,
+            CallAudioState.ROUTE_BLUETOOTH,
+            CallAudioState.ROUTE_WIRED_HEADSET -> false
+            else -> {
+                val lastUsedSpeaker = prefs.getString(PreferenceManager.KEY_LAST_USED_SPEAKER_ROUTE, "")
+                lastUsedSpeaker != PreferenceManager.SPEAKER_ROUTE_SPEAKER
+            }
+        }
+        val inCallForScreenOff = (callState == Call.STATE_ACTIVE || callState == Call.STATE_DIALING) && isEarActive
+
+        if (!inCallForScreenOff) {
+            releaseActivityProxWakeLock()
+            if (isNearScreenOff.value) {
+                isNearScreenOff.value = false
+                window.attributes = window.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+            }
+            return
+        }
+
+        val orientationGateEnabled = prefs.getBoolean(PreferenceManager.KEY_PROXIMITY_ORIENTATION_BG, false)
+        val isNear = mLastProximityNear == true
+
+        val shouldTurnOff = if (orientationGateEnabled) {
+            val inclination = mInclinationValue
+            val orientedToEar = inclination != null && inclination in -90..90 && mIsSlanted
+            isNear && orientedToEar
+        } else {
+            isNear
+        }
+
+        if (shouldTurnOff) {
+            acquireActivityProxWakeLock()
+            if (!isNearScreenOff.value) {
+                isNearScreenOff.value = true
+                window.attributes = window.attributes.apply { screenBrightness = 0.0f }
+            }
+        } else {
+            releaseActivityProxWakeLock()
+            if (isNearScreenOff.value) {
+                isNearScreenOff.value = false
+                window.attributes = window.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+            }
+        }
+    }
 
     private val proxSensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             when (event.sensor.type) {
+                Sensor.TYPE_ACCELEROMETER -> {
+                    val ax = event.values[0]
+                    val ay = event.values[1]
+                    val az = event.values[2]
+                    val normOfG = kotlin.math.sqrt(ax * ax + ay * ay + az * az)
+                    if (normOfG > 0f) {
+                        val nx = ax / normOfG
+                        val ny = ay / normOfG
+                        val nz = az / normOfG
+                        mInclinationValue = Math.toDegrees(kotlin.math.atan2(nx, ny).toDouble()).roundToInt()
+                        val angleFromFlatDeg = Math.toDegrees(kotlin.math.acos(nz.coerceIn(-1f, 1f).toDouble()))
+                        val angleFromFlatOrBelow = kotlin.math.min(angleFromFlatDeg, 180.0 - angleFromFlatDeg)
+                        val slantThreshold = prefs.getFloat(
+                            PreferenceManager.KEY_PROXIMITY_ORIENTATION_SLANT_THRESHOLD,
+                            PreferenceManager.DEFAULT_PROXIMITY_ORIENTATION_SLANT_THRESHOLD
+                        )
+                        mIsSlanted = angleFromFlatOrBelow > slantThreshold.toDouble()
+                    }
+                    updateActivityProximityScreenOffGate()
+                }
                 Sensor.TYPE_PROXIMITY -> {
                     val maxRange = event.sensor.maximumRange
-                    val isNear = event.values[0] < maxRange * 0.5f
+                    val isNear = event.values[0] < maxRange * 0.5f || event.values[0] == 0f || (maxRange > 0f && event.values[0] < maxRange)
+                    mLastProximityNear = isNear
 
                     // Pocket mode prevention
                     if (prefs.getBoolean(PreferenceManager.KEY_POCKET_MODE_PREVENTION, false)) {
@@ -174,6 +263,8 @@ class CallActivity : FragmentActivity() {
                             }
                         }
                     }
+
+                    updateActivityProximityScreenOffGate()
                 }
             }
         }
@@ -186,13 +277,26 @@ class CallActivity : FragmentActivity() {
         // Prevent notification shade from being pulled down during a call
         window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
         enableEdgeToEdge()
-        // Register pocket mode / auto-speaker proximity listener. The real near-ear
-        // screen-off is handled entirely by CallService now (see comment above).
+
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        activityProxWakeLock = try {
+            powerManager?.newWakeLock(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "EverDialer:ActivityProx")
+        } catch (_: Throwable) { null }
+
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         proximitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
+        accelerometerSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         proximitySensor?.let {
             sensorManager?.registerListener(proxSensorListener, it, SensorManager.SENSOR_DELAY_UI)
         }
+        accelerometerSensor?.let {
+            sensorManager?.registerListener(proxSensorListener, it, SensorManager.SENSOR_DELAY_UI)
+        }
+
+        try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            am?.mode = AudioManager.MODE_IN_COMMUNICATION
+        } catch (_: Throwable) {}
 
         val answeredFromNotif = intent?.getBooleanExtra("ANSWERED_FROM_NOTIFICATION", false) ?: false
         val km = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
@@ -249,7 +353,7 @@ class CallActivity : FragmentActivity() {
 
                 if (call != null && effectiveSession != null) {
                     val number = call.details?.handle?.schemeSpecificPart ?: ""
-                    val simSlot = remember(call) { getSimSlotForAccountHandle(this@CallActivity, call.details?.accountHandle) }
+                    val simSlot = remember(call) { getSimSlotForCall(this@CallActivity, call) }
                     val isDualSim = remember { prefs.getActiveSimCount() >= 2 }
                     // Stable initial values — number shown immediately, replaced by
                     val hideNames = prefs.getBoolean(PreferenceManager.KEY_CONTACTS_HIDER_HIDE_NAMES, false)
@@ -296,7 +400,7 @@ class CallActivity : FragmentActivity() {
 
                     val incomingCall = incomingSession?.call
                     val incomingNumber = incomingCall?.details?.handle?.schemeSpecificPart ?: ""
-                    val incomingSimSlot = remember(incomingCall) { getSimSlotForAccountHandle(this@CallActivity, incomingCall?.details?.accountHandle) }
+                    val incomingSimSlot = remember(incomingCall) { getSimSlotForCall(this@CallActivity, incomingCall) }
                     val initialIncomingContact = remember(incomingNumber) {
                         if (incomingNumber.isNotEmpty()) {
                             try { contactsRepo.getContactByNumber(incomingNumber) } catch (_: Exception) { null }
@@ -411,6 +515,26 @@ class CallActivity : FragmentActivity() {
                             )
                         }
                     }
+
+                    LaunchedEffect(session, audioState, settingsVersion) {
+                        updateActivityProximityScreenOffGate()
+                    }
+
+                    if (isNearScreenOff.value) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black)
+                                .pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            awaitPointerEvent()
+                                        }
+                                    }
+                                }
+                                .zIndex(999999f)
+                        )
+                    }
                 }
             }
         }
@@ -419,6 +543,7 @@ class CallActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         isInForeground.value = true
+        updateActivityProximityScreenOffGate()
     }
 
     private fun showWhenLockedAndTurnScreenOn() {
@@ -454,14 +579,31 @@ class CallActivity : FragmentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        releaseActivityProxWakeLock()
         sensorManager?.unregisterListener(proxSensorListener)
         keepAliveForRedial.value = false
         keepAliveForCallingCard.value = false
+        if (isNearScreenOff.value) {
+            isNearScreenOff.value = false
+            window.attributes = window.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+        }
+        try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            am?.mode = AudioManager.MODE_NORMAL
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                am?.clearCommunicationDevice()
+            }
+        } catch (_: Throwable) {}
     }
 
     override fun onPause() {
         super.onPause()
         isInForeground.value = false
+        releaseActivityProxWakeLock()
+        if (isNearScreenOff.value) {
+            isNearScreenOff.value = false
+            window.attributes = window.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+        }
     }
 
     private var touchDownX = 0f
@@ -636,8 +778,14 @@ private fun CallAvatar(
     modifier: Modifier = Modifier,
     overlayContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
+    val isExpressive = isMaterialExpressive()
     val isCircle = config.pfpShape != "square"
-    val avatarShape = if (isCircle) CircleShape else RoundedCornerShape(if (config.pfpSize >= 0.95f) 0.dp else 14.dp)
+    val avatarShape = if (isExpressive) {
+        val avatarShapeList = PetalMaterialShapes.avatarShapes
+        val key = contactName.ifBlank { phoneNumber }.ifBlank { "unknown" }
+        val idx = (kotlin.math.abs(key.hashCode())) % avatarShapeList.size
+        avatarShapeList[idx].toShape()
+    } else if (isCircle) CircleShape else RoundedCornerShape(if (config.pfpSize >= 0.95f) 0.dp else 14.dp)
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val (callerAvatarBg, callerIconTint) = remember(contactName, phoneNumber) {
@@ -1036,7 +1184,7 @@ fun ExpressiveCallScreen(
             wasOutgoingCall = true
         } else if (callState == Call.STATE_ACTIVE) {
             callWasConnected = true
-        } else if (callState == Call.STATE_DISCONNECTED && !isAutoRedialActive && autoRedialEnabled && wasOutgoingCall &&
+        } else if (callState == Call.STATE_DISCONNECTED && !isAutoRedialActive && !CallService.suppressPostCallPopup && autoRedialEnabled && wasOutgoingCall &&
                    !callWasConnected && !redialJobActive) {
             val dc = call.details?.disconnectCause?.code ?: DisconnectCause.UNKNOWN
             // REJECTED=5, BUSY=4, REMOTE=2 (unanswered/remote end), MISSED=7
@@ -1578,6 +1726,7 @@ fun ExpressiveCallScreen(
                     val targetRoute = if (isSpeakerOn) CallAudioState.ROUTE_EARPIECE else CallAudioState.ROUTE_SPEAKER
                     localAudioRoute = targetRoute
                     CallService.setAudioRoute(targetRoute)
+                    (context as? CallActivity)?.updateActivityProximityScreenOffGate()
                 }
             }
             CallButtonPrefs.ID_RECORD -> AnimatedCallButton(
@@ -2298,7 +2447,12 @@ fun ExpressiveCallScreen(
                                             .fillMaxWidth(hangupWidthFraction.coerceIn(0.1f, 1.0f))
                                             .height(76.dp)
                                             .scale(if (endPressed) 0.96f else 1f),
-                                        shape = if (isCircleHangup) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(endRadius),
+                                        shape = if (isMaterialExpressive()) {
+                                            if (isCircleHangup) PetalMaterialShapes.Sunny.toShape()
+                                            else RoundedCornerShape(endRadius)
+                                        } else {
+                                            if (isCircleHangup) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(endRadius)
+                                        },
                                         color = Color(0xFFD32F2F),
                                         interactionSource = endInteraction
                                     ) {
@@ -2666,6 +2820,7 @@ fun ExpressiveCallScreen(
                             localAudioRoute = CallAudioState.ROUTE_EARPIECE
                             CallService.setAudioRoute(CallAudioState.ROUTE_EARPIECE)
                             prefs?.setString(PreferenceManager.KEY_LAST_USED_SPEAKER_ROUTE, PreferenceManager.SPEAKER_ROUTE_EAR)
+                            (context as? CallActivity)?.updateActivityProximityScreenOffGate()
                             showAudioSwitcherPopup = false
                         }
                     )
@@ -2680,6 +2835,7 @@ fun ExpressiveCallScreen(
                             localAudioRoute = CallAudioState.ROUTE_SPEAKER
                             CallService.setAudioRoute(CallAudioState.ROUTE_SPEAKER)
                             prefs?.setString(PreferenceManager.KEY_LAST_USED_SPEAKER_ROUTE, PreferenceManager.SPEAKER_ROUTE_SPEAKER)
+                            (context as? CallActivity)?.updateActivityProximityScreenOffGate()
                             showAudioSwitcherPopup = false
                         }
                     )
@@ -2695,6 +2851,7 @@ fun ExpressiveCallScreen(
                             localAudioRoute = route
                             CallService.setAudioRoute(route)
                             prefs?.setString(PreferenceManager.KEY_LAST_USED_SPEAKER_ROUTE, PreferenceManager.SPEAKER_ROUTE_EXTERNAL)
+                            (context as? CallActivity)?.updateActivityProximityScreenOffGate()
                             showAudioSwitcherPopup = false
                         }
                     )
@@ -3277,13 +3434,30 @@ fun AnimatedCallButton(
     val showLabel = LocalCallButtonShowNames.current
     val btnSize = (68.dp * sizeScale)
     val iconSize = (26.dp * sizeScale)
+    val isExpressive = isMaterialExpressive()
     val radius by animateDpAsState(if (isPressed) 16.dp * sizeScale else 32.dp * sizeScale, spring(stiffness = Spring.StiffnessMedium), label = "btnRadius")
+
+    val buttonShape = if (isExpressive) {
+        val shapeHolder = when (label.lowercase().trim()) {
+            "mute", "unmute" -> PetalMaterialShapes.Sunny
+            "speaker", "audio" -> PetalMaterialShapes.Cookie9Sided
+            "keypad", "dialpad" -> PetalMaterialShapes.Cookie12Sided
+            "hold", "resume" -> PetalMaterialShapes.Gem
+            "note", "notes" -> PetalMaterialShapes.Flower
+            "add person", "add call", "merge" -> PetalMaterialShapes.Clover4Leaf
+            else -> PetalMaterialShapes.featureShape(btnColor)
+        }
+        shapeHolder.toShape()
+    } else {
+        RoundedCornerShape(radius)
+    }
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(contentAlignment = Alignment.Center) {
             Surface(
                 onClick = onClick,
-                modifier = Modifier.size(btnSize).scale(if (isPressed) 0.9f else 1f),
-                shape = RoundedCornerShape(radius),
+                modifier = Modifier.size(btnSize).scale(if (isPressed) (if (isExpressive) 0.88f else 0.9f) else 1f),
+                shape = buttonShape,
                 color = if (isActive) activeBtnColor else btnColor,
                 interactionSource = interaction
             ) {

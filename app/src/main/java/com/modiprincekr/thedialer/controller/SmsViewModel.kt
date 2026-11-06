@@ -80,6 +80,9 @@ class SmsViewModel(
     private val _currentThreadMessages = MutableStateFlow<List<SmsMessage>>(emptyList())
     val currentThreadMessages: StateFlow<List<SmsMessage>> = _currentThreadMessages.asStateFlow()
 
+    private val _isThreadLoading = MutableStateFlow(false)
+    val isThreadLoading: StateFlow<Boolean> = _isThreadLoading.asStateFlow()
+
     private val _starredMessages = MutableStateFlow<List<com.modiprincekr.thedialer.modal.data.StarredMessage>>(emptyList())
     val starredMessages: StateFlow<List<com.modiprincekr.thedialer.modal.data.StarredMessage>> = _starredMessages.asStateFlow()
 
@@ -103,8 +106,11 @@ class SmsViewModel(
             activeThreadId?.let { tid ->
                 viewModelScope.launch(Dispatchers.IO) {
                     val msgs = smsRepository.getMessagesForThread(tid)
-                    if (_currentThreadMessages.value != msgs) {
-                        _currentThreadMessages.value = msgs
+                    withContext(Dispatchers.Main) {
+                        if (_currentThreadMessages.value != msgs) {
+                            _currentThreadMessages.value = msgs
+                        }
+                        SmsCache.setThreadMessages(tid, msgs)
                     }
                     smsRepository.markThreadAsRead(tid)
                 }
@@ -162,8 +168,11 @@ class SmsViewModel(
                 activeThreadId?.let { tid ->
                     if (eventThreadId == null || eventThreadId == tid) {
                         val msgs = smsRepository.getMessagesForThread(tid)
-                        if (_currentThreadMessages.value != msgs) {
-                            _currentThreadMessages.value = msgs
+                        withContext(Dispatchers.Main) {
+                            if (_currentThreadMessages.value != msgs) {
+                                _currentThreadMessages.value = msgs
+                            }
+                            SmsCache.setThreadMessages(tid, msgs)
                         }
                         smsRepository.markThreadAsRead(tid)
                     }
@@ -219,20 +228,54 @@ class SmsViewModel(
         }
     }
 
-    fun loadThreadMessages(threadId: Long) {
+    fun prepareThread(threadId: Long, address: String? = null) {
+        activeThreadId = if (threadId > 0) threadId else null
+        val cached = (if (threadId > 0) SmsCache.getThreadMessages(threadId) else null)
+            ?: (if (!address.isNullOrBlank()) SmsCache.getThreadMessagesByAddress(address) else null)
+        if (!cached.isNullOrEmpty()) {
+            _currentThreadMessages.value = cached
+            _isThreadLoading.value = false
+        } else {
+            _currentThreadMessages.value = emptyList()
+            _isThreadLoading.value = true
+        }
+    }
+
+    fun loadThreadMessages(threadId: Long, address: String? = null) {
         activeThreadId = threadId
-        viewModelScope.launch(Dispatchers.IO) {
-            val msgs = smsRepository.getMessagesForThread(threadId)
-            if (_currentThreadMessages.value != msgs) {
-                _currentThreadMessages.value = msgs
+        val cached = SmsCache.getThreadMessages(threadId)
+            ?: (if (!address.isNullOrBlank()) SmsCache.getThreadMessagesByAddress(address) else null)
+        if (!cached.isNullOrEmpty()) {
+            if (_currentThreadMessages.value != cached) {
+                _currentThreadMessages.value = cached
             }
-            smsRepository.markThreadAsRead(threadId)
+            _isThreadLoading.value = false
+        } else if (_currentThreadMessages.value.isEmpty()) {
+            _isThreadLoading.value = true
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val msgs = smsRepository.getMessagesForThread(threadId)
+                withContext(Dispatchers.Main) {
+                    if (_currentThreadMessages.value != msgs) {
+                        _currentThreadMessages.value = msgs
+                    }
+                    SmsCache.setThreadMessages(threadId, msgs, address)
+                    _isThreadLoading.value = false
+                }
+                smsRepository.markThreadAsRead(threadId)
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    _isThreadLoading.value = false
+                }
+            }
         }
     }
 
     fun clearActiveThread() {
         activeThreadId = null
-        _currentThreadMessages.value = emptyList()
+        _isThreadLoading.value = false
     }
 
     suspend fun getOrCreateThreadId(address: String): Long {
@@ -245,7 +288,10 @@ class SmsViewModel(
             if (success) {
                 activeThreadId?.let { tid ->
                     val msgs = smsRepository.getMessagesForThread(tid)
-                    _currentThreadMessages.value = msgs
+                    withContext(Dispatchers.Main) {
+                        _currentThreadMessages.value = msgs
+                        SmsCache.setThreadMessages(tid, msgs, address)
+                    }
                 }
                 launch(Dispatchers.IO) {
                     fetchConversations()
@@ -256,6 +302,10 @@ class SmsViewModel(
     }
 
     fun deleteThread(threadId: Long, onResult: ((Boolean) -> Unit)? = null) {
+        SmsCache.removeThreadMessages(threadId)
+        if (activeThreadId == threadId) {
+            _currentThreadMessages.value = emptyList()
+        }
         // Optimistically remove from state immediately for zero-delay UI update
         val updated = _conversations.value.filter { it.threadId != threadId }
         _conversations.value = updated
@@ -277,6 +327,9 @@ class SmsViewModel(
     }
 
     fun deleteMessage(messageId: Long, threadId: Long, isMms: Boolean = false) {
+        val current = _currentThreadMessages.value.filter { it.id != messageId }
+        _currentThreadMessages.value = current
+        SmsCache.setThreadMessages(threadId, current)
         viewModelScope.launch(Dispatchers.IO) {
             val success = smsRepository.deleteMessage(messageId, isMms)
             if (success) {
@@ -297,6 +350,21 @@ class SmsViewModel(
         }
         viewModelScope.launch(Dispatchers.IO) {
             smsRepository.markThreadAsRead(threadId)
+            fetchConversations()
+        }
+    }
+
+    fun markThreadAsUnread(threadId: Long) {
+        val current = _conversations.value
+        val updated = current.map { conv ->
+            if (conv.threadId == threadId) conv.copy(isRead = false, unreadCount = 1) else conv
+        }
+        if (current != updated) {
+            _conversations.value = updated
+            SmsCache.write(getApplication(), updated)
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            smsRepository.markThreadAsUnread(threadId)
             fetchConversations()
         }
     }

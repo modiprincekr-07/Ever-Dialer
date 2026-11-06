@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.ramcosta.composedestinations.generated.destinations.SearchScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.SettingsScreenDestination
@@ -319,9 +321,12 @@ fun SettingsIconButton(
         }
     }
 
+    val isExpressive = com.modiprincekr.thedialer.view.theme.isMaterialExpressive()
     val appRoundness = LocalCardCornerRadius.current.value.coerceAtLeast(0f)
     val settingsShape = if (circleIcons) {
         CircleShape
+    } else if (isExpressive) {
+        com.modiprincekr.thedialer.view.theme.expressive.PetalMaterialShapes.Cookie9Sided.toShape()
     } else {
         RoundedCornerShape((appRoundness * (16f / 28f)).dp)
     }
@@ -414,7 +419,9 @@ fun SettingsBackIconButton(
         modifier = modifier,
         colors = IconButtonDefaults.filledIconButtonColors(
             containerColor = containerBg,
-            contentColor = contentFg
+            contentColor = contentFg,
+            disabledContainerColor = containerBg,
+            disabledContentColor = contentFg
         )
     ) {
         Icon(
@@ -480,6 +487,10 @@ fun SettingsPillTopAppBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (onBackClick != null) {
+                    val lifecycleOwner = LocalLifecycleOwner.current
+                    val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
+                    val isInteractive = lifecycleState.isAtLeast(Lifecycle.State.STARTED)
+
                     val backBtnBg = if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
                     val isBackBtnBright = androidx.core.graphics.ColorUtils.calculateLuminance(backBtnBg.toArgb()) > 0.45
                     val backBtnFg = if (usePrimary) {
@@ -489,6 +500,7 @@ fun SettingsPillTopAppBar(
                     }
                     FilledIconButton(
                         onClick = {
+                            if (!isInteractive) return@FilledIconButton
                             if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
                                 performAppHaptic(
                                     context,
@@ -498,10 +510,13 @@ fun SettingsPillTopAppBar(
                             }
                             onBackClick()
                         },
+                        enabled = true,
                         modifier = Modifier.size(44.dp),
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = backBtnBg,
-                            contentColor = backBtnFg
+                            contentColor = backBtnFg,
+                            disabledContainerColor = backBtnBg,
+                            disabledContentColor = backBtnFg
                         )
                     ) {
                         Icon(

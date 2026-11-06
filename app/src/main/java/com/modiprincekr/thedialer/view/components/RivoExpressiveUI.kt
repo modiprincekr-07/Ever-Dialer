@@ -86,6 +86,18 @@ import com.modiprincekr.thedialer.liquidglass.effects.lens
 import com.modiprincekr.thedialer.liquidglass.effects.colorControls
 import com.modiprincekr.thedialer.liquidglass.highlight.Highlight
 import com.modiprincekr.thedialer.liquidglass.LocalLiquidGlassBackdrop
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.modiprincekr.thedialer.view.theme.isMaterialExpressive
+import com.modiprincekr.thedialer.view.theme.expressive.ExpressiveShapeHolder
+import com.modiprincekr.thedialer.view.theme.expressive.PetalMaterialShapes
+import com.modiprincekr.thedialer.view.theme.expressive.featureShape
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 
 // ─── App Haptics Helper ────────────────────────────────────────────────────────
 
@@ -357,15 +369,18 @@ fun RivoExpressiveCard(
     modifier: Modifier = Modifier,
     title: String? = null,
     icon: ImageVector? = null,
-    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(LocalCardCornerRadius.current),
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    shape: androidx.compose.ui.graphics.Shape? = null,
+    containerColor: Color? = null,
     trailingContent: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val isExpressive = isMaterialExpressive()
+    val resolvedShape = shape ?: RoundedCornerShape(if (isExpressive) 28.dp else LocalCardCornerRadius.current)
+    val resolvedContainerColor = containerColor ?: if (isExpressive) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surfaceContainerLow
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = shape,
-        colors = CardDefaults.cardColors(containerColor = containerColor),
+        shape = resolvedShape,
+        colors = CardDefaults.cardColors(containerColor = resolvedContainerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -664,9 +679,104 @@ internal fun adjustIconColorForTheme(color: Color, isDark: Boolean): Color {
     }
 }
 
+// ─── Feature Icon & Hero (Material Expressive) ──────────────────────────────
+
+/**
+ * Feature icon in a Material 3 Expressive shape (cookie, sunny, clover, flower...)
+ * with a translucent tinted fill.
+ */
+@Composable
+fun FeatureIcon(
+    icon: ImageVector,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 44.dp,
+    iconSize: Dp = 22.dp,
+    backgroundAlpha: Float = 0.16f,
+    shape: ExpressiveShapeHolder = featureShape(tint),
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(shape.toShape())
+            .background(tint.copy(alpha = backgroundAlpha)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
+/**
+ * Hero banner at the top of settings screens: a slowly rotating Material 3 Expressive shape
+ * carrying the feature icon, over a soft tinted container.
+ */
+@Composable
+fun PetalFeatureHero(
+    icon: ImageVector,
+    tint: Color,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    shape: ExpressiveShapeHolder = featureShape(tint),
+) {
+    val spin = rememberInfiniteTransition(label = "heroSpin")
+    val angle by spin.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(32_000, easing = LinearEasing), RepeatMode.Restart),
+        label = "heroAngle",
+    )
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        color = tint.copy(alpha = 0.14f).compositeOver(MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Box(modifier = Modifier.size(68.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { rotationZ = angle }
+                        .clip(shape.toShape())
+                        .background(tint),
+                )
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
 // ─── Icon Container Helper ────────────────────────────────────────────────────
 /**
- * Renders a colored square icon box with translucent tinted background.
+ * Renders a colored square or expressive-shaped icon box with translucent tinted background.
  * iconContainerColor = null → falls back to secondaryContainer theming.
  */
 @Composable
@@ -693,6 +803,7 @@ fun RivoIconBox(
 
     val prefs = koinInject<PreferenceManager>()
     val settingsVer by prefs.settingsChanged.collectAsState()
+    val isExpressive = isMaterialExpressive()
     val solidIcons = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_SOLID_ICONS, false) }
     val circleIcons = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_CIRCLE_ICONS, false) }
     val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
@@ -727,18 +838,40 @@ fun RivoIconBox(
     }
 
     val cornerRadius = (size.value * (14f / 44f)).dp
-    val defaultShape = if (circleIcons) CircleShape else RoundedCornerShape(cornerRadius)
+    val defaultShape = if (circleIcons) {
+        CircleShape
+    } else if (isExpressive) {
+        val baseColor = iconContainerColor ?: MaterialTheme.colorScheme.primary
+        featureShape(baseColor).toShape()
+    } else {
+        RoundedCornerShape(cornerRadius)
+    }
+
+    val finalBgColor = if (isExpressive && !solidIcons) {
+        val baseColor = iconContainerColor ?: MaterialTheme.colorScheme.primary
+        val adjusted = adjustIconColorForTheme(baseColor, isDark)
+        adjusted.copy(alpha = if (isDark) 0.22f else 0.16f)
+    } else {
+        bgColor
+    }
+
+    val finalFgColor = if (isExpressive && !solidIcons) {
+        val baseColor = iconContainerColor ?: MaterialTheme.colorScheme.primary
+        adjustIconColorForTheme(baseColor, isDark)
+    } else {
+        fgColor
+    }
 
     Surface(
         modifier = modifier.size(size).scale(iconScale).alpha(iconAlpha),
         shape = shape ?: defaultShape,
-        color = bgColor,
+        color = finalBgColor,
         shadowElevation = 0.dp
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 icon, null,
-                tint = fgColor,
+                tint = finalFgColor,
                 modifier = Modifier.size(iconSize)
             )
         }
@@ -784,9 +917,10 @@ fun RivoListItem(
     val prefs = koinInject<PreferenceManager>()
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val isExpressive = isMaterialExpressive()
     val scale by animateFloatAsState(
-        targetValue = if (isMenuOpen) 0.97f else if (isPressed) 0.95f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessLow, dampingRatio = Spring.DampingRatioMediumBouncy),
+        targetValue = if (isMenuOpen) 0.97f else if (isPressed) (if (isExpressive) 0.96f else 0.95f) else 1f,
+        animationSpec = spring(stiffness = if (isExpressive) Spring.StiffnessMediumLow else Spring.StiffnessLow, dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "ListItemScale"
     )
 
@@ -808,6 +942,12 @@ fun RivoListItem(
         } ?: com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordNormalized(0.12f, 0.5f)
     }
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
+    val isInteractive = lifecycleState.isAtLeast(Lifecycle.State.STARTED)
+    var lastClickTime by remember { mutableLongStateOf(0L) }
+    val itemCornerRadius = if (isExpressive) 20.dp else (LocalCardCornerRadius.current.value.coerceAtLeast(0f) * (16f / 28f)).dp
+
     Surface(
         color = Color.Transparent,
         modifier = modifier
@@ -822,35 +962,43 @@ fun RivoListItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { coords -> rowCoords = coords }
-                .clip(RoundedCornerShape((LocalCardCornerRadius.current.value.coerceAtLeast(0f) * (16f / 28f)).dp))
-                .combinedClickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = {
-                        recordAvatarClick()
-                        if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
-                            performAppHaptic(
-                                context,
-                                prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
-                                prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+                .clip(RoundedCornerShape(itemCornerRadius))
+                .then(
+                    if (isInteractive) {
+                        Modifier
+                            .combinedClickable(
+                                interactionSource = interactionSource,
+                                indication = null,
+                                onClick = {
+                                    val now = android.os.SystemClock.uptimeMillis()
+                                    if (now - lastClickTime < 400L) return@combinedClickable
+                                    lastClickTime = now
+                                    recordAvatarClick()
+                                    if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
+                                        performAppHaptic(
+                                            context,
+                                            prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
+                                            prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+                                        )
+                                    }
+                                    onClick()
+                                },
+                                onLongClick = onLongClick
                             )
-                        }
-                        onClick()
-                    },
-                    onLongClick = onLongClick
-                )
-                .pointerInput(onLongClick) {
-                    if (onLongClick != null) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
-                                    onLongClick()
+                            .pointerInput(onLongClick) {
+                                if (onLongClick != null) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                                            if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
+                                                onLongClick()
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                        }
-                    }
-                }
+                    } else Modifier
+                )
                 .padding(horizontal = 12.dp, vertical = if (compact) 6.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1030,7 +1178,8 @@ fun RivoSwitchListItem(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    onArrowClick: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val prefs = koinInject<PreferenceManager>()
@@ -1043,26 +1192,34 @@ fun RivoSwitchListItem(
         label = "SwitchItemScale"
     )
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
+    val isInteractive = lifecycleState.isAtLeast(Lifecycle.State.STARTED)
+
     Surface(
         color = Color.Transparent,
         modifier = modifier
             .fillMaxWidth()
             .scale(scale)
             .then(if (!enabled) Modifier.alpha(0.38f) else Modifier)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                enabled = enabled,
-                onClick = {
-                    if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
-                        performAppHaptic(
-                            context,
-                            prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
-                            prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
-                        )
-                    }
-                    onCheckedChange(!checked)
-                }
+            .then(
+                if (isInteractive) {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        enabled = enabled,
+                        onClick = {
+                            if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
+                                performAppHaptic(
+                                    context,
+                                    prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
+                                    prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+                                )
+                            }
+                            onCheckedChange(!checked)
+                        }
+                    )
+                } else Modifier
             ),
         shape = RoundedCornerShape((LocalCardCornerRadius.current.value.coerceAtLeast(0f) * (16f / 28f)).dp),
         shadowElevation = 0.dp
@@ -1103,28 +1260,62 @@ fun RivoSwitchListItem(
             val solidStyle = remember(settingsVersion, isDark) { prefs.getSolidIconsStyle(isDark) }
             val isSaturatedSolidBrightDark = isDark && isSaturatedActive && solidIcons && (solidStyle == PreferenceManager.SOLID_ICONS_STYLE_BRIGHT)
             val isTrackBright = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.primary.toArgb()) > 0.40
-            Switch(
-                checked = checked && enabled,
-                onCheckedChange = {
-                    if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
-                        performAppHaptic(
-                            context,
-                            prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
-                            prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Switch(
+                    checked = checked && enabled,
+                    onCheckedChange = {
+                        if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
+                            performAppHaptic(
+                                context,
+                                prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
+                                prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+                            )
+                        }
+                        onCheckedChange(it)
+                    },
+                    enabled = enabled,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = if (isSaturatedSolidBrightDark) Color.Black else if (isTrackBright) Color(0xFF1C1B1F) else Color.White,
+                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                        checkedBorderColor = Color.Transparent,
+                        uncheckedThumbColor = if (isDark) Color(0xFFB0B0B5) else Color(0xFF6B7280),
+                        uncheckedTrackColor = if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E7EB),
+                        uncheckedBorderColor = if (isDark) Color(0xFF48484A) else Color(0xFF9CA3AF)
+                    )
+                )
+
+                if (onArrowClick != null) {
+                    FilledTonalIconButton(
+                        onClick = {
+                            if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
+                                performAppHaptic(
+                                    context,
+                                    prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
+                                    prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+                                )
+                            }
+                            onArrowClick()
+                        },
+                        enabled = enabled,
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = "Configure",
+                            tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
-                    onCheckedChange(it)
-                },
-                enabled = enabled,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = if (isSaturatedSolidBrightDark) Color.Black else if (isTrackBright) Color(0xFF1C1B1F) else Color.White,
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    checkedBorderColor = Color.Transparent,
-                    uncheckedThumbColor = if (isDark) Color(0xFFB0B0B5) else Color(0xFF6B7280),
-                    uncheckedTrackColor = if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E7EB),
-                    uncheckedBorderColor = if (isDark) Color(0xFF48484A) else Color(0xFF9CA3AF)
-                )
-            )
+                }
+            }
         }
     }
 }
@@ -1152,24 +1343,32 @@ fun RivoCheckboxListItem(
         label = "CheckboxItemScale"
     )
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
+    val isInteractive = lifecycleState.isAtLeast(Lifecycle.State.STARTED)
+
     Surface(
         color = Color.Transparent,
         modifier = modifier
             .fillMaxWidth()
             .scale(scale)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {
-                    if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
-                        performAppHaptic(
-                            context,
-                            prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
-                            prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
-                        )
-                    }
-                    onCheckedChange(!checked)
-                }
+            .then(
+                if (isInteractive) {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = {
+                            if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) {
+                                performAppHaptic(
+                                    context,
+                                    prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
+                                    prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+                                )
+                            }
+                            onCheckedChange(!checked)
+                        }
+                    )
+                } else Modifier
             ),
         shape = RoundedCornerShape((LocalCardCornerRadius.current.value.coerceAtLeast(0f) * (16f / 28f)).dp),
         shadowElevation = 0.dp
@@ -1298,9 +1497,11 @@ fun RivoDropdownMenu(
     val prefs = koinInject<PreferenceManager>()
     val settingsVer by prefs.settingsChanged.collectAsState()
     val liquidGlass = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) }
-    val lgDropdownMenu = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_LG_DROPDOWN_MENU, false) }
+    val lgDropdownMenu = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_LG_DROPDOWN_MENU, true) }
     val blurEffects = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) }
-    val blurDropdownMenu = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_BLUR_DROPDOWN_MENU, false) }
+    val blurDropdownMenu = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_BLUR_DROPDOWN_MENU, true) }
+    val lgDropdownConfig = remember(settingsVer) { prefs.getLiquidGlassConfig(PreferenceManager.KEY_LG_DROPDOWN_MENU) }
+    val blurDropdownConfig = remember(settingsVer) { prefs.getBlurConfig(PreferenceManager.KEY_BLUR_DROPDOWN_MENU) }
     var showContent by remember { mutableStateOf(false) }
 
     LaunchedEffect(expanded) {
@@ -1406,11 +1607,13 @@ fun RivoDropdownMenu(
                                             shape = { menuShape },
                                             effects = {
                                                 val d = density
-                                                colorControls(brightness = -0.13f, saturation = 1.4f)
-                                                blur(6f * d)
+                                                colorControls(brightness = lgDropdownConfig.brightness, saturation = lgDropdownConfig.saturation)
+                                                if (lgDropdownConfig.blurRadiusDp > 0f) blur(lgDropdownConfig.blurRadiusDp * d)
                                                 lens(
-                                                    refractionHeight = 40f * d,
-                                                    refractionAmount = 248f * d
+                                                    refractionHeight = lgDropdownConfig.refractionHeightDp * d,
+                                                    refractionAmount = lgDropdownConfig.refractionAmountDp * d,
+                                                    chromaticAberration = lgDropdownConfig.chromaticAberration,
+                                                    depthEffect = lgDropdownConfig.depthEffect
                                                 )
                                             },
                                             highlight = { Highlight.Plain }
@@ -1423,13 +1626,18 @@ fun RivoDropdownMenu(
                                 }
                             } else if (useBlurDropdown && globalBackdrop != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                                 Surface(
-                                    modifier = Modifier.fillMaxWidth().drawPlainBackdrop(
+                                    modifier = Modifier.fillMaxWidth().drawBackdrop(
                                         backdrop = globalBackdrop,
                                         shape    = { dropdownShape },
-                                        effects  = { blur(30f * density) }
+                                        effects  = {
+                                            val d = density
+                                            colorControls(saturation = blurDropdownConfig.saturation)
+                                            blur(blurDropdownConfig.blurRadiusDp * d)
+                                        },
+                                        highlight = { Highlight.Default }
                                     ),
                                     shape = dropdownShape,
-                                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.35f),
                                     tonalElevation = 0.dp
                                 ) {
                                     Column(modifier = Modifier.padding(vertical = 8.dp)) { content() }
@@ -1624,5 +1832,35 @@ fun RivoBlurFab(
             elevation = FloatingActionButtonDefaults.elevation(0.dp),
             modifier = modifier
         ) { content() }
+    }
+}
+
+/**
+ * Expressive slider that seamlessly delegates to [FancyExpressiveSlider] when
+ * Material Expressive is selected, or standard Material [Slider] when in Material You mode.
+ */
+@Composable
+fun RivoExpressiveSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    displayValue: String? = null
+) {
+    if (com.modiprincekr.thedialer.view.theme.isMaterialExpressive()) {
+        com.modiprincekr.thedialer.view.theme.expressive.FancyExpressiveSlider(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = modifier,
+            valueRange = valueRange,
+            displayValue = displayValue
+        )
+    } else {
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            modifier = modifier
+        )
     }
 }
