@@ -23,9 +23,8 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    # Lint errors ko bypass karne ke liye -x lint commands add kiye hain
     - name: Build Release APK
-      run: ./gradlew :app:assembleRelease -x :app:lint -x :app:lintVitalRelease
+      run: ./gradlew :app:assembleRelease
 
     - name: Sign Release APK
       run: |
