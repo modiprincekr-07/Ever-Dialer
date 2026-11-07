@@ -118,6 +118,7 @@ import com.ramcosta.composedestinations.generated.destinations.GroupsScreenDesti
 import com.ramcosta.composedestinations.generated.destinations.NotesScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.RecentScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.RecordingsScreenDestination
+import com.coolappstore.everdialer.by.svhp.feature.AppFeatures
 import com.ramcosta.composedestinations.generated.destinations.SmsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.SmsChatScreenDestination
 import androidx.compose.material.icons.filled.Chat
@@ -282,7 +283,7 @@ class MainActivity : FragmentActivity() {
                             "contacts"   -> ContactScreenDestination
                             "sms"        -> SmsScreenDestination()
                             "groups"     -> GroupsScreenDestination
-                            "recordings" -> RecordingsScreenDestination()
+                            "recordings" -> if (AppFeatures.isCallRecorderAvailable) RecordingsScreenDestination() else RecentScreenDestination
                             "notes"      -> NotesScreenDestination()
                             else         -> RecentScreenDestination
                         }
@@ -603,7 +604,9 @@ class MainActivity : FragmentActivity() {
                         }
                     }
                     val showNotesRail = remember(settingsVer) { prefs2.getBoolean(PreferenceManager.KEY_TAB_SHOW_NOTES, true) }
-                    val showRecordingsRail = remember(settingsVer) { prefs2.getBoolean(PreferenceManager.KEY_TAB_SHOW_RECORDINGS, true) }
+                    val showRecordingsRail = remember(settingsVer) {
+                        AppFeatures.isCallRecorderAvailable && prefs2.getBoolean(PreferenceManager.KEY_TAB_SHOW_RECORDINGS, true)
+                    }
 
                     fun navTo(route: String) {
                         com.modiprincekr.thedialer.view.components.TabNavigationHelper.navigateToTab(navController, route)
@@ -907,6 +910,7 @@ class MainActivity : FragmentActivity() {
                 if (showSimPicker && pendingSimPickerNumber != null) {
                     SimPickerDialog(
                         onDismissRequest = { showSimPicker = false },
+                        number = pendingSimPickerNumber,
                         onSimSelected = { handle ->
                             makeCall(this@MainActivity, pendingSimPickerNumber!!, handle)
                             showSimPicker = false
@@ -1193,7 +1197,13 @@ class MainActivity : FragmentActivity() {
         }
 
         when (action) {
-            "com.modiprincekr.thedialer.OPEN_RECENTS" -> {
+            "com.modiprincekr.thedialer.OPEN_UPDATES", "com.coolappstore.everdialer.OPEN_UPDATES" -> {
+                navController.navigate(UpdatesScreenDestination.route) {
+                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                    launchSingleTop = true
+                }
+            }
+            "com.modiprincekr.thedialer.OPEN_RECENTS", "com.coolappstore.everdialer.OPEN_RECENTS" -> {
                 navController.navigate(RecentScreenDestination.route) {
                     popUpTo(navController.graph.findStartDestination().id) { saveState = true }
                     launchSingleTop = true

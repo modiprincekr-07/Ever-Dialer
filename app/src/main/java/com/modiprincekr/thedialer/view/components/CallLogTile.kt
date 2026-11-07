@@ -47,7 +47,7 @@ import com.modiprincekr.thedialer.controller.util.WHATSAPP_PACKAGES
 import com.modiprincekr.thedialer.controller.util.isAnyPackageInstalled
 import com.modiprincekr.thedialer.controller.util.isTelegramInstalled
 import com.modiprincekr.thedialer.controller.util.isGoogleMeetInstalled
-import com.coolappstore.evercallrecorder.by.svhp.ui.common.SwipeableItemContainer
+import com.modiprincekr.thedialer.view.components.SwipeableItemContainer
 import com.modiprincekr.thedialer.controller.util.SwipeActionHelper
 import com.modiprincekr.thedialer.controller.util.isTruecallerInstalled
 import com.modiprincekr.thedialer.controller.util.formatDate
@@ -58,15 +58,15 @@ import android.content.ContentUris
 import android.net.Uri
 import com.modiprincekr.thedialer.controller.ContactsViewModel
 import com.modiprincekr.thedialer.controller.util.numbersLikelyMatch
-import com.coolappstore.evercallrecorder.by.svhp.ui.viewmodels.RecordingItem
+import com.modiprincekr.thedialer.modal.data.RecordingItem
 import androidx.compose.material.icons.rounded.PlayArrow
-import com.modiprincekr.thedialer.modal.`interface`.IContactsRepository
 import com.modiprincekr.thedialer.modal.data.CallLogEntry
 import com.modiprincekr.thedialer.modal.data.Contact
-import com.coolappstore.evercallrecorder.by.svhp.ui.common.SwipeActionItem
+import com.modiprincekr.thedialer.view.components.SwipeActionItem
 import com.modiprincekr.thedialer.view.screen.settings.AddMode
 import com.modiprincekr.thedialer.view.screen.settings.FakeCallAddSheet
 import com.modiprincekr.thedialer.controller.util.makeCall
+import com.modiprincekr.thedialer.controller.util.getPhoneAccountForSimSlot
 import com.modiprincekr.thedialer.view.screen.SimCardIconWithNumber
 import com.ramcosta.composedestinations.generated.destinations.ContactDetailsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.ContactEditScreenDestination
@@ -82,7 +82,7 @@ import org.koin.compose.viewmodel.koinActivityViewModel
  * anti-alias as cleanly). Text is centered using a matched line height and no font padding
  * (rather than a fixed manual offset) so the digit stays perfectly centered at every size.
  */
-private val SimCardNotchShape = GenericShape { size, _ ->
+val SimCardNotchShape = GenericShape { size, _ ->
     val notch = size.minDimension * 0.42f
     moveTo(notch, 0f)
     lineTo(size.width, 0f)
@@ -394,6 +394,7 @@ fun CallLogTile(
     var showMenu  by remember { mutableStateOf(false) }
     var showAddContactChoiceDialog by remember { mutableStateOf(false) }
     var showMoveDialog by remember { mutableStateOf(false) }
+    var showMultiCallPicker by remember { mutableStateOf(false) }
 
     val prefs = koinInject<PreferenceManager>()
     val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
@@ -474,6 +475,11 @@ fun CallLogTile(
         hideNames && hiddenIds.isNotEmpty() && log.contactId != null && log.contactId in hiddenIds
     }
     val displayName = when {
+        log.isMergedCall || log.isMultiCall -> {
+            val name1 = (if (isContact) resolvedContactName else log.name)?.ifBlank { null } ?: log.number
+            val name2 = log.secondName?.ifBlank { null } ?: log.secondNumber ?: ""
+            if (name2.isNotBlank()) "$name1 & $name2" else name1
+        }
         isHiddenContact -> log.number
         isContact -> resolvedContactName ?: log.number
         isCallerId -> log.name ?: log.number
@@ -481,6 +487,8 @@ fun CallLogTile(
         else -> log.number
     }
     val avatarSourceName = when {
+        log.isMergedCall -> "Conference"
+        log.isMultiCall -> "Group"
         isHiddenContact -> log.number
         isContact -> resolvedContactName ?: log.number
         isCallerId -> log.name ?: log.number
@@ -503,7 +511,7 @@ fun CallLogTile(
         }
         Box(modifier = Modifier.weight(1f)) {
         val showSimBadge = showSimsSetting && log.simSlot in 0..1
-        val showNumberOnSupportingLine = !isHiddenContact && ((isContact && showNumbersInCallLogs) || (!isContact && (isCallerId || nameNonContactsAsUnknown)))
+        val showNumberOnSupportingLine = log.isMultiCall || (!isHiddenContact && ((isContact && showNumbersInCallLogs) || (!isContact && (isCallerId || nameNonContactsAsUnknown))))
         val simBadge: (@Composable () -> Unit)? = if (showSimBadge) ({
             SimSlotBadge(
                 slot = log.simSlot,
@@ -587,7 +595,9 @@ fun CallLogTile(
                     Toast.makeText(context, "Number copied", Toast.LENGTH_SHORT).show()
                 }
                 "view_contact" -> {
-                    if (isContact) {
+                    if (log.isMultiCall && !log.secondNumber.isNullOrBlank()) {
+                        showMultiCallPicker = true
+                    } else if (isContact) {
                         if (navigator != null) {
                             navigator.navigate(
                                 ContactDetailsScreenDestination(
@@ -650,13 +660,41 @@ fun CallLogTile(
             RivoListItem(
                 headline = buildString {
                     append(displayName)
-                    if (log.count > 1 && !showTotalCallsMade) append(" (${log.count})")
+                    if (log.count > 1 && !showTotalCallsMade && !log.isMultiCall) append(" (${log.count})")
                 },
                 headlineMaxLines = 2,
-                supporting = if (showNumberOnSupportingLine) log.number else null,
-                avatarName  = if (showAvatars) avatarSourceName else null,
-                avatarForcePersonIcon = !isContact,
-                photoUri    = if (showAvatars) resolvedPhotoUri else null,
+                supporting = when {
+                    log.isMergedCall -> {
+                        val num1 = log.number
+                        val num2 = log.secondNumber ?: ""
+                        if (num2.isNotBlank()) "$num1 • $num2" else num1
+                    }
+                    log.isMultiCall -> {
+                        val num1 = log.number
+                        val num2 = log.secondNumber ?: ""
+                        if (num2.isNotBlank()) "1 active, 1 on hold • $num1 & $num2" else "1 active, 1 on hold"
+                    }
+                    showNumberOnSupportingLine -> log.number
+                    else -> null
+                },
+                avatarName  = if (showAvatars && (!log.isMultiCall || log.secondNumber.isNullOrBlank())) avatarSourceName else null,
+                avatarForcePersonIcon = !isContact && !log.isMultiCall,
+                photoUri    = if (showAvatars && !log.isMultiCall) resolvedPhotoUri else null,
+                customAvatar = if (showAvatars && log.isMultiCall && !log.secondNumber.isNullOrBlank()) {
+                    {
+                        val p1 = (if (isContact) resolvedContactName else log.name)?.ifBlank { null } ?: log.number
+                        val p2 = log.secondName?.ifBlank { null } ?: log.secondNumber ?: ""
+                        DualSplitAvatar(
+                            name1 = p1,
+                            number1 = log.number,
+                            photoUri1 = resolvedPhotoUri,
+                            name2 = p2,
+                            number2 = log.secondNumber ?: "",
+                            photoUri2 = log.secondPhotoUri,
+                            size = 48.dp
+                        )
+                    }
+                } else null,
                 avatarObeySolidIcons = false,
                 headlineStartContent = if (!showNumberOnSupportingLine) simBadge else null,
                 headlineEndContent = totalCallsBadge,
@@ -689,16 +727,24 @@ fun CallLogTile(
                 } else {
                     if (isMissed || isBlocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                 },
-                trailingIcon = when (log.type) {
-                    CallLog.Calls.MISSED_TYPE   -> Icons.AutoMirrored.Filled.CallMissed
-                    CallLog.Calls.BLOCKED_TYPE  -> Icons.Default.Block
-                    CallLog.Calls.INCOMING_TYPE -> Icons.AutoMirrored.Filled.CallReceived
-                    CallLog.Calls.OUTGOING_TYPE -> Icons.AutoMirrored.Filled.CallMade
+                trailingIcon = when {
+                    log.isMergedCall -> Icons.Default.CallMerge
+                    log.isMultiCall -> Icons.Default.PhonePaused
+                    log.type == CallLog.Calls.MISSED_TYPE   -> Icons.AutoMirrored.Filled.CallMissed
+                    log.type == CallLog.Calls.BLOCKED_TYPE  -> Icons.Default.Block
+                    log.type == CallLog.Calls.INCOMING_TYPE -> Icons.AutoMirrored.Filled.CallReceived
+                    log.type == CallLog.Calls.OUTGOING_TYPE -> Icons.AutoMirrored.Filled.CallMade
                     else                        -> Icons.Default.Call
                 },
                 trailingIconTint = trailingTint,
                 trailingIconContainerColor = trailingContainerColor,
-                onAvatarClick = if (showAvatars && onAvatarClick != null) ({ onAvatarClick(log.copy(contactId = matchedContact?.id ?: log.contactId, photoUri = resolvedPhotoUri)) }) else null,
+                onAvatarClick = if (showAvatars && onAvatarClick != null) ({
+                    if (log.isMultiCall && !log.secondNumber.isNullOrBlank()) {
+                        showMultiCallPicker = true
+                    } else {
+                        onAvatarClick(log.copy(contactId = matchedContact?.id ?: log.contactId, photoUri = resolvedPhotoUri))
+                    }
+                }) else null,
                 onLongClick = {
                     if (selectionMode) onSelectToggle?.invoke(log)
                     else showMenu = true
@@ -706,7 +752,9 @@ fun CallLogTile(
                 isMenuOpen  = showMenu && !selectionMode,
                 onClick     = {
                     if (selectionMode) onSelectToggle?.invoke(log)
-                    else onTileClick(log)
+                    else if (log.isMultiCall && !log.secondNumber.isNullOrBlank()) {
+                        showMultiCallPicker = true
+                    } else onTileClick(log)
                 }
             )
         }
@@ -790,8 +838,8 @@ fun CallLogTile(
                             val sim2Color = remember(settingsVer) { Color(prefs.getInt(PreferenceManager.KEY_SIM2_COLOR, PreferenceManager.DEFAULT_SIM2_COLOR)) }
                             val tm = remember(context) { context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager }
                             val accounts: List<PhoneAccountHandle> = try { tm?.callCapablePhoneAccounts } catch (_: Throwable) { null } ?: emptyList()
-                            val account1 = accounts.getOrNull(0)
-                            val account2 = accounts.getOrNull(1)
+                            val account1 = getPhoneAccountForSimSlot(context, accounts, 0)
+                            val account2 = getPhoneAccountForSimSlot(context, accounts, 1)
 
                             RivoDropdownMenuItem(
                                 text     = "Call back",
@@ -810,16 +858,11 @@ fun CallLogTile(
                                                     makeCall(context, log.number, account1)
                                                 },
                                                 shape = RoundedCornerShape(8.dp),
-                                                color = sim1Color,
-                                                contentColor = Color.White,
+                                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                                 modifier = Modifier.size(width = 36.dp, height = 32.dp)
                                             ) {
                                                 Box(contentAlignment = Alignment.Center) {
-                                                    SimCardIconWithNumber(
-                                                        simSlotNumber = "1",
-                                                        tint = Color.White,
-                                                        isLarge = false
-                                                    )
+                                                    SimSlotBadge(slot = 0)
                                                 }
                                             }
                                             Surface(
@@ -828,16 +871,11 @@ fun CallLogTile(
                                                     makeCall(context, log.number, account2)
                                                 },
                                                 shape = RoundedCornerShape(8.dp),
-                                                color = sim2Color,
-                                                contentColor = Color.White,
+                                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                                 modifier = Modifier.size(width = 36.dp, height = 32.dp)
                                             ) {
                                                 Box(contentAlignment = Alignment.Center) {
-                                                    SimCardIconWithNumber(
-                                                        simSlotNumber = "2",
-                                                        tint = Color.White,
-                                                        isLarge = false
-                                                    )
+                                                    SimSlotBadge(slot = 1)
                                                 }
                                             }
                                         }
@@ -846,14 +884,16 @@ fun CallLogTile(
                             )
                         }
                         "view_contact" -> {
-                            if (isContact) {
+                            if (isContact || log.isMultiCall) {
                                 RivoDropdownMenuItem(
-                                    text     = "View contact",
-                                    icon     = Icons.Default.Person,
+                                    text     = if (log.isMultiCall) "View contacts" else "View contact",
+                                    icon     = if (log.isMultiCall) Icons.Default.Group else Icons.Default.Person,
                                     iconTint = Color(0xFF2196F3),
                                     onClick  = {
                                         showMenu = false
-                                        if (navigator != null) {
+                                        if (log.isMultiCall && !log.secondNumber.isNullOrBlank()) {
+                                            showMultiCallPicker = true
+                                        } else if (navigator != null) {
                                             navigator.navigate(
                                                 ContactDetailsScreenDestination(
                                                     contactId = matchedContact?.id ?: log.contactId ?: "null",
@@ -1123,4 +1163,32 @@ fun CallLogTile(
         onPickerDismiss = { showCallChatViaPicker = false },
         showGoogleMeet = true
     )
+
+    if (showMultiCallPicker && log.isMultiCall && !log.secondNumber.isNullOrBlank()) {
+        MultiCallContactSelectionDialog(
+            name1 = resolvedContactName ?: log.name,
+            number1 = log.number,
+            contactId1 = matchedContact?.id ?: log.contactId,
+            photoUri1 = resolvedPhotoUri,
+            name2 = log.secondName,
+            number2 = log.secondNumber ?: "",
+            contactId2 = log.secondContactId,
+            photoUri2 = log.secondPhotoUri,
+            isMergedCall = log.isMergedCall,
+            onSelectContact = { selectedId, selectedNum ->
+                showMultiCallPicker = false
+                if (navigator != null) {
+                    navigator.navigate(
+                        ContactDetailsScreenDestination(
+                            contactId = selectedId ?: "null",
+                            phoneNumber = selectedNum
+                        )
+                    )
+                } else {
+                    onTileClick(log.copy(number = selectedNum, contactId = selectedId))
+                }
+            },
+            onDismiss = { showMultiCallPicker = false }
+        )
+    }
 }

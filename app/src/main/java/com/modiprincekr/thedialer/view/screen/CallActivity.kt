@@ -50,6 +50,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.zIndex
@@ -160,6 +161,28 @@ class CallActivity : FragmentActivity() {
     private fun releaseActivityProxWakeLock() {
         if (activityProxWakeLock?.isHeld == true) {
             try { activityProxWakeLock?.release() } catch (_: Throwable) {}
+        }
+    }
+
+    fun finishWithHangupAnimation(animated: Boolean) {
+        if (animated) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, R.anim.call_screen_stay, R.anim.call_screen_slide_down)
+            }
+            finish()
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                @Suppress("DEPRECATION")
+                overridePendingTransition(R.anim.call_screen_stay, R.anim.call_screen_slide_down)
+            }
+        } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, 0, 0)
+            }
+            finish()
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                @Suppress("DEPRECATION")
+                overridePendingTransition(0, 0)
+            }
         }
     }
 
@@ -331,29 +354,41 @@ class CallActivity : FragmentActivity() {
                 if (session != null) {
                     lastKnownSession = session
                 }
-                val effectiveSession = session ?: if (isCallingCardActive) lastKnownSession else null
+                val effectiveSession = session ?: lastKnownSession
                 val call = effectiveSession?.call
                 val isCallEnded = session == null || session?.state == Call.STATE_DISCONNECTED || call?.state == Call.STATE_DISCONNECTED
                 val callState = if (isCallEnded) Call.STATE_DISCONNECTED else (session?.state ?: effectiveSession?.state ?: Call.STATE_ACTIVE)
+
+                val hangupAnimationEnabled = remember(settingsVersion) {
+                    if (!prefs.getBoolean(PreferenceManager.KEY_HANGUP_ANIMATION, true)) {
+                        prefs.setBoolean(PreferenceManager.KEY_HANGUP_ANIMATION, true)
+                    }
+                    true
+                }
 
                 LaunchedEffect(session, callState) {
                     // Real near-ear screen-off (plain + orientation-gated) is now handled
                     // entirely by CallService regardless of which Activity is on top — this
                     // effect only needs to worry about auto-closing the call screen.
-                    if (session == null || callState == Call.STATE_DISCONNECTED) {
-                        delay(800)
+                    if (session == null || callState == Call.STATE_DISCONNECTED || callState == Call.STATE_DISCONNECTING) {
+                        if (hangupAnimationEnabled) {
+                            delay(120)
+                        } else {
+                            delay(40)
+                        }
                         // Wait for any pending auto-redial loop, dialog, or calling card popup to complete before closing
                         while (CallService.isAutoRedialActive.value || keepAliveForRedial.value || keepAliveForCallingCard.value) {
-                            delay(300)
+                            delay(200)
                         }
-                        finishAndRemoveTask()
+                        finishWithHangupAnimation(hangupAnimationEnabled)
                     }
                 }
 
 
                 if (call != null && effectiveSession != null) {
+                    val isConference = (call.details?.hasProperty(Call.Details.PROPERTY_CONFERENCE) == true) || call.children.isNotEmpty()
                     val number = call.details?.handle?.schemeSpecificPart ?: ""
-                    val simSlot = remember(call) { getSimSlotForCall(this@CallActivity, call) }
+                    val simSlot = remember(call, effectiveSession?.updateTime, call?.details?.accountHandle) { getSimSlotForCall(this@CallActivity, call) }
                     val isDualSim = remember { prefs.getActiveSimCount() >= 2 }
                     // Stable initial values — number shown immediately, replaced by
                     val hideNames = prefs.getBoolean(PreferenceManager.KEY_CONTACTS_HIDER_HIDE_NAMES, false)
@@ -362,26 +397,84 @@ class CallActivity : FragmentActivity() {
                         if (hiddenIdsRaw.isBlank()) emptySet() else hiddenIdsRaw.split(",").filter { it.isNotBlank() }.toSet()
                     }
 
+                    val conferenceParticipantNames = remember(call, effectiveSession.updateTime) {
+                        if (call.children.isNotEmpty()) {
+                            call.children.mapNotNull { child ->
+                                val n = child.details?.handle?.schemeSpecificPart?.let { android.net.Uri.decode(it) } ?: ""
+                                if (n.isNotEmpty()) {
+                                    val c = try { contactsRepo.getContactByNumber(n) } catch (_: Exception) { null }
+                                    c?.name ?: n
+                                } else null
+                            }
+                        } else emptyList()
+                    }
+
                     val initialContact = remember(number) {
                         if (number.isNotEmpty()) {
                             try { contactsRepo.getContactByNumber(number) } catch (_: Exception) { null }
                         } else null
                     }
-                    var contactName by remember(number) {
+                    val activeMultiCall = remember(call, effectiveSession.updateTime) {
+                        com.modiprincekr.thedialer.controller.call.MultiCallRecordStore.getActiveRecord(this@CallActivity)
+                    }
+
+                    val confChild0 = call.children.getOrNull(0)
+                    val confChild1 = call.children.getOrNull(1)
+                    val confNum1 = confChild0?.details?.handle?.schemeSpecificPart?.let { android.net.Uri.decode(it) }?.ifEmpty { null }
+                        ?: activeMultiCall?.number1 ?: ""
+                    val confNum2 = confChild1?.details?.handle?.schemeSpecificPart?.let { android.net.Uri.decode(it) }?.ifEmpty { null }
+                        ?: activeMultiCall?.number2 ?: ""
+
+                    var confName1 by remember(confNum1) { mutableStateOf(activeMultiCall?.name1 ?: confNum1) }
+                    var confPhoto1 by remember(confNum1) { mutableStateOf<String?>(null) }
+                    var confName2 by remember(confNum2) { mutableStateOf(activeMultiCall?.name2 ?: confNum2) }
+                    var confPhoto2 by remember(confNum2) { mutableStateOf<String?>(null) }
+
+                    LaunchedEffect(confNum1) {
+                        if (confNum1.isNotEmpty()) {
+                            val c = try { contactsRepo.getContactByNumber(confNum1) } catch (_: Exception) { null }
+                            if (c != null) {
+                                confName1 = if (hideNames && c.id in hiddenIds) confNum1 else c.name
+                                confPhoto1 = if (hideNames && c.id in hiddenIds) null else c.photoUri
+                            } else if (confName1.isBlank()) {
+                                confName1 = confNum1
+                            }
+                        }
+                    }
+
+                    LaunchedEffect(confNum2) {
+                        if (confNum2.isNotEmpty()) {
+                            val c = try { contactsRepo.getContactByNumber(confNum2) } catch (_: Exception) { null }
+                            if (c != null) {
+                                confName2 = if (hideNames && c.id in hiddenIds) confNum2 else c.name
+                                confPhoto2 = if (hideNames && c.id in hiddenIds) null else c.photoUri
+                            } else if (confName2.isBlank()) {
+                                confName2 = confNum2
+                            }
+                        }
+                    }
+
+                    var contactName by remember(number, isConference) {
                         mutableStateOf(
-                            if (initialContact != null) {
+                            if (isConference) {
+                                if (confName1.isNotBlank() && confName2.isNotBlank()) "$confName1 & $confName2"
+                                else if (conferenceParticipantNames.isNotEmpty()) conferenceParticipantNames.joinToString(" & ")
+                                else "Conference call"
+                            } else if (initialContact != null) {
                                 if (hideNames && initialContact.id in hiddenIds) number else initialContact.name
                             } else number.ifEmpty { "" }
                         )
                     }
-                    var photoUri by remember(number) {
+                    var photoUri by remember(number, isConference) {
                         mutableStateOf(
-                            if (initialContact != null) {
+                            if (isConference) {
+                                confPhoto1
+                            } else if (initialContact != null) {
                                 if (hideNames && initialContact.id in hiddenIds) null else initialContact.photoUri
                             } else null
                         )
                     }
-                    var contactId by remember(number) { mutableStateOf(initialContact?.id) }
+                    var contactId by remember(number, isConference) { mutableStateOf(if (isConference) null else initialContact?.id) }
 
                     val heldCall = heldSession?.call
                     val heldNumber = heldCall?.details?.handle?.schemeSpecificPart ?: ""
@@ -397,10 +490,17 @@ class CallActivity : FragmentActivity() {
                             } else heldNumber.ifEmpty { "Unknown" }
                         )
                     }
+                    var heldPhotoUri by remember(heldNumber) {
+                        mutableStateOf(
+                            if (initialHeldContact != null) {
+                                if (hideNames && initialHeldContact.id in hiddenIds) null else initialHeldContact.photoUri
+                            } else null
+                        )
+                    }
 
                     val incomingCall = incomingSession?.call
                     val incomingNumber = incomingCall?.details?.handle?.schemeSpecificPart ?: ""
-                    val incomingSimSlot = remember(incomingCall) { getSimSlotForCall(this@CallActivity, incomingCall) }
+                    val incomingSimSlot = remember(incomingCall, incomingSession?.updateTime, incomingCall?.details?.accountHandle) { getSimSlotForCall(this@CallActivity, incomingCall) }
                     val initialIncomingContact = remember(incomingNumber) {
                         if (incomingNumber.isNotEmpty()) {
                             try { contactsRepo.getContactByNumber(incomingNumber) } catch (_: Exception) { null }
@@ -421,8 +521,18 @@ class CallActivity : FragmentActivity() {
                         )
                     }
 
-                    LaunchedEffect(number) {
-                        if (number.isNotEmpty()) {
+                    LaunchedEffect(number, isConference, conferenceParticipantNames, confName1, confName2, confPhoto1) {
+                        if (isConference) {
+                            contactName = if (confName1.isNotBlank() && confName2.isNotBlank()) {
+                                "$confName1 & $confName2"
+                            } else if (conferenceParticipantNames.isNotEmpty()) {
+                                conferenceParticipantNames.joinToString(" & ")
+                            } else {
+                                "Conference call"
+                            }
+                            photoUri = confPhoto1
+                            contactId = null
+                        } else if (number.isNotEmpty()) {
                             val contact = contactsRepo.getContactByNumber(number)
                             if (contact != null) {
                                 contactName = if (hideNames && contact.id in hiddenIds) number else contact.name
@@ -443,7 +553,14 @@ class CallActivity : FragmentActivity() {
                             val c = contactsRepo.getContactByNumber(heldNumber)
                             if (c != null) {
                                 heldContactName = if (hideNames && c.id in hiddenIds) heldNumber else c.name
+                                heldPhotoUri = if (hideNames && c.id in hiddenIds) null else c.photoUri
+                            } else {
+                                heldContactName = heldNumber
+                                heldPhotoUri = null
                             }
+                        } else {
+                            heldContactName = ""
+                            heldPhotoUri = null
                         }
                     }
 
@@ -458,15 +575,23 @@ class CallActivity : FragmentActivity() {
                     }
 
                     val answeredFromNotification = intent?.getBooleanExtra("ANSWERED_FROM_NOTIFICATION", false) ?: false
+                    val effectiveHeldCall = heldSession != null && heldSession?.state == Call.STATE_HOLDING && heldSession?.call?.parent == null && !isConference
+                    val isMulti = isConference || effectiveHeldCall
+                    val secName = if (isConference) confName2 else heldContactName
+                    val secNumber = if (isConference) confNum2 else heldNumber
+                    val secPhoto = if (isConference) confPhoto2 else heldPhotoUri
+
                     ExpressiveCallScreen(
                         call = call,
                         callState = callState,
                         contactName = contactName,
                         contactId = contactId,
-                        phoneNumber = number,
+                        phoneNumber = if (isConference && number.isEmpty()) {
+                            if (confNum1.isNotEmpty() && confNum2.isNotEmpty()) "$confNum1 & $confNum2" else ""
+                        } else number,
                         photoUri = photoUri,
                         audioState = audioState,
-                        hasHeldCall = heldSession != null && heldSession?.state == Call.STATE_HOLDING,
+                        hasHeldCall = effectiveHeldCall,
                         heldCallName = heldContactName,
                         incomingCallSession = incomingSession,
                         incomingContactName = incomingContactName,
@@ -479,7 +604,11 @@ class CallActivity : FragmentActivity() {
                         isPocketBlocked = { isPocketBlocked },
                         skipIncomingScreen = answeredFromNotification,
                         simSlot = simSlot,
-                        showSimBadge = isDualSim
+                        showSimBadge = isDualSim,
+                        secondContactName = secName,
+                        secondPhoneNumber = secNumber,
+                        secondPhotoUri = secPhoto,
+                        isMultiCall = isMulti
                     )
 
                     if (callState == Call.STATE_SELECT_PHONE_ACCOUNT) {
@@ -503,6 +632,8 @@ class CallActivity : FragmentActivity() {
                             com.modiprincekr.thedialer.view.components.SimPickerDialog(
                                 title = "Call via",
                                 availableAccounts = availableAccounts,
+                                number = number,
+                                contactName = contactName,
                                 onDismissRequest = {
                                     try { call.disconnect() } catch (_: Throwable) {}
                                     finishAndRemoveTask()
@@ -776,6 +907,10 @@ private fun CallAvatar(
     avatarSize: androidx.compose.ui.unit.Dp,
     iconSize: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
+    secondPhotoUri: String? = null,
+    secondContactName: String? = null,
+    secondPhoneNumber: String? = null,
+    isMultiCall: Boolean = false,
     overlayContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
     val isExpressive = isMaterialExpressive()
@@ -788,8 +923,11 @@ private fun CallAvatar(
     } else if (isCircle) CircleShape else RoundedCornerShape(if (config.pfpSize >= 0.95f) 0.dp else 14.dp)
 
     val context = androidx.compose.ui.platform.LocalContext.current
-    val (callerAvatarBg, callerIconTint) = remember(contactName, phoneNumber) {
-        val key = contactName.ifBlank { phoneNumber }.ifBlank { "unknown" }
+    val firstDisplayName = remember(contactName, isMultiCall) {
+        if (isMultiCall && contactName.contains(" & ")) contactName.substringBefore(" & ").trim() else contactName
+    }
+    val (callerAvatarBg, callerIconTint) = remember(firstDisplayName, phoneNumber) {
+        val key = firstDisplayName.ifBlank { phoneNumber }.ifBlank { "unknown" }
         val base = com.modiprincekr.thedialer.view.components.avatarColors[
             kotlin.math.abs(key.hashCode()) % com.modiprincekr.thedialer.view.components.avatarColors.size
         ]
@@ -823,7 +961,96 @@ private fun CallAvatar(
             ),
         contentAlignment = Alignment.Center
     ) {
-        if (shouldUseCustomMedia && config.pfpFile != null) {
+        if (isMultiCall && (!secondPhoneNumber.isNullOrBlank() || !secondContactName.isNullOrBlank())) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                // Left Half - Person 1
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clipToBounds(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (shouldUseCustomMedia && config.pfpFile != null) {
+                        AsyncImage(
+                            model = config.pfpFile,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (hasRealPfp) {
+                        AsyncImage(
+                            model = photoUri,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (firstDisplayName.isNotBlank() && firstDisplayName != phoneNumber && !firstDisplayName.equals("Unknown", ignoreCase = true)) {
+                        Text(
+                            text = firstDisplayName.trim().take(1).uppercase(),
+                            fontSize = (avatarSize.value * 0.35f).coerceIn(16f, 72f).sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.size(iconSize * 0.75f)
+                        )
+                    }
+                }
+
+                // Middle Seam / Divider
+                Box(
+                    modifier = Modifier
+                        .width(2.dp)
+                        .fillMaxHeight()
+                        .background(Color.White.copy(alpha = 0.65f))
+                )
+
+                // Right Half - Person 2
+                val (caller2Bg, _) = remember(secondContactName, secondPhoneNumber) {
+                    val key = secondContactName?.ifBlank { null } ?: secondPhoneNumber?.ifBlank { "unknown" } ?: "unknown"
+                    val base = com.modiprincekr.thedialer.view.components.avatarColors[
+                        kotlin.math.abs(key.hashCode()) % com.modiprincekr.thedialer.view.components.avatarColors.size
+                    ]
+                    base to Color.White
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .background(if (!secondPhotoUri.isNullOrEmpty()) Color.Transparent else caller2Bg)
+                        .clipToBounds(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!secondPhotoUri.isNullOrEmpty()) {
+                        AsyncImage(
+                            model = secondPhotoUri,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (!secondContactName.isNullOrBlank() && secondContactName != secondPhoneNumber && !secondContactName.equals("Unknown", ignoreCase = true)) {
+                        Text(
+                            text = secondContactName.trim().take(1).uppercase(),
+                            fontSize = (avatarSize.value * 0.35f).coerceIn(16f, 72f).sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.size(iconSize * 0.75f)
+                        )
+                    }
+                }
+            }
+        } else if (shouldUseCustomMedia && config.pfpFile != null) {
             if (config.pfpType == "video") {
                 com.modiprincekr.thedialer.view.components.LoopingVideoPlayer(
                     videoFile = config.pfpFile,
@@ -1026,10 +1253,18 @@ fun ExpressiveCallScreen(
     isPocketBlocked: () -> Boolean = { false },
     skipIncomingScreen: Boolean = false,
     simSlot: Int = -1,
-    showSimBadge: Boolean = false
+    showSimBadge: Boolean = false,
+    secondContactName: String? = null,
+    secondPhoneNumber: String? = null,
+    secondPhotoUri: String? = null,
+    isMultiCall: Boolean = false
 ) {
     val context = LocalView.current.context
     val ctx = context
+    val isMultiCallDisplay = isMultiCall || (hasHeldCall && heldCallName.isNotBlank())
+    val effectiveSecondName = secondContactName ?: if (hasHeldCall) heldCallName else null
+    val effectiveSecondNumber = secondPhoneNumber ?: ""
+    val effectiveSecondPhoto = secondPhotoUri
     var showCallingCardPopup by remember { mutableStateOf(false) }
     var callingCardDismissCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
     var callingCardBackHandler by remember { mutableStateOf<(() -> Boolean)?>(null) }
@@ -1214,12 +1449,14 @@ fun ExpressiveCallScreen(
     var showDialpad by remember { mutableStateOf(false) }
     var dtmfInput by remember { mutableStateOf("") }
 
-    // Merge is only available when a held call exists AND current call is active
-    val canShowMerge = hasHeldCall && callState == Call.STATE_ACTIVE
+    val isConference = (call.details?.hasProperty(Call.Details.PROPERTY_CONFERENCE) == true) || call.children.isNotEmpty()
 
-    // Auto-dismiss merge confirm dialog if the held call disappears (held party hung up)
-    LaunchedEffect(hasHeldCall) {
-        if (!hasHeldCall) {
+    // Merge is only available when a held call exists AND current call is active AND neither is already merged
+    val canShowMerge = hasHeldCall && callState == Call.STATE_ACTIVE && !isConference
+
+    // Auto-dismiss merge confirm dialog if the held call disappears (held party hung up) or calls are merged
+    LaunchedEffect(hasHeldCall, isConference) {
+        if (!hasHeldCall || isConference) {
             showMergeConfirm = false
             showAddPersonSheet = false
         }
@@ -1325,20 +1562,13 @@ fun ExpressiveCallScreen(
 
     var isDisconnecting by remember { mutableStateOf(false) }
     // Settings → Appearance → Visual Effects → "Hangup Animation". When off, the call screen
-    // should close immediately instead of smoothly sliding/fading away.
+    // closes immediately; when on, it exits with a smooth slide down window transition.
     val hangupAnimationEnabled = remember(settingsVersion) {
-        prefs?.getBoolean(PreferenceManager.KEY_HANGUP_ANIMATION, true) ?: true
+        if (prefs?.getBoolean(PreferenceManager.KEY_HANGUP_ANIMATION, true) == false) {
+            prefs.setBoolean(PreferenceManager.KEY_HANGUP_ANIMATION, true)
+        }
+        true
     }
-    val disconnectOffset by animateDpAsState(
-        if (isDisconnecting) 120.dp else 0.dp,
-        if (hangupAnimationEnabled) tween(600) else snap(),
-        label = "disconnectSlide"
-    )
-    val disconnectAlpha by animateFloatAsState(
-        if (isDisconnecting) 0f else 1f,
-        if (hangupAnimationEnabled) tween(600) else snap(),
-        label = "disconnectAlpha"
-    )
 
     var wasRinging by remember { mutableStateOf(callState == Call.STATE_RINGING && !skipIncomingScreen) }
     var screenEntered by remember { mutableStateOf(true) }
@@ -1359,7 +1589,7 @@ fun ExpressiveCallScreen(
     }
 
     val isCallEnded = callState == Call.STATE_DISCONNECTED || callState == Call.STATE_DISCONNECTING || (call.state == Call.STATE_DISCONNECTED)
-    val isIncomingMode = !isCallEnded && (callState == Call.STATE_RINGING || (wasRinging && !callAnswered)) && !skipIncomingScreen
+    val isIncomingMode = (callState == Call.STATE_RINGING || (wasRinging && !callAnswered)) && !skipIncomingScreen
 
     val answerProgress by animateFloatAsState(
         targetValue = if (wasRinging && !callAnswered) 0f else 1f,
@@ -1736,19 +1966,7 @@ fun ExpressiveCallScreen(
                 btnColor = controlBtnColor, activeBtnColor = Color(0xFFE53935),
                 fgColor = controlBtnFg, activeFgColor = Color.White
             ) {
-                val action = if (isManuallyRecording) {
-                    RecordingForegroundService.ACTION_STOP_RECORDING
-                } else {
-                    RecordingForegroundService.ACTION_MANUAL_START
-                }
-                try {
-                    context.startService(
-                        Intent(context, RecordingForegroundService::class.java).setAction(action)
-                    )
-                } catch (_: Exception) {
-                    // Recording permissions/service unavailable on this device — ignore, the
-                    // button simply won't toggle recording state below.
-                }
+                com.coolappstore.everdialer.by.svhp.feature.AppFeatures.toggleManualRecording(context, isManuallyRecording)
                 isManuallyRecording = !isManuallyRecording
             }
             // Only reached when Freeform is on — Hang Up is otherwise rendered separately as the
@@ -1878,8 +2096,6 @@ fun ExpressiveCallScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(bgColor)
-            .offset(y = disconnectOffset)
-            .alpha(disconnectAlpha)
     ) {
         Box(
             modifier = Modifier.fillMaxSize()
@@ -1954,7 +2170,7 @@ fun ExpressiveCallScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            val shouldShowAvatar = showContactPfp && (!photoUri.isNullOrEmpty() || currentBgConfig.pfpShowForNoPfp || currentBgConfig.hasCustomPfp)
+                            val shouldShowAvatar = showContactPfp && (!photoUri.isNullOrEmpty() || currentBgConfig.pfpShowForNoPfp || currentBgConfig.hasCustomPfp || isMultiCallDisplay)
                             if (shouldShowAvatar) {
                                 val lsPfpFraction = currentBgConfig.pfpSize.coerceIn(0.1f, 1.0f)
                                 val lsBaseAvatarSize = 150.dp
@@ -1973,7 +2189,11 @@ fun ExpressiveCallScreen(
                                     hasCustomBg = hasCustomBg,
                                     controlBtnColor = controlBtnColor,
                                     avatarSize = lsAvatarSize,
-                                    iconSize = lsIconSize
+                                    iconSize = lsIconSize,
+                                    secondPhotoUri = effectiveSecondPhoto,
+                                    secondContactName = effectiveSecondName,
+                                    secondPhoneNumber = effectiveSecondNumber,
+                                    isMultiCall = isMultiCallDisplay
                                 )
                                 Spacer(modifier = Modifier.height(20.dp))
                             }
@@ -1994,7 +2214,7 @@ fun ExpressiveCallScreen(
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
                                 if (showSimBadge && simSlot in 0..1) {
-                                    SimSlotBadge(slot = simSlot, modifier = Modifier.size(width = 16.dp, height = 19.dp), shape = RoundedCornerShape(percent = 25))
+                                    SimSlotBadge(slot = simSlot, modifier = Modifier.size(width = 16.dp, height = 19.dp))
                                 }
                                 val lsBaseStatusStyle = MaterialTheme.typography.titleSmall.copy(shadow = textShadow)
                                 Text(
@@ -2006,9 +2226,9 @@ fun ExpressiveCallScreen(
                                         callState == Call.STATE_RINGING -> "Incoming"
                                         callState == Call.STATE_CONNECTING -> "Calling"
                                         callState == Call.STATE_DISCONNECTING || isDisconnecting || callState == Call.STATE_DISCONNECTED -> {
-                                            if (isAutoRedialActive) "Redialing..." else if (isIncomingMode) "Declined" else "Hanging up..."
+                                            if (isAutoRedialActive) com.modiprincekr.thedialer.controller.util.tr("Redialing...") else if (isIncomingMode) com.modiprincekr.thedialer.controller.util.tr("Declined") else com.modiprincekr.thedialer.controller.util.tr("Hanging up...")
                                         }
-                                        else -> if (isIncomingMode) "Connecting..." else "Calling"
+                                        else -> if (isIncomingMode) com.modiprincekr.thedialer.controller.util.tr("Connecting...") else com.modiprincekr.thedialer.controller.util.tr("Calling")
                                     },
                                     color = if (isOnHold) Color(0xFFFFB74D) else subtleColor,
                                     style = lsBaseStatusStyle.copy(fontSize = lsBaseStatusStyle.fontSize * currentBgConfig.fontSizeScale)
@@ -2105,7 +2325,19 @@ fun ExpressiveCallScreen(
                             }
                         }
                     } else {
-                        Column(modifier = Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        val incomingControlsAlpha by animateFloatAsState(
+                            targetValue = if (isCallEnded) 0f else 1f,
+                            animationSpec = tween(durationMillis = 150),
+                            label = "incomingControlsAlphaLandscape"
+                        )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .graphicsLayer { alpha = incomingControlsAlpha },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
                             if (incomingAnswerStyle == PreferenceManager.ANSWER_STYLE_CLASSIC) {
                                 ClassicSwipeToAnswer(
                                     onAnswer = {
@@ -2241,7 +2473,7 @@ fun ExpressiveCallScreen(
 
                         val isPfpLarge = pfpFraction >= 0.85f
                         val isCircleShape = currentBgConfig.pfpShape != "square"
-                        val shouldShowAvatar = showContactPfp && (!photoUri.isNullOrEmpty() || currentBgConfig.pfpShowForNoPfp || currentBgConfig.hasCustomPfp)
+                        val shouldShowAvatar = showContactPfp && (!photoUri.isNullOrEmpty() || currentBgConfig.pfpShowForNoPfp || currentBgConfig.hasCustomPfp || isMultiCallDisplay)
                         if (shouldShowAvatar) {
                             CallAvatar(
                                 photoUri = photoUri,
@@ -2252,6 +2484,10 @@ fun ExpressiveCallScreen(
                                 controlBtnColor = controlBtnColor,
                                 avatarSize = callAvatarSize,
                                 iconSize = callAvatarIconSize,
+                                secondPhotoUri = effectiveSecondPhoto,
+                                secondContactName = effectiveSecondName,
+                                secondPhoneNumber = effectiveSecondNumber,
+                                isMultiCall = isMultiCallDisplay,
                                 overlayContent = if (isPfpLarge) {{
                                     Column(
                                         modifier = Modifier
@@ -2289,7 +2525,7 @@ fun ExpressiveCallScreen(
                                             modifier = Modifier.padding(top = 4.dp)
                                         ) {
                                             if (showSimBadge && simSlot in 0..1) {
-                                                SimSlotBadge(slot = simSlot, modifier = Modifier.size(width = if (isIncomingRinging) 18.dp else 20.dp, height = if (isIncomingRinging) 21.dp else 23.dp), shape = RoundedCornerShape(percent = 25))
+                                                SimSlotBadge(slot = simSlot, modifier = Modifier.size(width = if (isIncomingRinging) 18.dp else 20.dp, height = if (isIncomingRinging) 21.dp else 23.dp))
                                                 if (isCircleShape) Spacer(Modifier.width(6.dp))
                                             }
                                             Text(
@@ -2354,7 +2590,7 @@ fun ExpressiveCallScreen(
 
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
                                 if (showSimBadge && simSlot in 0..1) {
-                                    SimSlotBadge(slot = simSlot, modifier = Modifier.size(width = if (isIncomingRinging) 18.dp else 20.dp, height = if (isIncomingRinging) 21.dp else 23.dp), shape = RoundedCornerShape(percent = 25))
+                                    SimSlotBadge(slot = simSlot, modifier = Modifier.size(width = if (isIncomingRinging) 18.dp else 20.dp, height = if (isIncomingRinging) 21.dp else 23.dp))
                                 }
                                 Text(
                                     text = when {
@@ -2466,10 +2702,16 @@ fun ExpressiveCallScreen(
                         }
                     } else {
                         // Ringing state — swipe to answer, also anchored to bottom
+                        val incomingControlsAlpha by animateFloatAsState(
+                            targetValue = if (isCallEnded) 0f else 1f,
+                            animationSpec = tween(durationMillis = 150),
+                            label = "incomingControlsAlpha"
+                        )
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .align(Alignment.BottomCenter)
+                                .graphicsLayer { alpha = incomingControlsAlpha }
                         ) {
                             if (incomingAnswerStyle == PreferenceManager.ANSWER_STYLE_CLASSIC) {
                                 ClassicSwipeToAnswer(
@@ -2997,7 +3239,8 @@ fun ExpressiveCallScreen(
             showCallingCardPopup = false
             CallActivity.keepAliveForCallingCard.value = false
             if (isCallEnded || call.state == Call.STATE_DISCONNECTED) {
-                (context as? Activity)?.finishAndRemoveTask()
+                (context as? CallActivity)?.finishWithHangupAnimation(hangupAnimationEnabled)
+                    ?: (context as? Activity)?.finishAndRemoveTask()
             }
         }
         BackHandler(enabled = true) {
@@ -4251,8 +4494,7 @@ fun CallWaitingCard(
                     Spacer(modifier = Modifier.height(8.dp))
                     SimSlotBadge(
                         slot = incomingSimSlot,
-                        modifier = Modifier.size(width = 22.dp, height = 25.dp),
-                        shape = RoundedCornerShape(percent = 28)
+                        modifier = Modifier.size(width = 22.dp, height = 25.dp)
                     )
                 }
 

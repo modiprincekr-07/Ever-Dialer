@@ -61,21 +61,23 @@ fun TabSectionsDialog(
     var tabShowDialpad    by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_DIALPAD,    false)) }
     var scrollIndication  by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_SCROLL_INDICATION,     true)) }
     var pillNav           by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_PILL_NAV,              true)) }
-    var slideToOpen       by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_SLIDE_TO_OPEN,         false)) }
+    var slideToOpen       by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_SLIDE_TO_OPEN,         true)) }
     var showDefaultTabDialog by remember { mutableStateOf(false) }
     var defaultTab        by remember { mutableStateOf(prefs.getString(PreferenceManager.KEY_DEFAULT_TAB, "calls") ?: "calls") }
 
     val tabOptions = remember {
-        listOf(
-            TabSectionItem("favorites",  "Favourites", Icons.Outlined.FavoriteBorder),
-            TabSectionItem("calls",      "Calls",      Icons.Outlined.History),
-            TabSectionItem("contacts",   "Contacts",   Icons.Outlined.Person),
-            TabSectionItem("sms",        "SMS",        Icons.Outlined.Chat),
-            TabSectionItem("groups",     "Groups",     Icons.Outlined.Group),
-            TabSectionItem("recordings", "Recordings", Icons.Outlined.FiberManualRecord),
-            TabSectionItem("notes",      "Note",       Icons.Outlined.Note),
-            TabSectionItem("dialpad",    "Dialpad",    Icons.Outlined.Dialpad)
-        )
+        buildList {
+            add(TabSectionItem("favorites",  "Favourites", Icons.Outlined.FavoriteBorder))
+            add(TabSectionItem("calls",      "Calls",      Icons.Outlined.History))
+            add(TabSectionItem("contacts",   "Contacts",   Icons.Outlined.Person))
+            add(TabSectionItem("sms",        "SMS",        Icons.Outlined.Chat))
+            add(TabSectionItem("groups",     "Groups",     Icons.Outlined.Group))
+            if (com.coolappstore.everdialer.by.svhp.feature.AppFeatures.isCallRecorderAvailable) {
+                add(TabSectionItem("recordings", "Recordings", Icons.Outlined.FiberManualRecord))
+            }
+            add(TabSectionItem("notes",      "Note",       Icons.Outlined.Note))
+            add(TabSectionItem("dialpad",    "Dialpad",    Icons.Outlined.Dialpad))
+        }
     }
 
     val tabOrder = remember {
@@ -132,7 +134,7 @@ fun TabSectionsDialog(
         tabShowDialpad    = false; prefs.setBoolean(PreferenceManager.KEY_TAB_SHOW_DIALPAD,    false)
         scrollIndication  = true;  prefs.setBoolean(PreferenceManager.KEY_SCROLL_INDICATION,  true)
         pillNav           = true;  prefs.setBoolean(PreferenceManager.KEY_PILL_NAV,           true)
-        slideToOpen       = false; prefs.setBoolean(PreferenceManager.KEY_SLIDE_TO_OPEN,         false)
+        slideToOpen       = true;  prefs.setBoolean(PreferenceManager.KEY_SLIDE_TO_OPEN,         true)
         defaultTab        = "calls"; prefs.setString(PreferenceManager.KEY_DEFAULT_TAB,          "calls")
     }
 

@@ -43,7 +43,7 @@ import com.modiprincekr.thedialer.controller.ContactsViewModel
 import com.modiprincekr.thedialer.controller.util.NoteEntry
 import com.modiprincekr.thedialer.controller.util.NoteManager
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
-import com.coolappstore.evercallrecorder.by.svhp.ui.common.SwipeableItemContainer
+import com.modiprincekr.thedialer.view.components.SwipeableItemContainer
 import com.modiprincekr.thedialer.controller.util.SwipeActionHelper
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenu

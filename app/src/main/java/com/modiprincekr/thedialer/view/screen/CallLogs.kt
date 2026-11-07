@@ -43,8 +43,7 @@ import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
 import java.util.Locale
 import com.modiprincekr.thedialer.controller.ContactsViewModel
 import com.modiprincekr.thedialer.controller.util.numbersLikelyMatch
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.coolappstore.evercallrecorder.by.svhp.ui.viewmodels.HomeViewModel
+import com.coolappstore.everdialer.by.svhp.feature.AppFeatures
 import com.ramcosta.composedestinations.generated.destinations.RecordingsScreenDestination
 
 @Destination<RootGraph>(route = "call_log_detail_screen", style = SettingsTransitionStyle::class)
@@ -59,9 +58,7 @@ fun CallLogFullScreen(
     val contactsViewModel: ContactsViewModel = koinActivityViewModel()
     val allLogs by viewModel.allCallLogs.collectAsState()
     val contacts by contactsViewModel.allContacts.collectAsState()
-    val recordingsVM: HomeViewModel = viewModel()
-    val allRecordings by recordingsVM.allRecordings.collectAsState()
-    LaunchedEffect(Unit) { recordingsVM.refresh() }
+    val allRecordings by AppFeatures.rememberRecordings()
     val selectedFilter by viewModel.selectedFilter.collectAsState()
     val context = LocalContext.current
     val listState = rememberLazyListState()
@@ -108,6 +105,8 @@ fun CallLogFullScreen(
     if (showSimPicker && pendingNumber != null) {
         SimPickerDialog(
             onDismissRequest = { showSimPicker = false },
+            number = pendingNumber,
+            contactName = contactName,
             onSimSelected = { handle ->
                 makeCall(context, pendingNumber!!, handle)
                 showSimPicker = false

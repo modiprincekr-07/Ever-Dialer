@@ -84,6 +84,28 @@ class PreferenceManager(context: Context) {
         }
     }
 
+    fun getRingHapticCustomSequence(): com.modiprincekr.thedialer.haptics.CustomHapticSequence {
+        val raw = getString(KEY_RING_HAPTIC_CUSTOM_SEQUENCE, "")
+        if (raw.isNullOrBlank()) return com.modiprincekr.thedialer.haptics.CustomHapticSequence()
+        return try {
+            val beats = raw.split(";").mapNotNull { token ->
+                val parts = token.split(":")
+                if (parts.size == 2) {
+                    val ms = parts[0].toLongOrNull()
+                    val amp = parts[1].toIntOrNull()
+                    if (ms != null && amp != null) com.modiprincekr.thedialer.haptics.HapticBeat(ms, amp) else null
+                } else null
+            }
+            com.modiprincekr.thedialer.haptics.CustomHapticSequence(beats)
+        } catch (_: Exception) {
+            com.modiprincekr.thedialer.haptics.CustomHapticSequence()
+        }
+    }
+
+    fun setRingHapticCustomSequence(seq: com.modiprincekr.thedialer.haptics.CustomHapticSequence) {
+        val raw = seq.beats.joinToString(";") { "${it.offsetMs}:${it.amplitude}" }
+        setString(KEY_RING_HAPTIC_CUSTOM_SEQUENCE, raw)
+    }
     /** Returns true if an incoming call from [phoneNumber] should be gated behind biometric. */
     fun shouldGateCallWithBiometric(phoneNumber: String?): Boolean {
         if (!getBoolean(KEY_BIOMETRICS_CALL_LOCK, false)) return false
@@ -510,6 +532,10 @@ class PreferenceManager(context: Context) {
         setDefaultCallCategory("all")
     }
 
+    fun isNotifyUpdatesEnabled(): Boolean = getBoolean(KEY_NOTIFY_UPDATES_ENABLED, false)
+    fun getNotifyUpdatesValue(): Int = getInt(KEY_NOTIFY_UPDATES_VALUE, 6).coerceAtLeast(1)
+    fun getNotifyUpdatesUnit(): String = getString(KEY_NOTIFY_UPDATES_UNIT, "hours") ?: "hours"
+
 
 
     /** Returns the user-configured tab order (Settings > Appearance > Tab Sections) as an
@@ -888,6 +914,7 @@ class PreferenceManager(context: Context) {
          *  missing from a stale/older saved order (so newly-added tabs always show up). */
         fun parseTabOrder(raw: String?): List<String> {
             val fallback = DEFAULT_TAB_ORDER.split(",")
+                .filter { it != "recordings" || com.coolappstore.everdialer.by.svhp.feature.AppFeatures.isCallRecorderAvailable }
             if (raw.isNullOrBlank()) return fallback
             val parsed = raw.split(",").map { it.trim() }.filter { it.isNotBlank() }
             val merged = parsed.toMutableList()
@@ -922,8 +949,9 @@ class PreferenceManager(context: Context) {
         const val KEY_CONTACT_INFO_SHOW_RINGTONE              = "contact_info_show_ringtone"
         const val KEY_CONTACT_INFO_SHOW_CHOOSE_DEFAULT_NUMBER = "contact_info_show_choose_default_number"
         const val KEY_CONTACT_INFO_SHOW_SAVED_IN              = "contact_info_show_saved_in"
+        const val KEY_CONTACT_INFO_SHOW_CONTACT_INFO_SETTINGS = "contact_info_show_contact_info_settings"
         const val KEY_CONTACT_INFO_ORDER                      = "contact_info_order"
-        const val DEFAULT_CONTACT_INFO_ORDER                  = "quick_actions,contact_info,social,description,notes,events,recent_activity,choose_sim,calling_backgrounds,ringtone,choose_default_number,saved_in"
+        const val DEFAULT_CONTACT_INFO_ORDER                  = "quick_actions,contact_info,social,description,notes,events,recent_activity,choose_sim,calling_backgrounds,ringtone,choose_default_number,saved_in,contact_info_settings"
 
         fun parseContactInfoOrder(raw: String?): List<String> {
             val fallback = DEFAULT_CONTACT_INFO_ORDER.split(",")
@@ -991,6 +1019,7 @@ class PreferenceManager(context: Context) {
         const val KEY_BLOCK_UNKNOWN         = "block_unknown_callers"
         const val KEY_BLOCK_HIDDEN          = "block_hidden_callers"
         const val KEY_OPEN_DIALPAD_DEFAULT  = "open_dialpad_default"
+        const val KEY_DIALPAD_CIRCLE_BUTTONS = "dialpad_circle_buttons"
         const val KEY_HIDE_RATE_AND_REVIEW  = "hide_rate_and_review"
         const val KEY_RATE_REVIEW_HIDDEN_SECRET = "rate_review_hidden_secret"
         // Written by the bundled Ever Call Recorder module (:recorder) directly into this same
@@ -1000,6 +1029,14 @@ class PreferenceManager(context: Context) {
         const val KEY_APP_HAPTICS_STRENGTH     = "app_haptics_strength"
         const val KEY_HAPTICS_CUSTOM_INTENSITY = "haptics_custom_intensity"
         const val KEY_HAPTIC_TOUCH_ONLY        = "haptic_trigger_touch_screen_only"
+        const val KEY_RING_HAPTIC_ENABLED      = "ring_haptic_enabled"
+        const val KEY_RING_HAPTIC_PATTERN      = "ring_haptic_pattern"
+        const val KEY_RING_HAPTIC_INTENSITY    = "ring_haptic_intensity"
+        const val KEY_RING_HAPTIC_CUSTOM_SEQUENCE = "ring_haptic_custom_sequence"
+        const val KEY_RING_HAPTIC_AUTO         = "ring_haptic_auto"
+        const val KEY_RING_HAPTIC_AUTO_SENSITIVITY = "ring_haptic_auto_sensitivity"
+        const val KEY_RING_HAPTIC_AUTO_STRENGTH = "ring_haptic_auto_strength"
+        const val KEY_RING_HAPTIC_FORCE_TOUCH_ROUTING = "ring_haptic_force_touch_routing"
         const val KEY_NOTES_ENABLED         = "notes_enabled"
         // When true (default), the app's Notes section and the call recording notes
         // (inside Ever Call Recorder's recording playback screen) are kept as two
@@ -1062,6 +1099,10 @@ class PreferenceManager(context: Context) {
         const val KEY_CALL_UI_SHOW_CONTACTS  = "call_ui_show_contacts"
         const val KEY_CALL_UI_SHOW_GROUPS    = "call_ui_show_groups"
         const val KEY_AUTO_UPDATE_CHECK     = "auto_update_check"
+        const val KEY_NOTIFY_UPDATES_ENABLED = "notify_updates_enabled"
+        const val KEY_NOTIFY_UPDATES_VALUE   = "notify_updates_value"
+        const val KEY_NOTIFY_UPDATES_UNIT    = "notify_updates_unit"
+        const val KEY_LAST_NOTIFIED_UPDATE_VERSION = "last_notified_update_version"
         const val KEY_SCROLL_INDICATION     = "scroll_indication"
         const val KEY_PILL_NAV              = "pill_style_nav"
         const val KEY_SLIDE_TO_OPEN         = "slide_to_open"
@@ -1382,6 +1423,10 @@ class PreferenceManager(context: Context) {
         const val KEY_ONGOING_CUSTOM_PFP_SHOW_FOR_NO_PFP    = "ongoing_custom_pfp_show_for_no_pfp"
         const val KEY_ONGOING_CUSTOM_PFP_SIZE               = "ongoing_custom_pfp_size"          // Float 0.1f..1.0f, default 0.5f (50%)
         const val KEY_ONGOING_CUSTOM_PFP_SHAPE              = "ongoing_custom_pfp_shape"         // "circle" | "square"
+
+        // Contact Info PFP Customization (Size & Shape)
+        const val KEY_CONTACT_INFO_PFP_SIZE                 = "contact_info_pfp_size"            // Float 0.1f..1.0f, default 0.60f (60%)
+        const val KEY_CONTACT_INFO_PFP_SHAPE                = "contact_info_pfp_shape"           // "circle" | "square", default "circle"
 
         // Volume DND — toggle system DND via volume button sequence using Accessibility
         const val KEY_VOLUME_DND_ENABLED           = "volume_dnd_enabled"

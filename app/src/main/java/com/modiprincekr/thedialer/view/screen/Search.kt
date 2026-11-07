@@ -57,8 +57,8 @@ import com.modiprincekr.thedialer.modal.data.CallLogEntry
 import com.modiprincekr.thedialer.modal.data.Contact
 import com.modiprincekr.thedialer.view.components.*
 import com.modiprincekr.thedialer.view.components.tiles.SingleTile
-import com.coolappstore.evercallrecorder.by.svhp.ui.viewmodels.HomeViewModel
-import com.coolappstore.evercallrecorder.by.svhp.ui.viewmodels.RecordingItem
+import com.coolappstore.everdialer.by.svhp.feature.AppFeatures
+import com.modiprincekr.thedialer.modal.data.RecordingItem
 import com.modiprincekr.thedialer.controller.SmsViewModel
 import com.modiprincekr.thedialer.modal.data.SmsConversation
 import com.ramcosta.composedestinations.annotation.Destination
@@ -185,13 +185,9 @@ fun ContactSearchContent(
     val contactsVM: ContactsViewModel = koinActivityViewModel()
     val callLogVM: CallLogViewModel = koinActivityViewModel()
     val smsVM: SmsViewModel = koinActivityViewModel()
-    // Owned by the bundled Ever Call Recorder module — reused here (read-only) purely to search
-    // recording notes; it manages its own loading/refresh lifecycle independently.
-    val recordingsVM: HomeViewModel = viewModel()
-
     val contacts by contactsVM.displayedContacts.collectAsState()
     val callLogs by callLogVM.allCallLogs.collectAsState()
-    val recordings by recordingsVM.allRecordings.collectAsState()
+    val recordings by AppFeatures.rememberRecordings()
     val contactGroups by contactsVM.contactGroups.collectAsState()
     val smsConversations by smsVM.conversations.collectAsState()
 

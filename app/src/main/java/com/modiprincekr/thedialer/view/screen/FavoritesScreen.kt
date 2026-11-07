@@ -53,10 +53,12 @@ import com.modiprincekr.thedialer.controller.CallLogViewModel
 import com.modiprincekr.thedialer.controller.util.FakeCallManager
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.controller.util.makeCall
+import com.modiprincekr.thedialer.controller.util.getPhoneAccountForSimSlot
 import com.modiprincekr.thedialer.controller.util.placeCallHonoringContactSim
 import com.modiprincekr.thedialer.modal.data.Contact
 import com.modiprincekr.thedialer.view.components.ContactSortButton
 import com.modiprincekr.thedialer.view.components.ContactSortOption
+import com.modiprincekr.thedialer.view.components.SimSlotBadge
 import com.modiprincekr.thedialer.view.components.sortContacts
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenu
@@ -104,7 +106,7 @@ import com.ramcosta.composedestinations.generated.destinations.RecentScreenDesti
 import com.ramcosta.composedestinations.generated.destinations.NotesScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.ramcosta.composedestinations.generated.destinations.FavoritesScreenDestination
-import com.coolappstore.evercallrecorder.by.svhp.ui.common.SwipeableItemContainer
+import com.modiprincekr.thedialer.view.components.SwipeableItemContainer
 import com.modiprincekr.thedialer.controller.util.SwipeActionHelper
 import com.modiprincekr.thedialer.controller.util.BlockedNumbersManager
 import android.content.ClipData
@@ -250,6 +252,7 @@ fun FavoritesScreen(navController: NavController, navigator: DestinationsNavigat
     if (showSimPicker && pendingCallNumber != null) {
         SimPickerDialog(
             onDismissRequest = { showSimPicker = false },
+            number = pendingCallNumber,
             onSimSelected = { handle ->
                 makeCall(context, pendingCallNumber!!, handle)
                 showSimPicker = false
@@ -999,8 +1002,8 @@ private fun FavoriteContactCard(
                     val sim2Color = remember(settingsVer) { Color(prefs.getInt(PreferenceManager.KEY_SIM2_COLOR, PreferenceManager.DEFAULT_SIM2_COLOR)) }
                     val tm = remember(context) { context.getSystemService(android.content.Context.TELECOM_SERVICE) as? TelecomManager }
                     val accounts = try { tm?.callCapablePhoneAccounts } catch (_: Throwable) { null } ?: emptyList()
-                    val account1 = accounts.getOrNull(0)
-                    val account2 = accounts.getOrNull(1)
+                    val account1 = getPhoneAccountForSimSlot(context, accounts, 0)
+                    val account2 = getPhoneAccountForSimSlot(context, accounts, 1)
 
                     RivoDropdownMenuItem(
                         text = "Call",
@@ -1022,16 +1025,11 @@ private fun FavoriteContactCard(
                                             makeCall(context, phoneNumber, account1)
                                         },
                                         shape = RoundedCornerShape(8.dp),
-                                        color = sim1Color,
-                                        contentColor = Color.White,
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                         modifier = Modifier.size(width = 36.dp, height = 32.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
-                                            SimCardIconWithNumber(
-                                                simSlotNumber = "1",
-                                                tint = Color.White,
-                                                isLarge = false
-                                            )
+                                            SimSlotBadge(slot = 0)
                                         }
                                     }
                                     Surface(
@@ -1040,16 +1038,11 @@ private fun FavoriteContactCard(
                                             makeCall(context, phoneNumber, account2)
                                         },
                                         shape = RoundedCornerShape(8.dp),
-                                        color = sim2Color,
-                                        contentColor = Color.White,
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                         modifier = Modifier.size(width = 36.dp, height = 32.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
-                                            SimCardIconWithNumber(
-                                                simSlotNumber = "2",
-                                                tint = Color.White,
-                                                isLarge = false
-                                            )
+                                            SimSlotBadge(slot = 1)
                                         }
                                     }
                                 }

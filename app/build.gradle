@@ -13,8 +13,8 @@ android {
         applicationId = "com.modiprincekr.thedialer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "13.0.0"
+        versionCode = 17
+        versionName = "14.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -62,6 +62,22 @@ android {
         }
     }
 
+    flavorDimensions += "distribution"
+    productFlavors {
+        github {
+            dimension "distribution"
+            applicationId "com.coolappstore.everdialer.by.svhp"
+        }
+        fdroid {
+            dimension "distribution"
+            applicationId "com.everlasting.projects.by.svhp.freedroid"
+        }
+        play {
+            dimension "distribution"
+            applicationId "com.everlasting.projects.by.svhp.play"
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -69,8 +85,9 @@ android {
 }
 
 dependencies {
-    implementation project(':recorder')
-    implementation project(':networkswitch')
+    githubImplementation project(':recorder')
+    githubImplementation project(':networkswitch')
+    fdroidImplementation project(':networkswitch')
 
     implementation platform('androidx.compose:compose-bom:2025.12.01')
     implementation 'androidx.compose.ui:ui'

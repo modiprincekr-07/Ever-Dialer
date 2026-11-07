@@ -61,9 +61,12 @@ import com.modiprincekr.thedialer.controller.SmsViewModel
 import com.modiprincekr.thedialer.controller.util.BlockedNumbersManager
 import com.modiprincekr.thedialer.controller.util.DefaultSmsManager
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
+import android.telecom.TelecomManager
+import com.modiprincekr.thedialer.controller.util.getPhoneAccountForSimSlot
+import com.modiprincekr.thedialer.view.components.SimSlotBadge
 import com.modiprincekr.thedialer.controller.util.makeCall
-import com.coolappstore.evercallrecorder.by.svhp.ui.common.SwipeableItemContainer
-import com.coolappstore.evercallrecorder.by.svhp.ui.common.SwipeActionItem
+import com.modiprincekr.thedialer.view.components.SwipeableItemContainer
+import com.modiprincekr.thedialer.view.components.SwipeActionItem
 import com.modiprincekr.thedialer.controller.FloatingSmsService
 import com.modiprincekr.thedialer.controller.util.SwipeActionHelper
 import com.modiprincekr.thedialer.modal.data.Contact
@@ -549,8 +552,15 @@ fun SmsScreen(
                         fabCoordinates = coordinates
                     }
                     .scale(newMessageExpandScale)
-                    .then(if (pillNav) Modifier.navigationBarsPadding().padding(bottom = 92.dp) else Modifier.navigationBarsPadding().padding(bottom = 80.dp))
-                    .then(if (isLandscape) Modifier.navigationBarsPadding().padding(bottom = 8.dp) else Modifier)
+                    .then(
+                        if (isLandscape) {
+                            Modifier.navigationBarsPadding().padding(bottom = 12.dp, end = 8.dp)
+                        } else if (pillNav) {
+                            Modifier.navigationBarsPadding().padding(bottom = 92.dp)
+                        } else {
+                            Modifier.navigationBarsPadding().padding(bottom = 80.dp)
+                        }
+                    )
 
                 FloatingActionButton(
                     onClick = {
@@ -1205,6 +1215,12 @@ fun SmsScreen(
                                         }
                                     }
 
+                                    val tm = remember(context) { context.getSystemService(android.content.Context.TELECOM_SERVICE) as? TelecomManager }
+                                    val accounts = try { tm?.callCapablePhoneAccounts } catch (_: Throwable) { null } ?: emptyList()
+                                    val hasTwoSims = accounts.size >= 2
+                                    val account1 = getPhoneAccountForSimSlot(context, accounts, 0)
+                                    val account2 = getPhoneAccountForSimSlot(context, accounts, 1)
+
                                     RivoDropdownMenu(
                                         expanded = showConversationMenu,
                                         onDismissRequest = { showConversationMenu = false }
@@ -1216,7 +1232,42 @@ fun SmsScreen(
                                             onClick = {
                                                 showConversationMenu = false
                                                 makeCall(context, conv.address, null)
-                                            }
+                                            },
+                                            trailingContent = if (hasTwoSims && conv.address.isNotBlank()) {
+                                                {
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Surface(
+                                                            onClick = {
+                                                                showConversationMenu = false
+                                                                makeCall(context, conv.address, account1)
+                                                            },
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                            modifier = Modifier.size(width = 36.dp, height = 32.dp)
+                                                        ) {
+                                                            Box(contentAlignment = Alignment.Center) {
+                                                                SimSlotBadge(slot = 0)
+                                                            }
+                                                        }
+                                                        Surface(
+                                                            onClick = {
+                                                                showConversationMenu = false
+                                                                makeCall(context, conv.address, account2)
+                                                            },
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                            modifier = Modifier.size(width = 36.dp, height = 32.dp)
+                                                        ) {
+                                                            Box(contentAlignment = Alignment.Center) {
+                                                                SimSlotBadge(slot = 1)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } else null
                                         )
                                         RivoDropdownMenuItem(
                                             text = "Float",
@@ -1443,6 +1494,12 @@ fun SmsScreen(
                                         }
                                     }
 
+                                    val tm = remember(context) { context.getSystemService(android.content.Context.TELECOM_SERVICE) as? TelecomManager }
+                                    val accounts = try { tm?.callCapablePhoneAccounts } catch (_: Throwable) { null } ?: emptyList()
+                                    val hasTwoSims = accounts.size >= 2
+                                    val account1 = getPhoneAccountForSimSlot(context, accounts, 0)
+                                    val account2 = getPhoneAccountForSimSlot(context, accounts, 1)
+
                                     RivoDropdownMenu(
                                         expanded = showConversationMenu,
                                         onDismissRequest = { showConversationMenu = false }
@@ -1454,7 +1511,42 @@ fun SmsScreen(
                                             onClick = {
                                                 showConversationMenu = false
                                                 makeCall(context, conv.address, null)
-                                            }
+                                            },
+                                            trailingContent = if (hasTwoSims && conv.address.isNotBlank()) {
+                                                {
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Surface(
+                                                            onClick = {
+                                                                showConversationMenu = false
+                                                                makeCall(context, conv.address, account1)
+                                                            },
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                            modifier = Modifier.size(width = 36.dp, height = 32.dp)
+                                                        ) {
+                                                            Box(contentAlignment = Alignment.Center) {
+                                                                SimSlotBadge(slot = 0)
+                                                            }
+                                                        }
+                                                        Surface(
+                                                            onClick = {
+                                                                showConversationMenu = false
+                                                                makeCall(context, conv.address, account2)
+                                                            },
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                            modifier = Modifier.size(width = 36.dp, height = 32.dp)
+                                                        ) {
+                                                            Box(contentAlignment = Alignment.Center) {
+                                                                SimSlotBadge(slot = 1)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } else null
                                         )
                                         RivoDropdownMenuItem(
                                             text = "Float",

@@ -236,8 +236,14 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
     listOf(
         // ── Rows that live directly on the main Settings screen ─────────────────
         GlobalSettingsSearchEntry("Check For Updates", "Current version: v$APP_VERSION", "check_for_updates", Icons.Default.SystemUpdate, GsColorAmber),
+        GlobalSettingsSearchEntry("Rate and Review", "Share your feedback about Ever Dialer", "rate_and_review", Icons.Default.Star, GsColorCyan),
+        GlobalSettingsSearchEntry("Check Ratings and Reviews", "See what others are saying about Ever Dialer", "check_ratings", Icons.Default.Reviews, GsColorGreen),
+        GlobalSettingsSearchEntry("More Apps", "Check out other apps from the developer", "more_apps", Icons.Default.Apps, GsColorIndigo),
+        GlobalSettingsSearchEntry("Donate", "Support this open source project", "donate", Icons.Default.Favorite, GsColorRed),
+        GlobalSettingsSearchEntry("Appearance", "Themes, colors, and layout", "appearance", Icons.Outlined.Palette, GsColorPurple),
         GlobalSettingsSearchEntry("Interface", "Themes, colors, and layout", "interface", Icons.Outlined.Palette, GsColorPurple),
         GlobalSettingsSearchEntry("Tap Haptics", "Vibration on taps across the app", "tap_haptics", Icons.Outlined.Vibration, GsColorPurple),
+        GlobalSettingsSearchEntry("Ring Haptic", "Incoming call vibration pattern, beat sync, and intensity", "ring_haptic", Icons.Outlined.RingVolume, GsColorPurple) { it.navigate(com.ramcosta.composedestinations.generated.destinations.RingHapticScreenDestination) },
         GlobalSettingsSearchEntry("Scroll Haptics", "Vibrate on scroll gestures across the app", "scroll_haptics", Icons.Outlined.SwipeVertical, GsColorIndigo),
         GlobalSettingsSearchEntry("Passwords & Security", "App lock, biometrics, PIN, pattern, and password", "passwords_and_security", Icons.Outlined.Security, Color(0xFF6750A4)) { it.navigate(BiometricScreenDestination()) },
         GlobalSettingsSearchEntry("Contacts Hider", "Hide contacts behind a secret code", "contacts_hider", Icons.Outlined.Lock, Color(0xFF5E35B1)),
@@ -341,7 +347,6 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Elements to have liquid glass effect", "Choose where liquid glass effects apply", "liquid_glass_elements_link", Icons.Outlined.Palette, GsColorBlue) { it.navigate(InterfaceScreenDestination(highlightKey = "liquid_glass_elements_link")) },
         GlobalSettingsSearchEntry("Material Blur Effects", "Blur effects across the interface", "blur_effects_toggle", Icons.Outlined.Palette, GsColorIndigo) { it.navigate(InterfaceScreenDestination(highlightKey = "blur_effects_toggle")) },
         GlobalSettingsSearchEntry("Elements to have blur effect", "Choose where blur effects apply", "blur_effects_elements_link", Icons.Outlined.Palette, GsColorIndigo) { it.navigate(InterfaceScreenDestination(highlightKey = "blur_effects_elements_link")) },
-        GlobalSettingsSearchEntry("Hangup Animation", "Animate the screen when a call ends", "hangup_animation", Icons.Outlined.Palette, GsColorRed) { it.navigate(InterfaceScreenDestination(highlightKey = "hangup_animation")) },
 
         // ── Call UI ──────────────────────────────────────────────────────────────
         GlobalSettingsSearchEntry("Call UI", "Incoming Call UI and Ongoing Call UI", "call_ui_section", Icons.Outlined.Call, GsColorGreen) { it.navigate(InterfaceScreenDestination(highlightKey = "incoming_call_ui_link")) },
@@ -353,13 +358,13 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("UI Elements", "Call Logs, Dialpad, Contact info, Favourites, Navigation, Context Menu and Contact Info Elements", "ui_elements_section", Icons.Outlined.Widgets, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "call_logs_settings_link")) },
         GlobalSettingsSearchEntry("Call Logs Settings", "UI Elements: Customize call log grouping, SIM icons, call counts, formatting and auto-deletion", "call_logs_settings_link", Icons.Outlined.Call, GsColorGreen) { it.navigate(CallLogsSettingsScreenDestination()) },
         GlobalSettingsSearchEntry("Dialpad Settings", "UI Elements: Customize dialpad memory, search list call logs, and startup behavior", "dialpad_settings_link", Icons.Outlined.Dialpad, GsColorBlue) { it.navigate(DialpadSettingsScreenDestination()) },
+        GlobalSettingsSearchEntry("Circle buttons", "Dialpad: Use circular buttons on the dialpad", "circle_buttons", Icons.Outlined.Lens, GsColorPurple) { it.navigate(DialpadSettingsScreenDestination(highlightKey = "circle_buttons")) },
         GlobalSettingsSearchEntry("Contact info Settings", "UI Elements: Customize contact info display and duplicate numbers", "contact_info_settings_link", Icons.Outlined.Person, GsColorPurple) { it.navigate(ContactInfoSettingsScreenDestination()) },
         GlobalSettingsSearchEntry("Favourites Settings", "UI Elements: Customize favourites layout and view mode", "favourites_settings_link", Icons.Outlined.Star, Color(0xFFE91E63)) { it.navigate(FavouritesSettingsScreenDestination()) },
         GlobalSettingsSearchEntry("Navigation Settings", "UI Elements: Customize tab sections, default tab, and bottom bar appearance", "navigation_settings_link", Icons.Default.ViewWeek, GsColorIndigo) { it.navigate(NavigationSettingsScreenDestination()) },
         GlobalSettingsSearchEntry("Context Menu Elements", "UI Elements: Customize Favourites, Call Logs, and Contacts context menus", "context_menu_elements", Icons.Default.MoreVert, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "context_menu_elements")) },
         GlobalSettingsSearchEntry("Contact Info Elements", "UI Elements: Toggle and drag to reorder elements in contact details", "contact_info_elements", Icons.Default.Contacts, GsColorAmber) { it.navigate(ContactInfoSettingsScreenDestination(highlightKey = "contact_info_elements")) },
         GlobalSettingsSearchEntry("Tab Sections", "UI Elements: Choose which bottom tabs are visible", "tab_sections", Icons.Outlined.Palette, GsColorAmber) { it.navigate(NavigationSettingsScreenDestination(highlightKey = "tab_sections")) },
-        GlobalSettingsSearchEntry("Material Theme", "Material You or Material Expressive theme style", "material_theme", Icons.Outlined.Palette, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "material_theme")) },
         GlobalSettingsSearchEntry("Animation Style", "Zoom (in/out), Cards, or Windows Phone transition", "animation_style", Icons.Outlined.Animation, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "animation_style")) },
         GlobalSettingsSearchEntry("Motion Blur in Animation", "Apply dynamic motion blur during page transitions", "motion_blur_animation", Icons.Outlined.BlurOn, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "motion_blur_animation")) },
         GlobalSettingsSearchEntry("Scroll Animation", "Animate list scrolling", "scroll_animation", Icons.Outlined.Palette, GsColorBlue) { it.navigate(InterfaceScreenDestination(highlightKey = "scroll_animation")) },

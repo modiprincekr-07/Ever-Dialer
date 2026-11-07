@@ -32,6 +32,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import com.modiprincekr.thedialer.view.components.NavBarVisibilityState
 import com.modiprincekr.thedialer.view.components.SettingsIconButton
+import com.modiprincekr.thedialer.view.components.MultiCallContactSelectionDialog
+import com.ramcosta.composedestinations.generated.destinations.ContactDetailsScreenDestination
 import com.modiprincekr.thedialer.view.theme.TabTransitionStyle
 import com.coolappstore.evercallrecorder.by.svhp.data.AppPreferences
 import com.coolappstore.evercallrecorder.by.svhp.ui.screens.AppLockScreen
@@ -47,25 +49,6 @@ import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 
-/**
- * The single "Recordings" / "Call Recording logs" screen — shown both as the "Recordings" tab
- * in the main bottom navigation, and when opened from Settings → Call Recording.
- *
- * This intentionally reuses the exact same [HomeScreen] and [PlaybackScreen] composables
- * that power the recording logs list inside the bundled Ever Call Recorder module, so the list
- * of call recordings is the exact same single screen — not a duplicate — whether it's opened
- * from the bottom-nav tab or from Settings.
- *
- * @param openedFromSettings True when this instance was pushed onto the back stack from
- * Settings → Call Recording rather than selected as the bottom-nav tab. Used purely to keep the
- * bottom pill/nav bar hidden in that case, since the user is drilling into a detail screen
- * rather than switching tabs.
- * @param openedRecordingUri When set (e.g. tapping a recording result from global Search), the
- * matching recording's player opens immediately instead of the recordings list, and the back
- * button pops this screen entirely (returning to wherever it was opened from, e.g. Search)
- * rather than falling back to the recordings list the way it does when playback is opened by
- * tapping a row inside this screen normally.
- */
 @Destination<RootGraph>(style = TabTransitionStyle::class)
 @Composable
 fun RecordingsScreen(
@@ -89,9 +72,21 @@ fun RecordingsScreen(
     var highlightQuery by remember { mutableStateOf("") }
     var isRecordingSelectionMode by remember { mutableStateOf(false) }
     var directEntryUriToOpen by remember { mutableStateOf(openedRecordingUri) }
+    var multiCallItemToSelect by remember { mutableStateOf<RecordingItem?>(null) }
 
-    // Jump straight into the player for the requested recording as soon as it's found in the
-    // (already-loading) recordings list, instead of showing the list first.
+    val onOpenContactInfo: (RecordingItem) -> Unit = { item ->
+        if (item.isMultiCall && !item.secondPhoneNumber.isNullOrBlank()) {
+            multiCallItemToSelect = item
+        } else {
+            navigator.navigate(
+                ContactDetailsScreenDestination(
+                    contactId = item.contactId ?: "null",
+                    phoneNumber = item.phoneNumber
+                )
+            )
+        }
+    }
+
     LaunchedEffect(directEntryUriToOpen, recordingsForLookup) {
         val uri = directEntryUriToOpen
         if (!uri.isNullOrEmpty() && selectedRecording == null) {
@@ -112,11 +107,6 @@ fun RecordingsScreen(
         highlightQuery = ""
     }
 
-    // Re-check disclaimer/permission state whenever this tab (re)appears or the app resumes.
-    // Also re-arms App Lock (if enabled) whenever this screen is backgrounded — matching the
-    // same behaviour as the bundled Ever Call Recorder's own Activity — since this screen is
-    // now the only place call recording logs are shown and must honour App Lock too, not just
-    // the standalone recorder app.
     LaunchedEffect(Unit) { appNavViewModel.refresh() }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -133,26 +123,17 @@ fun RecordingsScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Hide the bottom navigation bar (pill/standard) while the disclaimer or permissions
-    // onboarding content — or the App Lock gate — is showing, since their "Continue"/"Grant
-    // Access"/"Unlock" controls sit at the bottom of the screen where the nav bar would
-    // otherwise cover them.
     val isShowingOnboarding = !onboardingStatus.disclaimerAccepted || !onboardingStatus.isComplete() || isAppLocked
     DisposableEffect(isShowingOnboarding) {
         NavBarVisibilityState.hideForOnboarding = isShowingOnboarding
         onDispose { NavBarVisibilityState.hideForOnboarding = false }
     }
 
-    // Smoothly slide the main bottom navigation pill out of the way while the recordings
-    // list's own selection pill (Favourite / Recover / Assign contact / Recordings / Share)
-    // is showing, so the two pills never overlap.
     DisposableEffect(isRecordingSelectionMode) {
         NavBarVisibilityState.hideForSelectionMode = isRecordingSelectionMode
         onDispose { NavBarVisibilityState.hideForSelectionMode = false }
     }
 
-    // Keep the bottom pill hidden for the whole lifetime of this screen when it was pushed
-    // from Settings → Call Recording rather than opened as the Recordings tab.
     DisposableEffect(openedFromSettings) {
         NavBarVisibilityState.hideForSettingsEntry = openedFromSettings
         onDispose {
@@ -228,7 +209,8 @@ fun RecordingsScreen(
                                     modifier = Modifier.padding(end = 8.dp)
                                 )
                             }
-                        }
+                        },
+                        onOpenContactInfo = onOpenContactInfo
                     )
 
                     var lastSelectedRecording by remember { mutableStateOf<RecordingItem?>(null) }
@@ -249,9 +231,35 @@ fun RecordingsScreen(
                                     highlightQuery = ""
                                 },
                                 highlightQuery = highlightQuery,
+                                onOpenContactInfo = onOpenContactInfo,
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
+                    }
+
+                    if (multiCallItemToSelect != null) {
+                        val multiItem = multiCallItemToSelect!!
+                        MultiCallContactSelectionDialog(
+                            name1 = multiItem.contactName,
+                            number1 = multiItem.phoneNumber,
+                            contactId1 = multiItem.contactId,
+                            photoUri1 = multiItem.photoUri,
+                            name2 = multiItem.secondContactName,
+                            number2 = multiItem.secondPhoneNumber ?: "",
+                            contactId2 = multiItem.secondContactId,
+                            photoUri2 = multiItem.secondPhotoUri,
+                            isMergedCall = multiItem.isMergedCall,
+                            onSelectContact = { selectedId, selectedNum ->
+                                multiCallItemToSelect = null
+                                navigator.navigate(
+                                    ContactDetailsScreenDestination(
+                                        contactId = selectedId ?: "null",
+                                        phoneNumber = selectedNum
+                                    )
+                                )
+                            },
+                            onDismiss = { multiCallItemToSelect = null }
+                        )
                     }
                 }
             }

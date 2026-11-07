@@ -196,13 +196,11 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
     }
     var scrollAnimation     by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_SCROLL_ANIMATION, true)) }
     var materialThemeStyle  by remember { mutableStateOf(prefs.getMaterialTheme()) }
-    var showMaterialThemeDialog by remember { mutableStateOf(false) }
     var animationStyle      by remember { mutableStateOf(prefs.getString(PreferenceManager.KEY_ANIMATION_STYLE, PreferenceManager.ANIMATION_STYLE_ZOOM) ?: PreferenceManager.ANIMATION_STYLE_ZOOM) }
     var showAnimationStyleDialog by remember { mutableStateOf(false) }
     var motionBlurAnimation by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_MOTION_BLUR_ANIMATION, false)) }
     val liquidGlass = remember(rateReviewToggleSettingsVersion) { prefs.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) }
     val blurEffects = remember(rateReviewToggleSettingsVersion) { prefs.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) }
-    var hangupAnimation     by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_HANGUP_ANIMATION, true)) }
 
     // App Name preset picker
     var showAppNameDialog by remember { mutableStateOf(false) }
@@ -227,16 +225,18 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
     var tabShowNotes      by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_NOTES,      true)) }
     var tabShowDialpad    by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_DIALPAD,    false)) }
     data class TabOption(val key: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
-    val tabOptions = listOf(
-        TabOption("favorites",  "Favourites", Icons.Outlined.FavoriteBorder),
-        TabOption("calls",      "Calls",      Icons.Outlined.History),
-        TabOption("contacts",   "Contacts",   Icons.Outlined.Person),
-        TabOption("sms",        "SMS",        Icons.Outlined.Chat),
-        TabOption("groups",     "Groups",     Icons.Outlined.Group),
-        TabOption("recordings", "Recordings", Icons.Outlined.FiberManualRecord),
-        TabOption("notes",      "Note",       Icons.Outlined.Note),
-        TabOption("dialpad",    "Dialpad",    Icons.Outlined.Dialpad)
-    )
+    val tabOptions = buildList {
+        add(TabOption("favorites",  "Favourites", Icons.Outlined.FavoriteBorder))
+        add(TabOption("calls",      "Calls",      Icons.Outlined.History))
+        add(TabOption("contacts",   "Contacts",   Icons.Outlined.Person))
+        add(TabOption("sms",        "SMS",        Icons.Outlined.Chat))
+        add(TabOption("groups",     "Groups",     Icons.Outlined.Group))
+        if (com.coolappstore.everdialer.by.svhp.feature.AppFeatures.isCallRecorderAvailable) {
+            add(TabOption("recordings", "Recordings", Icons.Outlined.FiberManualRecord))
+        }
+        add(TabOption("notes",      "Note",       Icons.Outlined.Note))
+        add(TabOption("dialpad",    "Dialpad",    Icons.Outlined.Dialpad))
+    }
 
     // Custom order of tab keys, persisted as a comma-separated string. Any tab keys
     // missing from a previously-saved (older) order are appended so new tabs always show.
@@ -409,86 +409,7 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
     }
 
 
-    // ── Material Theme Dialog ─────────────────────────────────────────────────
-    if (showMaterialThemeDialog) {
-        AlertDialog(
-            onDismissRequest = { showMaterialThemeDialog = false },
-            icon = { Icon(Icons.Outlined.Palette, null, tint = MaterialTheme.colorScheme.primary) },
-            title = { Text("Material Theme") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "Choose the overall design style for Ever Dialer.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    listOf(
-                        Triple(
-                            PreferenceManager.MATERIAL_THEME_YOU,
-                            "Material You",
-                            "Classic clean design with dynamic colors and rounded corners"
-                        ),
-                        Triple(
-                            PreferenceManager.MATERIAL_THEME_EXPRESSIVE,
-                            "Material Expressive",
-                            "Expressive shapes, fluid bouncy sliders, spring-morphed buttons, and rich icons"
-                        )
-                    ).forEach { (key, label, desc) ->
-                        val isSelected = materialThemeStyle == key
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                    else MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        materialThemeStyle = key
-                                        prefs.setMaterialTheme(key)
-                                    }
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        label,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                                                else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        desc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                                else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                RadioButton(
-                                    selected = isSelected,
-                                    onClick = {
-                                        materialThemeStyle = key
-                                        prefs.setMaterialTheme(key)
-                                    },
-                                    colors = RadioButtonDefaults.colors(
-                                        selectedColor = MaterialTheme.colorScheme.primary,
-                                        unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showMaterialThemeDialog = false }) { Text("Done") }
-            }
-        )
-    }
+
 
     // ── Animation Style Dialog ───────────────────────────────────────────────
     if (showAnimationStyleDialog) {
@@ -1676,18 +1597,7 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                                 )
                             }
                             Spacer(Modifier.height(12.dp))
-                            RivoExpressiveCard {
-                                RivoListItem(
-                                    headline = "Material Theme",
-                                    supporting = if (materialThemeStyle == PreferenceManager.MATERIAL_THEME_EXPRESSIVE) "Material Expressive" else "Material You",
-                                    leadingIcon = Icons.Outlined.Palette,
-                                    iconContainerColor = MaterialTheme.colorScheme.primary,
-                                    trailingIcon = Icons.Default.ChevronRight,
-                                    modifier = Modifier.settingsSearchHighlight("material_theme", highlightedKey) { highlightedKey = null },
-                                    onClick = { showMaterialThemeDialog = true }
-                                )
-                            }
-                            Spacer(Modifier.height(12.dp))
+
                             RivoExpressiveCard {
                                 val animSupporting = when (animationStyle) {
                                     PreferenceManager.ANIMATION_STYLE_WINDOWS_PHONE -> "Windows Phone"
@@ -1732,23 +1642,7 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
                                         prefs.setBoolean(PreferenceManager.KEY_SCROLL_ANIMATION, it)
                                     }
                                 )
-                                HorizontalDivider(Modifier.padding(horizontal = 16.dp),
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                RivoSwitchListItem(
-                                    headline = "Hangup Animation",
-                                    supporting = if (hangupAnimation)
-                                        "The call screen smoothly slides away when a call ends"
-                                    else
-                                        "The call screen closes immediately when a call ends, with no slide animation",
-                                    leadingIcon = Icons.Default.CallEnd,
-                                    iconContainerColor = Color(0xFFE53935),
-                                    checked = hangupAnimation,
-                                    modifier = Modifier.settingsSearchHighlight("hangup_animation", highlightedKey) { highlightedKey = null },
-                                    onCheckedChange = {
-                                        hangupAnimation = it
-                                        prefs.setBoolean(PreferenceManager.KEY_HANGUP_ANIMATION, it)
-                                    }
-                                )
+
                             }
                             }
                         }

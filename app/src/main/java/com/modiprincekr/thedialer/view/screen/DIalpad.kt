@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
@@ -81,6 +82,8 @@ import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.view.WindowManager
@@ -118,9 +121,13 @@ import com.modiprincekr.thedialer.view.components.SelectExistingContactDialog
 import com.modiprincekr.thedialer.modal.data.Contact
 import com.ramcosta.composedestinations.generated.destinations.ContactEditScreenDestination
 import com.modiprincekr.thedialer.view.components.CallChatViaOverlay
+import com.modiprincekr.thedialer.controller.UssdRepository
+import com.modiprincekr.thedialer.modal.data.RecordingItem
 import com.modiprincekr.thedialer.modal.data.CallLogEntry
 import com.modiprincekr.thedialer.view.components.CallLogTile
+import com.modiprincekr.thedialer.view.components.SimCardNotchShape
 import com.modiprincekr.thedialer.view.components.SimPickerDialog
+import com.modiprincekr.thedialer.controller.util.getPhoneAccountForSimSlot
 import com.modiprincekr.thedialer.view.components.TopBar
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenu
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenuItem
@@ -131,9 +138,6 @@ import com.modiprincekr.thedialer.controller.util.SearchHistoryManager
 import com.modiprincekr.thedialer.view.components.SearchHistorySection
 import com.modiprincekr.thedialer.view.screen.settings.AddMode
 import com.modiprincekr.thedialer.view.screen.settings.FakeCallAddSheet
-import com.modiprincekr.thedialer.controller.UssdRepository
-import com.coolappstore.evercallrecorder.by.svhp.ui.viewmodels.HomeViewModel
-import com.coolappstore.evercallrecorder.by.svhp.ui.viewmodels.RecordingItem
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -260,12 +264,7 @@ private fun DialpadRecentCallLogsList(
                 }
             },
             onAvatarClick = { clickedLog ->
-                if (showSimButtons && clickedLog.number.isNotEmpty()) {
-                    replaceNumber(clickedLog.number)
-                    clearSearch()
-                } else {
-                    navigateToContact(clickedLog.contactId, clickedLog.number)
-                }
+                navigateToContact(clickedLog.contactId, clickedLog.number)
             }
         )
         if (index < recentLogs.size - 1) {
@@ -713,8 +712,6 @@ fun DialPadContent(
     }
     val callLogVM: CallLogViewModel = koinActivityViewModel()
     val callLogsForSearch by callLogVM.allCallLogs.collectAsState()
-    val recordingsVM: HomeViewModel = viewModel()
-    val recordingsForSearch by recordingsVM.allRecordings.collectAsState()
 
     // Extra (non-contact) results shown below matched contacts while searching — numbers from
     // the call log that aren't saved contacts, plus contact/recording notes whose content
@@ -723,7 +720,7 @@ fun DialPadContent(
     // up while dialing a number too, not just while using the text search field. The name/note
     // based sections (contact notes, recordings, recording notes) stay text-query-only since
     // there's nothing meaningful to match against a bare typed number for those.
-    val extraSearchResults = remember(searchQuery, number, callLogsForSearch, recordingsForSearch, searchFilterState) {
+    val extraSearchResults = remember(searchQuery, number, callLogsForSearch, searchFilterState) {
         val q = searchQuery.trim()
         val numberQuery = number.trim()
         val effectiveQuery = q.ifEmpty { numberQuery }
@@ -1048,7 +1045,7 @@ fun DialPadContent(
         }
         val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
         val accounts = try { telecomManager?.callCapablePhoneAccounts } catch (_: Throwable) { null } ?: emptyList()
-        val targetAccount = if (accounts.size > simSlotIndex) accounts[simSlotIndex] else accounts.firstOrNull()
+        val targetAccount = getPhoneAccountForSimSlot(context, accounts, simSlotIndex)
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
             makeCall(context, cleanNum, targetAccount)
             forgetNumberIfMemoryDisabled()
@@ -1059,10 +1056,12 @@ fun DialPadContent(
     }
 
     if (showSimPicker) {
+        val callTargetNumber = pendingSearchCallNumber ?: number
         SimPickerDialog(
             onDismissRequest = { showSimPicker = false },
+            number = callTargetNumber,
             onSimSelected = { handle ->
-                makeCall(context, pendingSearchCallNumber ?: number, handle)
+                makeCall(context, callTargetNumber, handle)
                 pendingSearchCallNumber = null
                 showSimPicker = false
                 forgetNumberIfMemoryDisabled()
@@ -1132,7 +1131,34 @@ fun DialPadContent(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    com.modiprincekr.thedialer.view.theme.ProvideScaledDensity(prefs = prefs) {
+    val currentDensity = LocalDensity.current
+    val rawDisplayScale = remember(settingsState) {
+        prefs.getFloat(PreferenceManager.KEY_DISPLAY_SCALE, 1.0f).coerceIn(0.5f, 2.0f)
+    }
+    val rawFontScale = remember(settingsState) {
+        prefs.getFloat(PreferenceManager.KEY_CUSTOM_FONT_SIZE, 1.0f).coerceIn(0.5f, 2.0f)
+    }
+
+    // Recover unscaled base density so dialpad is not hyper-sensitized by nested scaling
+    val unscaledDensity = remember(currentDensity.density, rawDisplayScale) {
+        if (rawDisplayScale > 0.01f) currentDensity.density / rawDisplayScale else currentDensity.density
+    }
+    val unscaledFontScale = remember(currentDensity.fontScale, rawFontScale) {
+        if (rawFontScale > 0.01f) currentDensity.fontScale / rawFontScale else currentDensity.fontScale
+    }
+
+    // Reduced sensitivity: dialpad page adapts gently (35% slope) to display and font scale configs
+    val dialpadDisplayScale = 1.0f + (rawDisplayScale - 1.0f) * 0.35f
+    val dialpadFontScale = 1.0f + (rawFontScale - 1.0f) * 0.35f
+
+    val dialpadDensity = remember(unscaledDensity, unscaledFontScale, dialpadDisplayScale, dialpadFontScale) {
+        Density(
+            density = unscaledDensity * dialpadDisplayScale,
+            fontScale = unscaledFontScale * dialpadFontScale
+        )
+    }
+
+    CompositionLocalProvider(LocalDensity provides dialpadDensity) {
         if (isLandscape) {
             // Landscape: side-by-side layout — left=search+search results, right=dialpad keys+number+actions
             Row(
@@ -1150,89 +1176,74 @@ fun DialPadContent(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Search bar
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        // Once the hosting sheet starts closing, permanently refuse focus —
-                        // stronger than reactively clearing/hiding after the fact, since it
-                        // guarantees the keyboard can't be re-triggered by window refocus or
-                        // any other later event during the close animation/teardown.
-                        .focusProperties { canFocus = !closing },
-                    placeholder = { Text("Search contacts...", color = dialpadSearchBarPlaceholder) },
-                    leadingIcon = { Icon(Icons.Default.Search, null, tint = dialpadSearchBarPlaceholder) },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Close, null, tint = dialpadSearchBarPlaceholder)
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(28.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = dialpadSearchBarFg,
-                        unfocusedTextColor = dialpadSearchBarFg,
-                        focusedContainerColor = dialpadSearchBarBg,
-                        unfocusedContainerColor = dialpadSearchBarBg,
-                        focusedBorderColor = if (isSaturatedBackground) dialpadSearchBarBorder else MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = dialpadSearchBarBorder,
-                        focusedLeadingIconColor = dialpadSearchBarPlaceholder,
-                        unfocusedLeadingIconColor = dialpadSearchBarPlaceholder,
-                        focusedTrailingIconColor = dialpadSearchBarPlaceholder,
-                        unfocusedTrailingIconColor = dialpadSearchBarPlaceholder,
-                        focusedPlaceholderColor = dialpadSearchBarPlaceholder,
-                        unfocusedPlaceholderColor = dialpadSearchBarPlaceholder,
-                        cursorColor = if (isSaturatedBackground) dialpadSearchBarFg else MaterialTheme.colorScheme.primary
-                    ),
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Text,
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Search,
-                        showKeyboardOnFocus = false
-                    ),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                        onSearch = {
-                            saveDialpadSearchQuery()
-                            keyboardController?.hide()
-                        }
-                    )
-                )
-
-                // Number display — below search bar
+                // Search bar Row with Cross (dismiss) button beside it
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
                         modifier = Modifier
                             .weight(1f)
-                            .defaultMinSize(minHeight = 52.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                if (number.isNotEmpty())
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                                else Color.Transparent
+                            // Once the hosting sheet starts closing, permanently refuse focus —
+                            // stronger than reactively clearing/hiding after the fact, since it
+                            // guarantees the keyboard can't be re-triggered by window refocus or
+                            // any other later event during the close animation/teardown.
+                            .focusProperties { canFocus = !closing },
+                        placeholder = {
+                            Text(
+                                text = "Search contacts...",
+                                color = dialpadSearchBarPlaceholder,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy))
-                            .padding(vertical = 8.dp, horizontal = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        DialpadNumberDisplay(
-                            number = number,
-                            fontSize = 30,
-                            cursorPosition = cursorPosition,
-                            onCursorPositionChange = { cursorPosition = it }
+                        },
+                        leadingIcon = { Icon(Icons.Default.Search, null, tint = dialpadSearchBarPlaceholder) },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Close, null, tint = dialpadSearchBarPlaceholder)
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(28.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = dialpadSearchBarFg,
+                            unfocusedTextColor = dialpadSearchBarFg,
+                            focusedContainerColor = dialpadSearchBarBg,
+                            unfocusedContainerColor = dialpadSearchBarBg,
+                            focusedBorderColor = if (isSaturatedBackground) dialpadSearchBarBorder else MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = dialpadSearchBarBorder,
+                            focusedLeadingIconColor = dialpadSearchBarPlaceholder,
+                            unfocusedLeadingIconColor = dialpadSearchBarPlaceholder,
+                            focusedTrailingIconColor = dialpadSearchBarPlaceholder,
+                            unfocusedTrailingIconColor = dialpadSearchBarPlaceholder,
+                            focusedPlaceholderColor = dialpadSearchBarPlaceholder,
+                            unfocusedPlaceholderColor = dialpadSearchBarPlaceholder,
+                            cursorColor = if (isSaturatedBackground) dialpadSearchBarFg else MaterialTheme.colorScheme.primary
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+                            showKeyboardOnFocus = false
+                        ),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                            onSearch = {
+                                saveDialpadSearchQuery()
+                                keyboardController?.hide()
+                            }
                         )
-                    }
+                    )
 
                     if (onDismiss != null) {
                         Spacer(modifier = Modifier.width(8.dp))
                         IconButton(
                             onClick = onDismiss,
                             modifier = Modifier
-                                .size(44.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)
                         ) {
@@ -1245,160 +1256,247 @@ fun DialPadContent(
                     }
                 }
 
-                // Search results
-                val showResultsPanelLandscape = if (isSearching) {
-                    searchResults.isNotEmpty() || extraSearchResults.isNotEmpty()
-                } else {
-                    showCallLogsInDialpadSearchList && recentCallLogs.isNotEmpty()
-                }
-                AnimatedVisibility(
-                    visible = showResultsPanelLandscape,
-                    enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                            expandVertically(tween(240, easing = FastOutSlowInEasing)),
-                    exit  = fadeOut(tween(180, easing = FastOutLinearInEasing)) +
-                            shrinkVertically(tween(200, easing = FastOutLinearInEasing))
+                // Number display — below search bar (centered, clean, no cross button beside it)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 44.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            if (number.isNotEmpty())
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                            else Color.Transparent
+                        )
+                        .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy))
+                        .padding(vertical = 4.dp, horizontal = 12.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        modifier = Modifier.fillMaxWidth().animateContentSize(spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy))
+                    DialpadNumberDisplay(
+                        number = number,
+                        fontSize = 28,
+                        cursorPosition = cursorPosition,
+                        onCursorPositionChange = { cursorPosition = it }
+                    )
+                }
+
+                // Scrollable container for search results / call logs / action chips
+                val leftScrollState = rememberScrollState()
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(leftScrollState),
+                    verticalArrangement = Arrangement.Top,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Search results
+                    val showResultsPanelLandscape = if (isSearching) {
+                        searchResults.isNotEmpty() || extraSearchResults.isNotEmpty()
+                    } else {
+                        showCallLogsInDialpadSearchList && recentCallLogs.isNotEmpty()
+                    }
+                    AnimatedVisibility(
+                        visible = showResultsPanelLandscape,
+                        enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) +
+                                expandVertically(tween(240, easing = FastOutSlowInEasing)),
+                        exit  = fadeOut(tween(180, easing = FastOutLinearInEasing)) +
+                                shrinkVertically(tween(200, easing = FastOutLinearInEasing))
                     ) {
-                        AnimatedContent(
-                            targetState = isSearching,
-                            transitionSpec = {
-                                (fadeIn(animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)) +
-                                 slideInVertically(animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)) { h -> if (targetState) 28 else -28 })
-                                .togetherWith(
-                                    fadeOut(animationSpec = tween(durationMillis = 340, easing = FastOutSlowInEasing)) +
-                                    slideOutVertically(animationSpec = tween(durationMillis = 340, easing = FastOutSlowInEasing)) { h -> if (targetState) -28 else 28 }
-                                )
-                                .using(
-                                    SizeTransform(
-                                        clip = false,
-                                        sizeAnimationSpec = { _, _ ->
-                                            spring(
-                                                stiffness = Spring.StiffnessMediumLow,
-                                                dampingRatio = Spring.DampingRatioNoBouncy
-                                            )
-                                        }
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            modifier = Modifier.fillMaxWidth().animateContentSize(spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy))
+                        ) {
+                            AnimatedContent(
+                                targetState = isSearching,
+                                transitionSpec = {
+                                    (fadeIn(animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)) +
+                                     slideInVertically(animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)) { h -> if (targetState) 28 else -28 })
+                                    .togetherWith(
+                                        fadeOut(animationSpec = tween(durationMillis = 340, easing = FastOutSlowInEasing)) +
+                                        slideOutVertically(animationSpec = tween(durationMillis = 340, easing = FastOutSlowInEasing)) { h -> if (targetState) -28 else 28 }
                                     )
-                                )
-                            },
-                            label = "DialpadResultsSwitchAnimationLandscape",
-                            modifier = Modifier.fillMaxWidth()
-                        ) { searching ->
-                            if (searching) {
-                                AnimatedContent(
-                                    targetState = searchResults to extraSearchResults,
-                                    transitionSpec = {
-                                        (fadeIn(tween(380, easing = FastOutSlowInEasing)) +
-                                         slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it / 6 } +
-                                         expandVertically(tween(380, easing = FastOutSlowInEasing), expandFrom = Alignment.Top))
-                                        .togetherWith(
-                                            fadeOut(tween(220, easing = FastOutLinearInEasing)) +
-                                            shrinkVertically(tween(220, easing = FastOutLinearInEasing), shrinkTowards = Alignment.Top)
+                                    .using(
+                                        SizeTransform(
+                                            clip = false,
+                                            sizeAnimationSpec = { _, _ ->
+                                                spring(
+                                                    stiffness = Spring.StiffnessMediumLow,
+                                                    dampingRatio = Spring.DampingRatioNoBouncy
+                                                )
+                                            }
                                         )
-                                        .using(
-                                            SizeTransform(
-                                                clip = false,
-                                                sizeAnimationSpec = { _, _ ->
-                                                    spring(
-                                                        stiffness = Spring.StiffnessMediumLow,
-                                                        dampingRatio = Spring.DampingRatioNoBouncy
-                                                    )
-                                                }
+                                    )
+                                },
+                                label = "DialpadResultsSwitchAnimationLandscape",
+                                modifier = Modifier.fillMaxWidth()
+                            ) { searching ->
+                                if (searching) {
+                                    AnimatedContent(
+                                        targetState = searchResults to extraSearchResults,
+                                        transitionSpec = {
+                                            (fadeIn(tween(380, easing = FastOutSlowInEasing)) +
+                                             slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it / 6 } +
+                                             expandVertically(tween(380, easing = FastOutSlowInEasing), expandFrom = Alignment.Top))
+                                            .togetherWith(
+                                                fadeOut(tween(220, easing = FastOutLinearInEasing)) +
+                                                shrinkVertically(tween(220, easing = FastOutLinearInEasing), shrinkTowards = Alignment.Top)
                                             )
-                                        )
-                                    },
-                                    label = "DialpadSearchResultsItemsAnimationLandscape",
-                                    modifier = Modifier.fillMaxWidth()
-                                ) { (contacts, extras) ->
+                                            .using(
+                                                SizeTransform(
+                                                    clip = false,
+                                                    sizeAnimationSpec = { _, _ ->
+                                                        spring(
+                                                            stiffness = Spring.StiffnessMediumLow,
+                                                            dampingRatio = Spring.DampingRatioNoBouncy
+                                                        )
+                                                    }
+                                                )
+                                            )
+                                        },
+                                        label = "DialpadSearchResultsItemsAnimationLandscape",
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) { (contacts, extras) ->
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                        ) {
+                                            contacts.forEach { contact ->
+                                                val primaryNum = prefs.getContactDefaultNumber(contact.id)?.takeIf { it in contact.phoneNumbers }
+                                                val contactNum = primaryNum ?: contact.phoneNumbers.firstOrNull()
+                                                SingleTile(
+                                                    title    = contact.name,
+                                                    subtitle = contactNum,
+                                                    photoUri = contact.photoUri,
+                                                    onAvatarClick = {
+                                                        navigateToContact(contactId = contact.id)
+                                                    },
+                                                    onClick  = {
+                                                        if (showSimButtons && !contactNum.isNullOrEmpty()) {
+                                                            replaceNumber(contactNum)
+                                                            searchQuery = ""
+                                                            focusManager.clearFocus()
+                                                        } else if (directCallOnTap) {
+                                                            val num = contactNum ?: return@SingleTile
+                                                            initiateCall(num)
+                                                        } else {
+                                                            navigateToContact(contactId = contact.id)
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                            extras.forEach { extra ->
+                                                DialpadExtraResultTile(
+                                                    result = extra,
+                                                    onCallNumber = { num ->
+                                                        if (showSimButtons) {
+                                                            replaceNumber(num)
+                                                            searchQuery = ""
+                                                            focusManager.clearFocus()
+                                                        } else if (directCallOnTap) {
+                                                            initiateCall(num)
+                                                        } else {
+                                                            navigateToContact(phoneNumber = num)
+                                                        }
+                                                    },
+                                                    onOpenContactInfo = { num ->
+                                                        navigateToContact(phoneNumber = num)
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else if (showCallLogsInDialpadSearchList) {
                                     Column(
                                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                                     ) {
-                                        contacts.forEach { contact ->
-                                            val primaryNum = prefs.getContactDefaultNumber(contact.id)?.takeIf { it in contact.phoneNumbers }
-                                            val contactNum = primaryNum ?: contact.phoneNumbers.firstOrNull()
-                                            SingleTile(
-                                                title    = contact.name,
-                                                subtitle = contactNum,
-                                                photoUri = contact.photoUri,
-                                                onAvatarClick = {
-                                                    if (showSimButtons && !contactNum.isNullOrEmpty()) {
-                                                        replaceNumber(contactNum)
-                                                        searchQuery = ""
-                                                        focusManager.clearFocus()
-                                                    } else {
-                                                        navigateToContact(contactId = contact.id)
-                                                    }
-                                                },
-                                                onClick  = {
-                                                    if (showSimButtons && !contactNum.isNullOrEmpty()) {
-                                                        replaceNumber(contactNum)
-                                                        searchQuery = ""
-                                                        focusManager.clearFocus()
-                                                    } else if (directCallOnTap) {
-                                                        val num = contactNum ?: return@SingleTile
-                                                        initiateCall(num)
-                                                    } else {
-                                                        navigateToContact(contactId = contact.id)
-                                                    }
-                                                }
-                                            )
-                                        }
-                                        extras.forEach { extra ->
-                                            DialpadExtraResultTile(
-                                                result = extra,
-                                                onCallNumber = { num ->
-                                                    if (showSimButtons) {
-                                                        replaceNumber(num)
-                                                        searchQuery = ""
-                                                        focusManager.clearFocus()
-                                                    } else if (directCallOnTap) {
-                                                        initiateCall(num)
-                                                    } else {
-                                                        navigateToContact(phoneNumber = num)
-                                                    }
-                                                },
-                                                onOpenContactInfo = { num ->
-                                                    if (showSimButtons) {
-                                                        replaceNumber(num)
-                                                        searchQuery = ""
-                                                        focusManager.clearFocus()
-                                                    } else {
-                                                        navigateToContact(phoneNumber = num)
-                                                    }
-                                                }
-                                            )
-                                        }
+                                        DialpadRecentCallLogsList(
+                                            recentLogs = recentCallLogs,
+                                            showSimButtons = showSimButtons,
+                                            directCallOnTap = directCallOnTap,
+                                            context = context,
+                                            prefs = prefs,
+                                            replaceNumber = { replaceNumber(it) },
+                                            clearSearch = { searchQuery = ""; focusManager.clearFocus() },
+                                            navigateToContact = { cid, pnum -> navigateToContact(contactId = cid, phoneNumber = pnum) },
+                                            onShowSimPickerForNumber = { num -> pendingSearchCallNumber = num; showSimPicker = true },
+                                            navigator = navigator
+                                        )
                                     }
                                 }
-                            } else if (showCallLogsInDialpadSearchList) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            }
+                        }
+                    }
+
+                    // Create contact / Add to contact chips when number entered & not searching
+                    AnimatedVisibility(
+                        visible = number.isNotEmpty() && searchResults.isEmpty() && extraSearchResults.isEmpty() && searchQuery.isEmpty(),
+                        enter = fadeIn(tween(200)) + expandVertically(tween(220)),
+                        exit = fadeOut(tween(160)) + shrinkVertically(tween(180))
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    val intent = Intent(Intent.ACTION_INSERT).apply {
+                                        type = ContactsContract.RawContacts.CONTENT_TYPE
+                                        putExtra(ContactsContract.Intents.Insert.PHONE, number)
+                                    }
+                                    context.startActivity(intent)
+                                },
+                                shape = RoundedCornerShape(50.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
                                 ) {
-                                    DialpadRecentCallLogsList(
-                                        recentLogs = recentCallLogs,
-                                        showSimButtons = showSimButtons,
-                                        directCallOnTap = directCallOnTap,
-                                        context = context,
-                                        prefs = prefs,
-                                        replaceNumber = { replaceNumber(it) },
-                                        clearSearch = { searchQuery = ""; focusManager.clearFocus() },
-                                        navigateToContact = { cid, pnum -> navigateToContact(contactId = cid, phoneNumber = pnum) },
-                                        onShowSimPickerForNumber = { num -> pendingSearchCallNumber = num; showSimPicker = true },
-                                        navigator = navigator
-                                    )
+                                    Icon(Icons.Default.PersonAdd, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Create contact", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                }
+                            }
+                            Surface(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    showSelectExistingContactDialog = true
+                                },
+                                shape = RoundedCornerShape(50.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(Icons.Default.Person, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Add to contact", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
                                 }
                             }
                         }
                     }
                 }
-
-                Spacer(Modifier.weight(1f))
             }
 
             // Right panel: dialpad keys + action buttons below
+            val currentDensity = LocalDensity.current
+            val displayScale = remember(settingsState) {
+                prefs.getFloat(PreferenceManager.KEY_DISPLAY_SCALE, 1.0f).coerceIn(0.5f, 2.0f)
+            }
+            val dialpadDensity = remember(currentDensity.density, currentDensity.fontScale, displayScale) {
+                Density(
+                    density = if (displayScale > 0.01f) currentDensity.density / displayScale else currentDensity.density,
+                    fontScale = currentDensity.fontScale
+                )
+            }
+
+            CompositionLocalProvider(LocalDensity provides dialpadDensity) {
             Surface(
                 modifier = Modifier
                     .weight(1f)
@@ -1407,123 +1505,190 @@ fun DialPadContent(
                 shape = RoundedCornerShape(28.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 8.dp, vertical = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceEvenly
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    val keys = listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9"), listOf("*","0","#"))
-                    val subKeys = mapOf("1" to "   ","2" to "ABC","3" to "DEF","4" to "GHI","5" to "JKL","6" to "MNO","7" to "PQRS","8" to "TUV","9" to "WXYZ","0" to "+")
-                    keys.forEach { row ->
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            row.forEach { key ->
-                                DialPadKey(
-                                    number = key,
-                                    letters = subKeys[key] ?: "",
-                                    soundPool = soundPool,
-                                    context = context,
-                                    onClick = { digit ->
-                                        insertAtCursor(digit)
-                                    },
-                                    onLongClick = if (key == "0") ({ insertAtCursor("+") }) else null,
-                                    compact = true
-                                )
+                    val panelW = maxWidth
+                    val panelH = maxHeight
+
+                    // 5 rows total: 4 key rows + 1 action row
+                    val vertPadding = 6.dp
+                    val horizPadding = 8.dp
+                    val availableH = (panelH - vertPadding * 2).value.coerceAtLeast(180f)
+                    val availableW = (panelW - horizPadding * 2).value.coerceAtLeast(160f)
+
+                    // Vertical row spacing and row height
+                    val rowSpacing = 4.dp
+                    val calculatedKeyH = ((availableH - (4f * rowSpacing.value)) / 5f).coerceIn(40f, 66f)
+                    val keyHeight = calculatedKeyH.dp
+                    val scaleFactor = (calculatedKeyH / 46f).coerceIn(0.75f, 1.15f)
+
+                    val isCircleButtons = remember(settingsState) {
+                        prefs.getBoolean(PreferenceManager.KEY_DIALPAD_CIRCLE_BUTTONS, false)
+                    }
+
+                    // 3 columns: 2 horizontal gaps
+                    val colSpacing: Dp = if (isCircleButtons) {
+                        ((availableW - calculatedKeyH * 3f) / 2.5f).coerceIn(12f, 32f).dp
+                    } else {
+                        (8.dp * scaleFactor).coerceIn(6.dp, 10.dp)
+                    }
+                    val maxKeyW = ((availableW - (2f * colSpacing.value)) / 3f).coerceAtLeast(48f)
+                    val keyWidth: Dp = if (isCircleButtons) keyHeight else (maxKeyW.dp * 0.91f).coerceIn(48.dp, 114.dp)
+
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = horizPadding, vertical = vertPadding),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        val keys = listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9"), listOf("*","0","#"))
+                        val subKeys = mapOf("1" to "   ","2" to "ABC","3" to "DEF","4" to "GHI","5" to "JKL","6" to "MNO","7" to "PQRS","8" to "TUV","9" to "WXYZ","0" to "+")
+
+                        // Rows 1–4: Dialpad Keys
+                        keys.forEach { row ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(colSpacing, Alignment.CenterHorizontally),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                row.forEach { key ->
+                                    DialPadKey(
+                                        number = key,
+                                        letters = subKeys[key] ?: "",
+                                        soundPool = soundPool,
+                                        context = context,
+                                        onClick = { digit ->
+                                            insertAtCursor(digit)
+                                        },
+                                        onLongClick = if (key == "0") ({ insertAtCursor("+") }) else null,
+                                        compact = true,
+                                        overrideWidth = keyWidth,
+                                        overrideHeight = keyHeight,
+                                        scaleFactor = scaleFactor
+                                    )
+                                }
                             }
                         }
-                    }
-                    // Action row — below the keys
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        DialerActionExpressive(
-                            onClick = {
-                                showAddContactChoiceDialog = true
-                            },
-                            icon = Icons.Default.PersonAdd,
-                            contentDescription = "Add Contact",
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        )
-                        if (showSimButtons) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+
+                        // Row 5: Action Row — strictly aligned with the 3 columns above!
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(colSpacing, Alignment.CenterHorizontally),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Column 1: Add Contact (perfectly centered under 1, 4, 7, *)
+                            Box(
+                                modifier = Modifier.size(width = keyWidth, height = keyHeight),
+                                contentAlignment = Alignment.Center
                             ) {
                                 DialerActionExpressive(
                                     onClick = {
-                                        if (number.isNotEmpty()) {
-                                            initiateCallWithSim(number, 0)
-                                        } else {
-                                            val latestCall = callLogsForSearch.firstOrNull { it.number.isNotBlank() }
-                                            if (latestCall != null) replaceNumber(latestCall.number)
-                                        }
+                                        showAddContactChoiceDialog = true
                                     },
-                                    onLongClick = if (number.isNotEmpty()) ({ showAppPicker = true }) else null,
-                                    icon = Icons.Default.SimCard,
-                                    simSlotNumber = "1",
-                                    contentDescription = "Call with SIM 1",
-                                    containerColor = sim1Color,
-                                    customColor = sim1Color,
-                                    contentColor = Color.White,
-                                    modifier = Modifier.width(72.dp).height(64.dp),
-                                    isLarge = true,
-                                    isCallButton = true
-                                )
-                                DialerActionExpressive(
-                                    onClick = {
-                                        if (number.isNotEmpty()) {
-                                            initiateCallWithSim(number, 1)
-                                        } else {
-                                            val latestCall = callLogsForSearch.firstOrNull { it.number.isNotBlank() }
-                                            if (latestCall != null) replaceNumber(latestCall.number)
-                                        }
-                                    },
-                                    onLongClick = if (number.isNotEmpty()) ({ showAppPicker = true }) else null,
-                                    icon = Icons.Default.SimCard,
-                                    simSlotNumber = "2",
-                                    contentDescription = "Call with SIM 2",
-                                    containerColor = sim2Color,
-                                    customColor = sim2Color,
-                                    contentColor = Color.White,
-                                    modifier = Modifier.width(72.dp).height(64.dp),
-                                    isLarge = true,
-                                    isCallButton = true
+                                    icon = Icons.Default.PersonAdd,
+                                    contentDescription = "Add Contact",
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    modifier = Modifier.size(width = keyWidth, height = keyHeight),
+                                    isLarge = true
                                 )
                             }
-                        } else {
-                            DialerActionExpressive(
-                                onClick = {
-                                    if (number.isNotEmpty()) {
-                                        initiateCall(number)
-                                    } else {
-                                        val latestCall = callLogsForSearch.firstOrNull { it.number.isNotBlank() }
-                                        if (latestCall != null) {
-                                            replaceNumber(latestCall.number)
-                                        }
+
+                            // Column 2: Call Button / Dual SIM (perfectly centered under 2, 5, 8, 0)
+                            Box(
+                                modifier = Modifier.size(width = keyWidth, height = keyHeight),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (showSimButtons) {
+                                    val simBtnW = ((keyWidth.value - 6f) / 2f).coerceAtLeast(36f).dp
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        DialerActionExpressive(
+                                            onClick = {
+                                                if (number.isNotEmpty()) {
+                                                    initiateCallWithSim(number, 0)
+                                                } else {
+                                                    val latestCall = callLogsForSearch.firstOrNull { it.number.isNotBlank() }
+                                                    if (latestCall != null) replaceNumber(latestCall.number)
+                                                }
+                                            },
+                                            onLongClick = if (number.isNotEmpty()) ({ showAppPicker = true }) else null,
+                                            icon = Icons.Default.SimCard,
+                                            simSlotNumber = "1",
+                                            contentDescription = "Call with SIM 1",
+                                            containerColor = sim1Color,
+                                            customColor = sim1Color,
+                                            contentColor = Color.White,
+                                            modifier = Modifier.size(width = simBtnW, height = keyHeight),
+                                            isLarge = true,
+                                            isCallButton = true
+                                        )
+                                        DialerActionExpressive(
+                                            onClick = {
+                                                if (number.isNotEmpty()) {
+                                                    initiateCallWithSim(number, 1)
+                                                } else {
+                                                    val latestCall = callLogsForSearch.firstOrNull { it.number.isNotBlank() }
+                                                    if (latestCall != null) replaceNumber(latestCall.number)
+                                                }
+                                            },
+                                            onLongClick = if (number.isNotEmpty()) ({ showAppPicker = true }) else null,
+                                            icon = Icons.Default.SimCard,
+                                            simSlotNumber = "2",
+                                            contentDescription = "Call with SIM 2",
+                                            containerColor = sim2Color,
+                                            customColor = sim2Color,
+                                            contentColor = Color.White,
+                                            modifier = Modifier.size(width = simBtnW, height = keyHeight),
+                                            isLarge = true,
+                                            isCallButton = true
+                                        )
                                     }
-                                },
-                                onLongClick = if (number.isNotEmpty()) ({ showAppPicker = true }) else null,
-                                icon = Icons.Default.Call,
-                                contentDescription = "Call",
-                                containerColor = Color(0xFF34A853),
-                                contentColor = Color.White,
-                                modifier = Modifier.width(96.dp).height(64.dp),
-                                isLarge = true,
-                                isCallButton = true
-                            )
+                                } else {
+                                    DialerActionExpressive(
+                                        onClick = {
+                                            if (number.isNotEmpty()) {
+                                                initiateCall(number)
+                                            } else {
+                                                val latestCall = callLogsForSearch.firstOrNull { it.number.isNotBlank() }
+                                                if (latestCall != null) {
+                                                    replaceNumber(latestCall.number)
+                                                }
+                                            }
+                                        },
+                                        onLongClick = if (number.isNotEmpty()) ({ showAppPicker = true }) else null,
+                                        icon = Icons.Default.Call,
+                                        contentDescription = "Call",
+                                        containerColor = Color(0xFF34A853),
+                                        contentColor = Color.White,
+                                        modifier = Modifier.size(width = keyWidth, height = keyHeight),
+                                        isLarge = true,
+                                        isCallButton = true
+                                    )
+                                }
+                            }
+
+                            // Column 3: Backspace (perfectly centered under 3, 6, 9, #)
+                            Box(
+                                modifier = Modifier.size(width = keyWidth, height = keyHeight),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                BackspaceActionButton(
+                                    number = number,
+                                    onBackspace = { backspaceAtCursor() },
+                                    onClear = { replaceNumber("") },
+                                    size = minOf(keyWidth, keyHeight)
+                                )
+                            }
                         }
-                        BackspaceActionButton(
-                            number = number,
-                            onBackspace = { backspaceAtCursor() },
-                            onClear = { replaceNumber("") }
-                        )
+                    }
                     }
                 }
-                }
+            }
             }
         }
     } else {
@@ -1562,7 +1727,15 @@ fun DialPadContent(
                         // during the close animation/teardown.
                         .focusProperties { canFocus = !closing }
                         .onFocusChanged { focusState -> searchFieldFocused = focusState.isFocused },
-                    placeholder = { Text("Search contacts...", color = dialpadSearchBarPlaceholder) },
+                    placeholder = {
+                        Text(
+                            text = "Search contacts...",
+                            color = dialpadSearchBarPlaceholder,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
                     leadingIcon = { Icon(Icons.Default.Search, null, tint = dialpadSearchBarPlaceholder) },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
@@ -1771,13 +1944,7 @@ fun DialPadContent(
                                             photoUri = contact.photoUri,
                                             onAvatarClick = {
                                                 saveDialpadSearchQuery()
-                                                if (showSimButtons && !contactNum.isNullOrEmpty()) {
-                                                    replaceNumber(contactNum)
-                                                    searchQuery = ""
-                                                    focusManager.clearFocus()
-                                                } else {
-                                                    navigateToContact(contactId = contact.id)
-                                                }
+                                                navigateToContact(contactId = contact.id)
                                             },
                                             onClick  = {
                                                 saveDialpadSearchQuery()
@@ -1811,13 +1978,7 @@ fun DialPadContent(
                                             },
                                             onOpenContactInfo = { num ->
                                                 saveDialpadSearchQuery()
-                                                if (showSimButtons) {
-                                                    replaceNumber(num)
-                                                    searchQuery = ""
-                                                    focusManager.clearFocus()
-                                                } else {
-                                                    navigateToContact(phoneNumber = num)
-                                                }
+                                                navigateToContact(phoneNumber = num)
                                             }
                                         )
                                     }
@@ -1949,34 +2110,80 @@ fun DialPadContent(
         Spacer(modifier = Modifier.height(2.dp))
 
         // ── Dialpad card — always at bottom, never moves ───────────────
+        val currentDensity = LocalDensity.current
+        val displayScale = remember(settingsState) {
+            prefs.getFloat(PreferenceManager.KEY_DISPLAY_SCALE, 1.0f).coerceIn(0.5f, 2.0f)
+        }
+        val dialpadDensity = remember(currentDensity.density, currentDensity.fontScale, displayScale) {
+            Density(
+                density = if (displayScale > 0.01f) currentDensity.density / displayScale else currentDensity.density,
+                fontScale = currentDensity.fontScale
+            )
+        }
+
+        CompositionLocalProvider(LocalDensity provides dialpadDensity) {
         BoxWithConstraints(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)
         ) {
             val availableWidth = maxWidth.value
             val availableRowWidth = (availableWidth - 12f).coerceAtLeast(160f)
+            val isCircleButtons = remember(settingsState) {
+                prefs.getBoolean(PreferenceManager.KEY_DIALPAD_CIRCLE_BUTTONS, false)
+            }
 
-            // Height budget for dialpad card: screen height minus search bar (~64dp) and spacing (~24dp)
-            val cardHeightBudget = (screenHeight.value - 64f - 24f).coerceAtLeast(200f)
-            val calculatedKeyH = ((cardHeightBudget - 52f - 16f - 40f) / 5f).coerceIn(52f, 66f)
-            val keyHeight: Dp = calculatedKeyH.dp
-            val callH: Dp = keyHeight
+            // Screen height in unscaled base dp:
+            val baseScreenHeight = configuration.screenHeightDp.toFloat()
+            val maxCardH = if (isCircleButtons) 545f else 515f
+            val cardHeightBudget = (baseScreenHeight - 118f).coerceIn(275f, maxCardH)
+            val calculatedKeyH = ((cardHeightBudget - 44f - 16f - 24f) / 5f).coerceIn(58f, 74f)
+            val baseKeyHeight: Dp = calculatedKeyH.dp
 
-            // Scale factor relative to standard 58dp height
-            val scaleFactor = (calculatedKeyH / 58f).coerceIn(0.8f, 1.3f)
-            val actionSize: Dp = keyHeight
+            // Scale factor relative to standard 50dp height
+            val scaleFactor = (calculatedKeyH / 50f).coerceIn(0.85f, 1.25f)
+            val actionSize: Dp = baseKeyHeight
 
             // Spacing between keys dynamically adapts to row width
-            val keySpacing: Dp = (8.dp * scaleFactor).coerceIn(6.dp, 10.dp)
+            val standardKeySpacing: Dp = (6.dp * scaleFactor).coerceIn(5.dp, 8.dp)
 
-            // Dynamic key width for 3 keys in a row — balanced and comfortably proportioned
-            val maxAllowedKeyW = ((availableRowWidth - keySpacing.value * 2f) / 3f).coerceAtLeast(40f).dp
-            val keyWidth: Dp = minOf(98.dp * scaleFactor, maxAllowedKeyW)
+            // Dynamic key width for 3 keys in a row
+            val maxAllowedKeyW = ((availableRowWidth - standardKeySpacing.value * 2f) / 3f).coerceAtLeast(40f).dp
+            val standardKeyWidth: Dp = (maxAllowedKeyW * 0.91f).coerceIn(80.dp, 114.dp)
+
+            // For circle buttons: make circles noticeably larger, with balanced spacing and paddings
+            val circleSpacingV: Dp = (12.dp * scaleFactor).coerceIn(10.dp, 15.dp)
+            val availableHeightForKeys = cardHeightBudget - 44f - 16f - 24f
+            val maxCircleDiameterFromH = ((availableHeightForKeys - circleSpacingV.value * 4f) / 5f).coerceIn(72f, 85f)
+            val maxCircleDiameterFromW = ((availableRowWidth - 48f) / 3f).coerceIn(72f, 85f)
+            val circleDiameter: Dp = minOf(maxCircleDiameterFromH, maxCircleDiameterFromW).dp
+
+            val circleSpacingH: Dp = run {
+                val sideMarginTarget = (availableRowWidth * 0.07f).coerceIn(16f, 28f) * 2f
+                val remainingForGaps = (availableRowWidth - (circleDiameter.value * 3f) - sideMarginTarget).coerceAtLeast(24f)
+                (remainingForGaps / 2f).coerceIn(20f, 40f).dp
+            }
+
+            val effectiveKeySpacingV: Dp = if (isCircleButtons) circleSpacingV else standardKeySpacing
+            val effectiveKeySpacingH: Dp = if (isCircleButtons) circleSpacingH else standardKeySpacing
+            val keyWidth: Dp = if (isCircleButtons) circleDiameter else standardKeyWidth
+            val keyHeight: Dp = if (isCircleButtons) circleDiameter else baseKeyHeight
+            val callH: Dp = keyHeight
+
+            // Digit row total width
+            val digitRowWidth = keyWidth * 3 + effectiveKeySpacingH * 2
 
             // SIM button width for 4 buttons in a row with 3 gaps
-            val simBtnW: Dp = minOf(
-                keyWidth,
-                ((availableRowWidth - keySpacing.value * 3f) / 4f).coerceAtLeast(36f).dp
-            )
+            val simBtnW: Dp = if (isCircleButtons) {
+                minOf(circleDiameter * 0.86f, ((digitRowWidth.value - 36f) / 4f).dp).coerceIn(56.dp, 70.dp)
+            } else {
+                minOf(
+                    keyWidth,
+                    ((availableRowWidth - effectiveKeySpacingH.value * 3f) / 4f).coerceAtLeast(36f).dp
+                )
+            }
+            val effectiveSimCallH: Dp = if (isCircleButtons) simBtnW else callH
+            val simRowSpacingH: Dp = if (isCircleButtons) {
+                ((digitRowWidth.value - simBtnW.value * 4f) / 3f).coerceIn(10f, 28f).dp
+            } else effectiveKeySpacingH
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -1984,9 +2191,9 @@ fun DialPadContent(
             color = MaterialTheme.colorScheme.surfaceContainerLow
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = (12 * scaleFactor).coerceIn(6f, 14f).dp),
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = (9 * scaleFactor).coerceIn(8f, 13f).dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(keySpacing)
+                verticalArrangement = Arrangement.spacedBy(effectiveKeySpacingV)
             ) {
                 // Header row
                 Box(
@@ -2006,7 +2213,7 @@ fun DialPadContent(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .defaultMinSize(minHeight = 58.dp)
+                                .defaultMinSize(minHeight = (46 * scaleFactor).coerceIn(40f, 48f).dp)
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(
                                     if (number.isNotEmpty())
@@ -2021,7 +2228,7 @@ fun DialPadContent(
                                         showOverflowMenu = true
                                     }
                                 )
-                                .padding(vertical = 9.dp, horizontal = 12.dp),
+                                .padding(vertical = (5 * scaleFactor).coerceIn(4f, 6f).dp, horizontal = 12.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             DialpadNumberDisplay(
@@ -2131,12 +2338,12 @@ fun DialPadContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .then(if (needDialpadBackdrop) Modifier.layerBackdrop(dialpadBackdrop) else Modifier),
-                    verticalArrangement = Arrangement.spacedBy(keySpacing)
+                    verticalArrangement = Arrangement.spacedBy(effectiveKeySpacingV)
                 ) {
                     keys.forEach { row ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(keySpacing, Alignment.CenterHorizontally),
+                            horizontalArrangement = Arrangement.spacedBy(effectiveKeySpacingH, Alignment.CenterHorizontally),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             row.forEach { key ->
@@ -2158,13 +2365,11 @@ fun DialPadContent(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(keySpacing))
-
                 if (showSimButtons) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(keySpacing, Alignment.CenterHorizontally)
+                        horizontalArrangement = Arrangement.spacedBy(simRowSpacingH, Alignment.CenterHorizontally)
                     ) {
                         DialerActionExpressive(
                             onClick = {
@@ -2173,7 +2378,7 @@ fun DialPadContent(
                             icon = Icons.Default.PersonAdd,
                             contentDescription = "Add Contact",
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            modifier = Modifier.width(simBtnW).height(callH),
+                            modifier = Modifier.width(simBtnW).height(effectiveSimCallH),
                             isLarge = true
                         )
 
@@ -2195,7 +2400,7 @@ fun DialPadContent(
                             containerColor = sim1Color,
                             customColor = sim1Color,
                             contentColor = Color.White,
-                            modifier = Modifier.width(simBtnW).height(callH),
+                            modifier = Modifier.width(simBtnW).height(effectiveSimCallH),
                             isLarge = true,
                             liquidGlassBackdrop = dialpadBackdrop,
                             liquidGlassEnabled = lgDialpadEnabled,
@@ -2221,7 +2426,7 @@ fun DialPadContent(
                             containerColor = sim2Color,
                             customColor = sim2Color,
                             contentColor = Color.White,
-                            modifier = Modifier.width(simBtnW).height(callH),
+                            modifier = Modifier.width(simBtnW).height(effectiveSimCallH),
                             isLarge = true,
                             liquidGlassBackdrop = dialpadBackdrop,
                             liquidGlassEnabled = lgDialpadEnabled,
@@ -2235,7 +2440,7 @@ fun DialPadContent(
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(keySpacing, Alignment.CenterHorizontally)
+                        horizontalArrangement = Arrangement.spacedBy(effectiveKeySpacingH, Alignment.CenterHorizontally)
                     ) {
                         DialerActionExpressive(
                             onClick = {
@@ -2279,6 +2484,7 @@ fun DialPadContent(
             }
         }
         } // end BoxWithConstraints (dialpad card)
+        } // end CompositionLocalProvider (LocalDensity)
 
         } // end AnimatedVisibility (dialpad card)
 
@@ -2296,64 +2502,39 @@ fun SimCardIconWithNumber(
     isLarge: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val iconWidth = if (isLarge) 28.dp else 22.dp
-    val iconHeight = if (isLarge) 36.dp else 28.dp
-    val fontSize = if (isLarge) 18.sp else 14.sp
+    val iconWidth = if (isLarge) 24.dp else 18.dp
+    val iconHeight = if (isLarge) 28.dp else 21.dp
+    val fontSize = if (isLarge) 15.sp else 11.sp
+
+    val isTintWhite = tint == Color.White || (tint.red > 0.9f && tint.green > 0.9f && tint.blue > 0.9f)
+    val bgColor = if (isTintWhite) Color.White else tint
+    val textColor = if (isTintWhite) {
+        val prefs = org.koin.compose.koinInject<PreferenceManager>()
+        val settingsVer by prefs.settingsChanged.collectAsState()
+        val sim1Color = remember(settingsVer) { Color(prefs.getInt(PreferenceManager.KEY_SIM1_COLOR, PreferenceManager.DEFAULT_SIM1_COLOR)) }
+        val sim2Color = remember(settingsVer) { Color(prefs.getInt(PreferenceManager.KEY_SIM2_COLOR, PreferenceManager.DEFAULT_SIM2_COLOR)) }
+        if (simSlotNumber == "1") sim1Color else if (simSlotNumber == "2") sim2Color else Color.Black
+    } else {
+        Color.White
+    }
 
     Box(
-        modifier = modifier.size(width = iconWidth, height = iconHeight),
+        modifier = modifier
+            .size(width = iconWidth, height = iconHeight)
+            .clip(SimCardNotchShape)
+            .background(bgColor),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val strokeWidth = (if (isLarge) 2.6.dp else 2.0.dp).toPx()
-            val cut = (if (isLarge) 10.dp else 7.dp).toPx()
-            val r = (if (isLarge) 5.dp else 4.dp).toPx()
-            val inset = strokeWidth / 2f
-            val w = size.width - inset
-            val h = size.height - inset
-
-            val path = Path().apply {
-                // Top-left cut corner notch
-                moveTo(inset, cut)
-                lineTo(cut, inset)
-                // Top edge to top-right corner
-                lineTo(w - r, inset)
-                quadraticTo(w, inset, w, inset + r)
-                // Right edge to bottom-right corner
-                lineTo(w, h - r)
-                quadraticTo(w, h, w - r, h)
-                // Bottom edge to bottom-left corner
-                lineTo(inset + r, h)
-                quadraticTo(inset, h, inset, h - r)
-                // Left edge back to cut
-                lineTo(inset, cut)
-                close()
-            }
-
-            // Subtle inner tint
-            drawPath(
-                path = path,
-                color = tint.copy(alpha = 0.15f),
-                style = Fill
-            )
-            // Crisp, bold outer SIM border
-            drawPath(
-                path = path,
-                color = tint,
-                style = Stroke(
-                    width = strokeWidth,
-                    cap = StrokeCap.Round,
-                    join = StrokeJoin.Round
-                )
-            )
-        }
-
         Text(
             text = simSlotNumber,
-            fontWeight = FontWeight.Black,
+            color = textColor,
             fontSize = fontSize,
-            color = tint,
-            textAlign = TextAlign.Center
+            lineHeight = fontSize,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            style = androidx.compose.ui.text.TextStyle(
+                platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)
+            )
         )
     }
 }
@@ -2447,7 +2628,12 @@ fun DialerActionExpressive(
 
     val useLiquidGlass = liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && liquidGlassBackdrop != null
     val isExpressive = com.modiprincekr.thedialer.view.theme.isMaterialExpressive()
-    val buttonShape = if (isExpressive) {
+    val isCircleButtons = remember(settingsState) {
+        prefs.getBoolean(PreferenceManager.KEY_DIALPAD_CIRCLE_BUTTONS, false)
+    }
+    val buttonShape = if (isCircleButtons) {
+        CircleShape
+    } else if (isExpressive) {
         if (isCallButton) {
             if (isVisuallyPressed) com.modiprincekr.thedialer.view.theme.expressive.PetalMaterialShapes.Cookie12Sided.toShape()
             else com.modiprincekr.thedialer.view.theme.expressive.PetalMaterialShapes.Sunny.toShape()
@@ -2474,81 +2660,89 @@ fun DialerActionExpressive(
         }
     }
 
-    if (useLiquidGlass && liquidGlassBackdrop != null) {
-        Box(
-            modifier = modifier
-                .scale(scale)
-                .drawBackdrop(
-                    backdrop = liquidGlassBackdrop,
-                    shape = { buttonShape },
-                    effects = {
-                        val d = density
-                        colorControls(brightness = lgCallButtonConfig.brightness, saturation = lgCallButtonConfig.saturation)
-                        if (lgCallButtonConfig.blurRadiusDp > 0f) blur(lgCallButtonConfig.blurRadiusDp * d)
-                        lens(
-                            refractionHeight = lgCallButtonConfig.refractionHeightDp * d,
-                            refractionAmount = lgCallButtonConfig.refractionAmountDp * d,
-                            chromaticAberration = lgCallButtonConfig.chromaticAberration,
-                            depthEffect = lgCallButtonConfig.depthEffect
-                        )
-                    },
-                    highlight = { Highlight.Default }
+    BoxWithConstraints(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        val targetSize = if (isCircleButtons) minOf(maxWidth, maxHeight) else null
+        val btnModifier = if (targetSize != null) Modifier.size(targetSize) else Modifier.fillMaxSize()
+
+        if (useLiquidGlass && liquidGlassBackdrop != null) {
+            Box(
+                modifier = btnModifier
+                    .scale(scale)
+                    .drawBackdrop(
+                        backdrop = liquidGlassBackdrop,
+                        shape = { buttonShape },
+                        effects = {
+                            val d = density
+                            colorControls(brightness = lgCallButtonConfig.brightness, saturation = lgCallButtonConfig.saturation)
+                            if (lgCallButtonConfig.blurRadiusDp > 0f) blur(lgCallButtonConfig.blurRadiusDp * d)
+                            lens(
+                                refractionHeight = lgCallButtonConfig.refractionHeightDp * d,
+                                refractionAmount = lgCallButtonConfig.refractionAmountDp * d,
+                                chromaticAberration = lgCallButtonConfig.chromaticAberration,
+                                depthEffect = lgCallButtonConfig.depthEffect
+                            )
+                        },
+                        highlight = { Highlight.Default }
+                    )
+                    .combinedClickable(
+                        onClick = wrappedOnClick,
+                        onLongClick = wrappedOnLongClick,
+                        interactionSource = interactionSource,
+                        indication = null
+                    )
+            ) {
+                Surface(
+                    shape = buttonShape,
+                    color = animatedBgColor.copy(alpha = 0.5f),
+                    contentColor = animatedContentColor,
+                    modifier = Modifier.matchParentSize()
+                ) {
+                    actionContent()
+                }
+            }
+        } else if (useBackdropBlur && liquidGlassBackdrop != null) {
+            Box(
+                modifier = btnModifier
+                    .scale(scale)
+                    .drawBackdrop(
+                        backdrop = liquidGlassBackdrop,
+                        shape    = { buttonShape },
+                        effects  = {
+                            val d = density
+                            colorControls(saturation = blurCallButtonConfig.saturation)
+                            blur(blurCallButtonConfig.blurRadiusDp * d)
+                        },
+                        highlight = { Highlight.Default }
+                    )
+                    .combinedClickable(
+                        onClick = wrappedOnClick,
+                        onLongClick = wrappedOnLongClick,
+                        interactionSource = interactionSource,
+                        indication = null
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(animatedBgColor.copy(alpha = 0.45f), buttonShape)
                 )
-                .combinedClickable(
-                    onClick = wrappedOnClick,
-                    onLongClick = wrappedOnLongClick,
-                    interactionSource = interactionSource,
-                    indication = null
-                )
-        ) {
+                actionContent()
+            }
+        } else {
             Surface(
+                modifier = btnModifier
+                    .scale(scale)
+                    .combinedClickable(onClick = wrappedOnClick, onLongClick = wrappedOnLongClick, interactionSource = interactionSource, indication = null),
                 shape = buttonShape,
-                color = animatedBgColor.copy(alpha = 0.5f),
-                contentColor = animatedContentColor,
-                modifier = Modifier.matchParentSize()
+                color = animatedBgColor,
+                contentColor = animatedContentColor
             ) {
                 actionContent()
             }
-        }
-    } else if (useBackdropBlur && liquidGlassBackdrop != null) {
-        Box(
-            modifier = modifier
-                .scale(scale)
-                .drawBackdrop(
-                    backdrop = liquidGlassBackdrop,
-                    shape    = { buttonShape },
-                    effects  = {
-                        val d = density
-                        colorControls(saturation = blurCallButtonConfig.saturation)
-                        blur(blurCallButtonConfig.blurRadiusDp * d)
-                    },
-                    highlight = { Highlight.Default }
-                )
-                .combinedClickable(
-                    onClick = wrappedOnClick,
-                    onLongClick = wrappedOnLongClick,
-                    interactionSource = interactionSource,
-                    indication = null
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(animatedBgColor.copy(alpha = 0.45f), buttonShape)
-            )
-            actionContent()
-        }
-    } else {
-        Surface(
-            modifier = modifier
-                .scale(scale)
-                .combinedClickable(onClick = wrappedOnClick, onLongClick = wrappedOnLongClick, interactionSource = interactionSource, indication = null),
-            shape = buttonShape,
-            color = animatedBgColor,
-            contentColor = animatedContentColor
-        ) {
-            actionContent()
         }
     }
 }
@@ -2581,11 +2775,30 @@ fun DialPadKey(
     val isSaturatedActive = remember(settingsState, isDark) { prefs.isSaturatedForTheme(isDark) }
     val isSaturatedContainer = remember(settingsState) { prefs.getSaturatedTarget() == PreferenceManager.SATURATED_TARGET_CONTAINER }
 
+    val keyWidth = overrideWidth ?: if (compact) 82.dp else 100.dp
+    val keyHeight = overrideHeight ?: if (compact) 52.dp else 68.dp
+    val isCircleButtons = remember(settingsState) {
+        prefs.getBoolean(PreferenceManager.KEY_DIALPAD_CIRCLE_BUTTONS, false)
+    }
+    val buttonWidth = if (isCircleButtons) minOf(keyWidth, keyHeight) else keyWidth
+    val buttonHeight = if (isCircleButtons) minOf(keyWidth, keyHeight) else keyHeight
+    val isStarKey = number == "*"
+    val isPlusSubKey = letters.trim() == "+"
+    val hasLetters = letters.isNotBlank()
+
     val cornerRadius by animateDpAsState(
-        targetValue = if (isVisuallyPressed) 10.dp else (if (compact) 24.dp else 28.dp),
+        targetValue = if (isVisuallyPressed) 10.dp else minOf(keyHeight / 2, if (compact) 22.dp else 26.dp),
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "ButtonShapeAnimation"
     )
+    val buttonShape = if (isCircleButtons) {
+        CircleShape
+    } else if (com.modiprincekr.thedialer.view.theme.isMaterialExpressive()) {
+        if (isVisuallyPressed) com.modiprincekr.thedialer.view.theme.expressive.PetalMaterialShapes.Cookie4Sided.toShape()
+        else RoundedCornerShape(cornerRadius)
+    } else {
+        RoundedCornerShape(cornerRadius)
+    }
     val scale by animateFloatAsState(
         targetValue = if (isVisuallyPressed) 0.88f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy),
@@ -2620,48 +2833,52 @@ fun DialPadKey(
     val targetSubTextColor = if (isVisuallyPressed) pressedTextColor.copy(alpha = 0.85f) else restingSubTextColor
     val subTextColor by animateColorAsState(targetSubTextColor, spring(stiffness = Spring.StiffnessMedium), "DialKeySubTextColor")
 
-    val keyWidth = overrideWidth ?: if (compact) 82.dp else 100.dp
-    val keyHeight = overrideHeight ?: if (compact) 52.dp else 68.dp
-    val isStarKey = number == "*"
-    val isPlusSubKey = letters.trim() == "+"
-    val hasLetters = letters.isNotBlank()
-
     val density = LocalDensity.current
     val currentFontScale = density.fontScale
+    val appFontHeightScale = remember(settingsState) { prefs.getFloat(PreferenceManager.KEY_FONT_HEIGHT_SCALE, 1.0f) }
+    val userFontFactor = appFontHeightScale.coerceIn(0.7f, 1.3f)
 
-    // Base font sizes
+    // Base font sizes in sp - numbers font size safely increased alone
     val baseMainSize = if (isStarKey) {
-        if (compact) 22f else 25f
+        if (isCircleButtons) {
+            if (compact) 26f else 32f
+        } else {
+            if (compact) 23f else 28f
+        }
     } else {
-        if (compact) 18f else 21f
+        if (isCircleButtons) {
+            if (compact) 23f else 28f
+        } else {
+            if (compact) 20f else 25f
+        }
     }
     val baseSubSize = if (isPlusSubKey) {
-        if (compact) 10f else 11f
+        if (compact) 10.5f else 11.5f
     } else {
-        if (compact) 8.5f else 9f
+        if (compact) 9f else 9.5f
     }
 
-    // Height budget inside the button: guarantee at least 14dp vertical margin (7dp top + 7dp bottom)
-    val buttonHeightVal = keyHeight.value
-    val maxContentHeight = (buttonHeightVal - 14f).coerceAtLeast(18f)
+    // Safe height budget inside button: leave at least 14dp total margin (7dp top + 7dp bottom)
+    val buttonHeightVal = buttonHeight.value
+    val maxContentHeight = (buttonHeightVal - 14f).coerceAtLeast(14f)
 
-    // Gap between digit and letters
-    val gapHeight = if (hasLetters) 1f else 0f
+    // Gap between digit and letters (0 in compact to save space, 1dp in normal)
+    val gapHeight = if (hasLetters) (if (compact) 0f else 1f) else 0f
 
-    // Estimated total text height with font metrics (~1.15x em size) and fontScale
-    val estimatedMainH = baseMainSize * 1.15f * currentFontScale
-    val estimatedSubH = if (hasLetters) (baseSubSize * 1.15f * currentFontScale + gapHeight) else 0f
-    val totalEstimatedH = (estimatedMainH + estimatedSubH) * scaleFactor
+    // Total raw text height scaled by scaleFactor and user appearance font settings
+    val targetMainH = baseMainSize * scaleFactor * userFontFactor
+    val targetSubH = baseSubSize * scaleFactor * userFontFactor
+    val renderedTotalH = (targetMainH + (if (hasLetters) targetSubH else 0f)) * currentFontScale + gapHeight
 
-    // If text exceeds button height budget, scale down smoothly so it NEVER reaches or crosses the button edge
-    val fitRatio = if (totalEstimatedH > maxContentHeight) {
-        (maxContentHeight / totalEstimatedH).coerceIn(0.5f, 1.0f)
+    // If rendered text exceeds safe button height budget, scale down smoothly so it NEVER touches or crosses the button edge
+    val fitRatio = if (renderedTotalH > maxContentHeight) {
+        (maxContentHeight / renderedTotalH).coerceIn(0.45f, 1.0f)
     } else {
         1.0f
     }
 
-    val finalMainFontSize = (baseMainSize * scaleFactor * fitRatio).coerceAtLeast(10f)
-    val finalSubFontSize = (baseSubSize * scaleFactor * fitRatio).coerceAtLeast(6f)
+    val finalMainFontSize = (targetMainH * fitRatio).coerceAtLeast(9f)
+    val finalSubFontSize = (targetSubH * fitRatio).coerceAtLeast(5.5f)
 
     val triggerTapPulse = {
         tapJob?.cancel()
@@ -2672,67 +2889,80 @@ fun DialPadKey(
         }
     }
 
-    Surface(
-        modifier = Modifier
-            .size(width = keyWidth, height = keyHeight)
-            .scale(scale)
-            .combinedClickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {
-                    triggerTapPulse()
-                    if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    if (prefs.getBoolean(PreferenceManager.KEY_DTMF_TONE, false)) playDtmf(context, number, soundPool, prefs)
-                    onClick(number)
-                },
-                onLongClick = if (onLongClick != null) ({
-                    triggerTapPulse()
-                    if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onLongClick()
-                }) else null
-            ),
-        shape = if (com.modiprincekr.thedialer.view.theme.isMaterialExpressive()) {
-            if (isVisuallyPressed) com.modiprincekr.thedialer.view.theme.expressive.PetalMaterialShapes.Cookie4Sided.toShape()
-            else RoundedCornerShape(cornerRadius)
-        } else {
-            RoundedCornerShape(cornerRadius)
-        },
-        color = bgColor
+    Box(
+        modifier = Modifier.size(
+            width = if (isCircleButtons) buttonWidth else keyWidth,
+            height = if (isCircleButtons) buttonHeight else keyHeight
+        ),
+        contentAlignment = Alignment.Center
     ) {
-        Column(
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
+        Surface(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 4.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = number,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontSize = finalMainFontSize.sp,
-                    lineHeight = finalMainFontSize.sp,
-                    platformStyle = PlatformTextStyle(includeFontPadding = false)
+                .size(width = buttonWidth, height = buttonHeight)
+                .scale(scale)
+                .combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = {
+                        triggerTapPulse()
+                        if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        if (prefs.getBoolean(PreferenceManager.KEY_DTMF_TONE, false)) playDtmf(context, number, soundPool, prefs)
+                        onClick(number)
+                    },
+                    onLongClick = if (onLongClick != null) ({
+                        triggerTapPulse()
+                        if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLongClick()
+                    }) else null
                 ),
-                color = mainTextColor,
-                fontWeight = if (isStarKey) FontWeight.SemiBold else FontWeight.Medium,
-                maxLines = 1,
-                softWrap = false
-            )
-            if (hasLetters) {
-                Spacer(modifier = Modifier.height(gapHeight.dp))
+            shape = buttonShape,
+            color = bgColor
+        ) {
+            Column(
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
                 Text(
-                    text = letters,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = finalSubFontSize.sp,
-                        lineHeight = finalSubFontSize.sp,
+                    text = number,
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontSize = finalMainFontSize.sp,
+                        lineHeight = finalMainFontSize.sp,
+                        lineHeightStyle = LineHeightStyle(
+                            alignment = LineHeightStyle.Alignment.Center,
+                            trim = LineHeightStyle.Trim.Both
+                        ),
                         platformStyle = PlatformTextStyle(includeFontPadding = false)
                     ),
-                    color = subTextColor,
-                    letterSpacing = if (isPlusSubKey) 0.sp else 0.4.sp,
-                    fontWeight = if (isPlusSubKey) FontWeight.Bold else FontWeight.Normal,
+                    color = mainTextColor,
+                    fontWeight = if (isStarKey) FontWeight.SemiBold else FontWeight.Medium,
                     maxLines = 1,
                     softWrap = false
                 )
+                if (hasLetters) {
+                    if (gapHeight > 0f) {
+                        Spacer(modifier = Modifier.height(gapHeight.dp))
+                    }
+                    Text(
+                        text = letters,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = finalSubFontSize.sp,
+                            lineHeight = finalSubFontSize.sp,
+                            lineHeightStyle = LineHeightStyle(
+                                alignment = LineHeightStyle.Alignment.Center,
+                                trim = LineHeightStyle.Trim.Both
+                            ),
+                            platformStyle = PlatformTextStyle(includeFontPadding = false)
+                        ),
+                        color = subTextColor,
+                        letterSpacing = if (isPlusSubKey) 0.sp else 0.4.sp,
+                        fontWeight = if (isPlusSubKey) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
         }
     }
@@ -2839,7 +3069,7 @@ private fun DialpadNumberDisplay(
         ) {
             val density = LocalDensity.current
             val systemFontScale = density.fontScale
-            val combinedScale = (fontScale * systemFontScale).coerceAtLeast(0.5f)
+            val combinedScale = systemFontScale.coerceAtLeast(0.5f)
             val sideSpacerWidth = when {
                 number.length <= 6 -> 24.dp
                 number.length <= 13 -> (24.dp - (number.length - 6).dp * 2).coerceAtLeast(10.dp)

@@ -1,6 +1,7 @@
 package com.modiprincekr.thedialer
 
 import com.coolappstore.evercallrecorder.by.svhp.ShizuApplication
+import com.coolappstore.everdialer.by.svhp.feature.AppFeatures
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.view.screen.settings.applyIcon
 import com.modiprincekr.thedialer.view.screen.settings.buildIcons
@@ -19,6 +20,7 @@ class RivoApp : ShizuApplication() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        AppFeatures.init(this)
         startKoin {
             androidContext(this@RivoApp)
             modules(appModule)
