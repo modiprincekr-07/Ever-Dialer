@@ -151,7 +151,7 @@ fun CallerUIScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                                     trailingIcon = Icons.Default.ChevronRight,
                                     modifier = Modifier.settingsSearchHighlight("ongoing_call_background", highlightedKey) { highlightedKey = null },
                                     onClick = {
-                                        navigator.navigate(CustomBackgroundPickerScreenDestination("ongoing"))
+                                        navigator.navigate(CustomBackgroundPickerScreenDestination(isIncoming = false))
                                     }
                                 )
                                 HorizontalDivider(
