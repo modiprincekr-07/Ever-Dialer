@@ -92,7 +92,6 @@ import com.modiprincekr.thedialer.modal.data.Contact
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.SimSlotBadge
 import com.modiprincekr.thedialer.view.theme.Rivo4Theme
-import com.coolappstore.evercallrecorder.by.svhp.services.recording.RecordingForegroundService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

@@ -1,6 +1,6 @@
 package com.modiprincekr.thedialer
 
-import com.coolappstore.evercallrecorder.by.svhp.ShizuApplication
+import android.app.Application
 import com.coolappstore.everdialer.by.svhp.feature.AppFeatures
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.view.screen.settings.applyIcon
@@ -8,9 +8,7 @@ import com.modiprincekr.thedialer.view.screen.settings.buildIcons
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 
-// Extends ShizuApplication (Ever Call Recorder's Application class) so its own
-// startup init (AppLogger, etc.) still runs now that Recorder is bundled in-app.
-class RivoApp : ShizuApplication() {
+class RivoApp : Application() {
 
     companion object {
         lateinit var instance: RivoApp
