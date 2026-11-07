@@ -189,7 +189,7 @@ private fun ConfirmCallDialogUi(
     val defaultSim = remember { prefs.getInt(PreferenceManager.KEY_DEFAULT_SIM, 1) }
     var selectedSimSlot by remember(accountHandle, accounts) {
         val initialSlot = if (accountHandle != null) {
-            val slot = com.coolappstore.everdialer.by.svhp.controller.util.getSimSlotForAccountHandle(context, accountHandle)
+            val slot = com.modiprincekr.thedialer.controller.util.getSimSlotForAccountHandle(context, accountHandle)
             if (slot in 0..1) slot + 1 else defaultSim
         } else {
             defaultSim
@@ -442,7 +442,7 @@ private fun ConfirmCallDialogUi(
                     Button(
                         onClick = {
                             val targetHandle = if (accounts.isNotEmpty()) {
-                                com.coolappstore.everdialer.by.svhp.controller.util.getPhoneAccountForSimSlot(
+                                com.modiprincekr.thedialer.controller.util.getPhoneAccountForSimSlot(
                                     context, accounts, if (selectedSimSlot == 2) 1 else 0
                                 )
                             } else accountHandle

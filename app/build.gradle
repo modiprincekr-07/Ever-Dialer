@@ -66,15 +66,15 @@ android {
     productFlavors {
         github {
             dimension "distribution"
-            applicationId "com.coolappstore.everdialer.by.svhp"
+            applicationId "com.modiprincekr.thedialer"
         }
         fdroid {
             dimension "distribution"
-            applicationId "com.everlasting.projects.by.svhp.freedroid"
+            applicationId "com.modiprincekr.thedialer"
         }
         play {
             dimension "distribution"
-            applicationId "com.everlasting.projects.by.svhp.play"
+            applicationId "com.modiprincekr.thedialer"
         }
     }
 

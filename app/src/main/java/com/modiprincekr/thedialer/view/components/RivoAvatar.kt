@@ -208,9 +208,9 @@ fun RivoAvatar(
         else -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
     }
 
-    val isExpressive = com.coolappstore.everdialer.by.svhp.view.theme.isMaterialExpressive()
+    val isExpressive = com.modiprincekr.thedialer.view.theme.isMaterialExpressive()
     val resolvedShape = if (isExpressive && shape == CircleShape) {
-        val avatarShapeList = com.coolappstore.everdialer.by.svhp.view.theme.expressive.PetalMaterialShapes.avatarShapes
+        val avatarShapeList = com.modiprincekr.thedialer.view.theme.expressive.PetalMaterialShapes.avatarShapes
         val key = if (hasName) name else (photoUri ?: "unknown_caller")
         val idx = (kotlin.math.abs(key.hashCode())) % avatarShapeList.size
         avatarShapeList[idx].toShape()

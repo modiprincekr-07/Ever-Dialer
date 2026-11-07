@@ -77,8 +77,22 @@ object BackupManager {
         return dir
     }
 
+    fun getContactMediaDir(context: Context): File {
+        val dir = File(context.filesDir, "contact_media")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
+    fun getContactGifsDir(context: Context): File {
+        val dir = File(context.filesDir, "contact_gifs")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
     fun isCallingCardKey(key: String): Boolean {
         return key.startsWith("contact_") ||
+                key.endsWith("_media_bg") ||
+                key.endsWith("_gif_bg") ||
                 key.startsWith("incoming_") ||
                 key.startsWith("ongoing_") ||
                 key.startsWith("call_ui_") ||
@@ -238,7 +252,7 @@ object BackupManager {
                     }
                 }
 
-                // 4. Backup Calling Cards Media (Backgrounds: images, videos, wallpapers)
+                // 4. Backup Calling Cards Media (Backgrounds: images, videos, wallpapers, contact media GIFs & videos)
                 if (backupSettings || backupCallingCards) {
                     val bgDir = getBackgroundsDir(context)
                     bgDir.listFiles()?.forEach { bgFile ->
@@ -250,18 +264,42 @@ object BackupManager {
                         }
                     }
 
+                    // Backup custom contact background videos (ExoPlayer) & GIFs (Coil)
+                    val contactMediaDir = getContactMediaDir(context)
+                    contactMediaDir.listFiles()?.forEach { mediaFile ->
+                        if (mediaFile.isFile && !backedUpFiles.contains(mediaFile.name)) {
+                            zip.putNextEntry(ZipEntry("contact_media/${mediaFile.name}"))
+                            FileInputStream(mediaFile).use { it.copyTo(zip) }
+                            zip.closeEntry()
+                            backedUpFiles.add(mediaFile.name)
+                        }
+                    }
+
+                    val contactGifsDir = getContactGifsDir(context)
+                    contactGifsDir.listFiles()?.forEach { gifFile ->
+                        if (gifFile.isFile && !backedUpFiles.contains(gifFile.name)) {
+                            zip.putNextEntry(ZipEntry("contact_gifs/${gifFile.name}"))
+                            FileInputStream(gifFile).use { it.copyTo(zip) }
+                            zip.closeEntry()
+                            backedUpFiles.add(gifFile.name)
+                        }
+                    }
+
                     // Check any referenced files in SharedPreferences that might reside elsewhere
                     val rivoPrefs = context.getSharedPreferences(PREFS_RIVO, Context.MODE_PRIVATE)
                     rivoPrefs.all.forEach { (key, value) ->
                         val isMediaKey = key.endsWith("_bg_path") ||
                                 key.endsWith("_custom_pfp_path") ||
                                 key.endsWith("_pfp_path") ||
+                                key.endsWith("_media_bg") ||
+                                key.endsWith("_gif_bg") ||
                                 key == PreferenceManager.KEY_INCOMING_CUSTOM_PFP_PATH ||
                                 key == PreferenceManager.KEY_ONGOING_CUSTOM_PFP_PATH
                         if (isMediaKey && value is String && value.isNotBlank()) {
                             val f = File(value)
                             if (f.exists() && f.isFile && !backedUpFiles.contains(f.name)) {
-                                zip.putNextEntry(ZipEntry("backgrounds/${f.name}"))
+                                val entryPrefix = if (key.endsWith("_media_bg") || key.endsWith("_gif_bg")) "contact_media" else "backgrounds"
+                                zip.putNextEntry(ZipEntry("$entryPrefix/${f.name}"))
                                 FileInputStream(f).use { it.copyTo(zip) }
                                 zip.closeEntry()
                                 backedUpFiles.add(f.name)
@@ -609,7 +647,9 @@ object BackupManager {
                         name.startsWith("datastore/") || name == "custom_font.ttf" -> {
                             hasSettings = true
                         }
-                        name.startsWith("backgrounds/") -> {
+                        name.startsWith("backgrounds/") ||
+                        name.startsWith("contact_media/") ||
+                        name.startsWith("contact_gifs/") -> {
                             hasCallingCards = true
                         }
                         name.startsWith("notes/") -> {
@@ -749,6 +789,36 @@ object BackupManager {
                                     val bgFile = File(bgDir, fileName)
                                     bgFile.parentFile?.mkdirs()
                                     FileOutputStream(bgFile).use { zip.copyTo(it) }
+                                    restoredAny = true
+                                }
+                            }
+                        }
+                        name.startsWith("contact_media/") -> {
+                            if (restoreCallingCards || restoreSettings) {
+                                val fileName = name.removePrefix("contact_media/")
+                                if (fileName.isNotEmpty()) {
+                                    val mediaDir = getContactMediaDir(context)
+                                    val mediaFile = File(mediaDir, fileName)
+                                    mediaFile.parentFile?.mkdirs()
+                                    FileOutputStream(mediaFile).use { zip.copyTo(it) }
+                                    restoredAny = true
+                                }
+                            }
+                        }
+                        name.startsWith("contact_gifs/") -> {
+                            if (restoreCallingCards || restoreSettings) {
+                                val fileName = name.removePrefix("contact_gifs/")
+                                if (fileName.isNotEmpty()) {
+                                    val mediaDir = getContactMediaDir(context)
+                                    val gifsDir = getContactGifsDir(context)
+                                    val mediaFile = File(mediaDir, fileName)
+                                    val gifFile = File(gifsDir, fileName)
+                                    mediaFile.parentFile?.mkdirs()
+                                    gifsDir.mkdirs()
+                                    FileOutputStream(mediaFile).use { fos ->
+                                        zip.copyTo(fos)
+                                    }
+                                    try { mediaFile.copyTo(gifFile, overwrite = true) } catch (_: Exception) {}
                                     restoredAny = true
                                 }
                             }
@@ -1198,17 +1268,17 @@ object BackupManager {
 
             if (restoreSettings) {
                 try {
-                    com.coolappstore.everdialer.by.svhp.widget.RecentCallsWidgetProvider.refresh(context)
+                    com.modiprincekr.thedialer.widget.RecentCallsWidgetProvider.refresh(context)
                 } catch (_: Throwable) {}
                 try {
                     val mgr = android.appwidget.AppWidgetManager.getInstance(context)
-                    val directComp = android.content.ComponentName(context, com.coolappstore.everdialer.by.svhp.widget.DirectCallWidgetProvider::class.java)
+                    val directComp = android.content.ComponentName(context, com.modiprincekr.thedialer.widget.DirectCallWidgetProvider::class.java)
                     mgr.getAppWidgetIds(directComp)?.forEach { id ->
-                        com.coolappstore.everdialer.by.svhp.widget.DirectCallWidgetProvider.updateWidget(context, mgr, id)
+                        com.modiprincekr.thedialer.widget.DirectCallWidgetProvider.updateWidget(context, mgr, id)
                     }
-                    val contactComp = android.content.ComponentName(context, com.coolappstore.everdialer.by.svhp.widget.ContactInfoWidgetProvider::class.java)
+                    val contactComp = android.content.ComponentName(context, com.modiprincekr.thedialer.widget.ContactInfoWidgetProvider::class.java)
                     mgr.getAppWidgetIds(contactComp)?.forEach { id ->
-                        com.coolappstore.everdialer.by.svhp.widget.ContactInfoWidgetProvider.updateWidget(context, mgr, id)
+                        com.modiprincekr.thedialer.widget.ContactInfoWidgetProvider.updateWidget(context, mgr, id)
                     }
                 } catch (_: Throwable) {}
             }
@@ -1474,20 +1544,54 @@ object BackupManager {
             val bgDir = getBackgroundsDir(context)
             var modified = false
 
+            val mediaDir = getContactMediaDir(context)
+            val gifsDir = getContactGifsDir(context)
+
             prefs.all.forEach { (key, value) ->
                 val isMediaKey = key.endsWith("_bg_path") ||
                         key.endsWith("_custom_pfp_path") ||
                         key.endsWith("_pfp_path") ||
                         key == PreferenceManager.KEY_INCOMING_CUSTOM_PFP_PATH ||
                         key == PreferenceManager.KEY_ONGOING_CUSTOM_PFP_PATH
+                val isContactMediaKey = key.endsWith("_media_bg") || key.endsWith("_gif_bg")
+
                 if (isMediaKey && value is String && value.isNotBlank()) {
                     val file = File(value)
                     if (!file.exists()) {
                         val fileName = file.name
                         val localFile = File(bgDir, fileName)
-                        if (localFile.exists()) {
-                            editor.putString(key, localFile.absolutePath)
-                            modified = true
+                        val candidateMedia = File(mediaDir, fileName)
+                        when {
+                            localFile.exists() -> {
+                                editor.putString(key, localFile.absolutePath)
+                                modified = true
+                            }
+                            candidateMedia.exists() -> {
+                                editor.putString(key, candidateMedia.absolutePath)
+                                modified = true
+                            }
+                        }
+                    }
+                } else if (isContactMediaKey && value is String && value.isNotBlank()) {
+                    val file = File(value)
+                    if (!file.exists()) {
+                        val fileName = file.name
+                        val localMedia = File(mediaDir, fileName)
+                        val localGif = File(gifsDir, fileName)
+                        val localBg = File(bgDir, fileName)
+                        when {
+                            localMedia.exists() -> {
+                                editor.putString(key, localMedia.absolutePath)
+                                modified = true
+                            }
+                            localGif.exists() -> {
+                                editor.putString(key, localGif.absolutePath)
+                                modified = true
+                            }
+                            localBg.exists() -> {
+                                editor.putString(key, localBg.absolutePath)
+                                modified = true
+                            }
                         }
                     }
                 }

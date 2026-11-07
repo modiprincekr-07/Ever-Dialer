@@ -284,7 +284,7 @@ fun CallLogsSettingsScreen(
     }
 
     if (showCategoriesDialog) {
-        com.coolappstore.everdialer.by.svhp.view.components.CallCategoriesDialog(
+        com.modiprincekr.thedialer.view.components.CallCategoriesDialog(
             onDismissRequest = { showCategoriesDialog = false },
             onAddClick = {
                 showCategoriesDialog = false

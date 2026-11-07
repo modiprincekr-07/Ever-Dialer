@@ -1135,7 +1135,7 @@ class PcBluetoothSyncManager(
 
             val confirmPlacingCall = prefs.getBoolean(PreferenceManager.KEY_CONFIRM_PLACING_CALL, false)
             val syncDynamicColors = prefs.getBoolean(PreferenceManager.KEY_PC_SYNC_DYNAMIC_COLORS, true)
-            val activeThemeColor = com.coolappstore.everdialer.by.svhp.view.theme.getActiveThemeColor(context, prefs)
+            val activeThemeColor = com.modiprincekr.thedialer.view.theme.getActiveThemeColor(context, prefs)
             val themeColorHex = if (syncDynamicColors) String.format("#%06X", 0xFFFFFF and activeThemeColor) else null
 
             val defaultSim = prefs.getInt(PreferenceManager.KEY_DEFAULT_SIM, 1)

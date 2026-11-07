@@ -298,7 +298,7 @@ fun SwipeActionsScreen(
                         sectionKey = section.key,
                         title = section.title,
                         onShowFavoritesInListClick = {
-                            com.coolappstore.everdialer.by.svhp.view.theme.SettingsClickTracker.recordNormalized(0.7f, 0.4f)
+                            com.modiprincekr.thedialer.view.theme.SettingsClickTracker.recordNormalized(0.7f, 0.4f)
                             navigator.navigate(FavouritesSettingsScreenDestination())
                         }
                     )

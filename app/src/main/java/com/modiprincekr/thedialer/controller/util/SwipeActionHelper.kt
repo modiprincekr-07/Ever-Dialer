@@ -8,7 +8,7 @@ import androidx.compose.material.icons.automirrored.outlined.PhoneCallback
 import androidx.compose.material.icons.outlined.MarkChatRead
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.ColorScheme
-import com.coolappstore.everdialer.by.svhp.view.components.SwipeActionItem
+import com.modiprincekr.thedialer.view.components.SwipeActionItem
 
 object SwipeActionHelper {
 

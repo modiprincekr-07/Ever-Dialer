@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import com.coolappstore.everdialer.by.svhp.modal.data.RecordingItem
+import com.modiprincekr.thedialer.modal.data.RecordingItem
 
 object AppFeatures {
     val isCallRecorderAvailable: Boolean = false

@@ -608,7 +608,7 @@ fun BottomBar(navController: NavController) {
                     label = "slidingPillLeft"
                 )
 
-                val isExpressive = com.coolappstore.everdialer.by.svhp.view.theme.isMaterialExpressive()
+                val isExpressive = com.modiprincekr.thedialer.view.theme.isMaterialExpressive()
                 val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
                 val isSaturatedActive = remember(settingsState, isDark) { prefs.isSaturatedForTheme(isDark) }
                 val isDynamic = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_DYNAMIC_COLORS, true) }
@@ -1034,7 +1034,7 @@ fun BottomBar(navController: NavController) {
             label = "standardSlidingPillLeft"
         )
 
-        val isStandardExpressive = com.coolappstore.everdialer.by.svhp.view.theme.isMaterialExpressive()
+        val isStandardExpressive = com.modiprincekr.thedialer.view.theme.isMaterialExpressive()
         val isStandardDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
         val isStandardSaturatedActive = remember(settingsState, isStandardDark) { prefs.isSaturatedForTheme(isStandardDark) }
         val isStandardDynamic = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_DYNAMIC_COLORS, true) }
@@ -1338,7 +1338,7 @@ private fun AnimatedNavBarItem(
         label         = "${label}IconTint"
     )
 
-    val isExpressive = com.coolappstore.everdialer.by.svhp.view.theme.isMaterialExpressive()
+    val isExpressive = com.modiprincekr.thedialer.view.theme.isMaterialExpressive()
     val indicatorShape = if (isExpressive && (selected || isHovered)) {
         RoundedCornerShape(16.dp)
     } else {
@@ -1548,7 +1548,7 @@ private fun PillNavItem(
         label         = "${label}Scale"
     )
 
-    val isExpressive = com.coolappstore.everdialer.by.svhp.view.theme.isMaterialExpressive()
+    val isExpressive = com.modiprincekr.thedialer.view.theme.isMaterialExpressive()
     val navShape = if (isExpressive && (selected || isHovered)) {
         RoundedCornerShape(18.dp)
     } else {

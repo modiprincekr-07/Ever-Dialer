@@ -14,8 +14,8 @@ import com.coolappstore.evercallrecorder.by.svhp.services.call.CallSessionManage
 import com.coolappstore.evercallrecorder.by.svhp.services.recording.RecordingForegroundService
 import com.coolappstore.evercallrecorder.by.svhp.ui.viewmodels.HomeViewModel
 import com.coolappstore.evercallrecorder.by.svhp.utils.AppLogger
-import com.coolappstore.everdialer.by.svhp.controller.util.UpdateNotificationManager
-import com.coolappstore.everdialer.by.svhp.modal.data.RecordingItem
+import com.modiprincekr.thedialer.controller.util.UpdateNotificationManager
+import com.modiprincekr.thedialer.modal.data.RecordingItem
 
 object AppFeatures {
     val isCallRecorderAvailable: Boolean = true

@@ -88,7 +88,7 @@ fun BlockedNumbersScreen(navigator: DestinationsNavigator) {
 
     val navigateToSystemBlocker = {
         if (!BlockedNumbersManager.openSystemBlockedNumbers(context)) {
-            val intent = com.coolappstore.everdialer.by.svhp.controller.util.DefaultDialerManager.createDefaultDialerIntent(context)
+            val intent = com.modiprincekr.thedialer.controller.util.DefaultDialerManager.createDefaultDialerIntent(context)
                 ?: android.content.Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
             intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             try {
