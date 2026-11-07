@@ -21,6 +21,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -1217,14 +1218,14 @@ fun DialPadContent(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     contact.phoneNumbers.forEach { numOption ->
                         Surface(
+                            onClick = {
+                                pendingSpeedDialContactForNumberChoice = null
+                                prefs.setSpeedDial(assignDigit, numOption, contact.name)
+                                Toast.makeText(context, "Speed dial for key $assignDigit set to ${contact.name}", Toast.LENGTH_SHORT).show()
+                                speedDialKeyForDialog = null
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    pendingSpeedDialContactForNumberChoice = null
-                                    prefs.setSpeedDial(assignDigit, numOption, contact.name)
-                                    Toast.makeText(context, "Speed dial for key $assignDigit set to ${contact.name}", Toast.LENGTH_SHORT).show()
-                                    speedDialKeyForDialog = null
-                                }
                                 .padding(vertical = 4.dp),
                             shape = RoundedCornerShape(8.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant
@@ -1689,7 +1690,7 @@ fun DialPadContent(
                                         },
                                         onLongClick = when (key) {
                                             "0" -> ({ insertAtCursor("+") })
-                                            in "2".."9" -> ({ handleSpeedDial(key) })
+                                            "2", "3", "4", "5", "6", "7", "8", "9" -> ({ handleSpeedDial(key) })
                                             else -> null
                                         },
                                         compact = true,
@@ -2485,7 +2486,7 @@ fun DialPadContent(
                                     },
                                     onLongClick = when (key) {
                                         "0" -> ({ insertAtCursor("+") })
-                                        in "2".."9" -> ({ handleSpeedDial(key) })
+                                        "2", "3", "4", "5", "6", "7", "8", "9" -> ({ handleSpeedDial(key) })
                                         else -> null
                                     },
                                     overrideWidth = keyWidth,

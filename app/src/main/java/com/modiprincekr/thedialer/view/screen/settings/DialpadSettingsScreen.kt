@@ -326,13 +326,13 @@ fun DialpadSettingsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     contact.phoneNumbers.forEach { numOption ->
                         Surface(
+                            onClick = {
+                                pendingContactForNumberChoice = null
+                                prefs.setSpeedDial(digit, numOption, contact.name)
+                                selectedKeyToAssign = null
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    pendingContactForNumberChoice = null
-                                    prefs.setSpeedDial(digit, numOption, contact.name)
-                                    selectedKeyToAssign = null
-                                }
                                 .padding(vertical = 4.dp),
                             shape = RoundedCornerShape(8.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant
