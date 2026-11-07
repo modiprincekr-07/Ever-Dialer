@@ -180,6 +180,22 @@ class PreferenceManager(context: Context) {
     fun setContactDefaultNumber(contactKey: String, number: String?) =
         setString(KEY_CONTACT_DEFAULT_NUMBER_PREFIX + contactKey, number)
 
+    fun getSpeedDialNumber(digit: String): String? =
+        getString(KEY_SPEED_DIAL_PREFIX + digit, null)?.ifBlank { null }
+
+    fun getSpeedDialName(digit: String): String? =
+        getString(KEY_SPEED_DIAL_NAME_PREFIX + digit, null)?.ifBlank { null }
+
+    fun setSpeedDial(digit: String, number: String?, name: String? = null) {
+        setString(KEY_SPEED_DIAL_PREFIX + digit, number?.trim()?.ifBlank { null })
+        setString(KEY_SPEED_DIAL_NAME_PREFIX + digit, name?.trim()?.ifBlank { null })
+    }
+
+    fun removeSpeedDial(digit: String) {
+        remove(KEY_SPEED_DIAL_PREFIX + digit)
+        remove(KEY_SPEED_DIAL_NAME_PREFIX + digit)
+    }
+
     fun getPinnedSmsThreads(): Set<Long> =
         getString(KEY_PINNED_SMS_THREADS, "")?.split(",")?.mapNotNull { it.trim().toLongOrNull() }?.toSet() ?: emptySet()
 
@@ -1469,6 +1485,10 @@ class PreferenceManager(context: Context) {
 
         // Confirm placing a call
         const val KEY_CONFIRM_PLACING_CALL         = "confirm_placing_call"
+
+        // Speed Dial (Keys 2-9)
+        const val KEY_SPEED_DIAL_PREFIX            = "speed_dial_"
+        const val KEY_SPEED_DIAL_NAME_PREFIX       = "speed_dial_name_"
 
         // PC Connect & Bluetooth PC Sync
         const val KEY_PC_SYNC_FAVOURITES           = "pc_sync_favourites"

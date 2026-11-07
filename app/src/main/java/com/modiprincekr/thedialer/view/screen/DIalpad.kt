@@ -10,6 +10,7 @@ import android.media.SoundPool
 import android.os.Build
 import android.provider.ContactsContract
 import android.telecom.TelecomManager
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -602,6 +603,10 @@ fun DialPadContent(
     }
     var showAddContactChoiceDialog by remember { mutableStateOf(false) }
     var showSelectExistingContactDialog by remember { mutableStateOf(false) }
+    var speedDialKeyForDialog by remember { mutableStateOf<String?>(null) }
+    var showNoSpeedDialDialog by remember { mutableStateOf(false) }
+    var showSpeedDialAssignDialog by remember { mutableStateOf(false) }
+    var pendingSpeedDialContactForNumberChoice by remember { mutableStateOf<Contact?>(null) }
     // Where new digits get inserted / backspace deletes from. Defaults to the end of the number
     // (normal typing behaviour), but the user can tap anywhere in the number to move it, so they
     // can fill in a missing digit in the middle without having to delete and retype everything.
@@ -1030,6 +1035,17 @@ fun DialPadContent(
         }
     }
 
+    fun handleSpeedDial(digit: String) {
+        val speedDialNum = prefs.getSpeedDialNumber(digit)
+        if (!speedDialNum.isNullOrBlank()) {
+            initiateCall(speedDialNum)
+        } else {
+            Toast.makeText(context, "No speed dial set", Toast.LENGTH_SHORT).show()
+            speedDialKeyForDialog = digit
+            showNoSpeedDialDialog = true
+        }
+    }
+
     fun initiateCallWithSim(num: String, simSlotIndex: Int) {
         val cleanNum = num.trim()
         if (cleanNum.isEmpty() || cleanNum == "Unknown") return
@@ -1125,6 +1141,114 @@ fun DialPadContent(
                 )
             },
             onDismiss = { showSelectExistingContactDialog = false }
+        )
+    }
+
+    if (showNoSpeedDialDialog && speedDialKeyForDialog != null) {
+        val digit = speedDialKeyForDialog!!
+        AlertDialog(
+            onDismissRequest = {
+                showNoSpeedDialDialog = false
+                speedDialKeyForDialog = null
+            },
+            title = { Text("Speed Dial") },
+            text = { Text("No speed dial set for key $digit.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showNoSpeedDialDialog = false
+                        showSpeedDialAssignDialog = true
+                    }
+                ) {
+                    Text("Assign Contact")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showNoSpeedDialDialog = false
+                        speedDialKeyForDialog = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showSpeedDialAssignDialog && speedDialKeyForDialog != null) {
+        val allContacts by contactsVM.allContacts.collectAsState()
+        val assignDigit = speedDialKeyForDialog!!
+        SelectExistingContactDialog(
+            contacts = allContacts,
+            onSelectContact = { contact ->
+                showSpeedDialAssignDialog = false
+                if (contact.phoneNumbers.size > 1) {
+                    pendingSpeedDialContactForNumberChoice = contact
+                } else {
+                    val primaryNum = prefs.getContactDefaultNumber(contact.id)?.takeIf { it in contact.phoneNumbers }
+                    val phoneToAssign = primaryNum ?: contact.phoneNumbers.firstOrNull { it.isNotBlank() }
+                    if (!phoneToAssign.isNullOrBlank()) {
+                        prefs.setSpeedDial(assignDigit, phoneToAssign, contact.name)
+                        Toast.makeText(context, "Speed dial for key $assignDigit set to ${contact.name}", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Selected contact has no phone number", Toast.LENGTH_SHORT).show()
+                    }
+                    speedDialKeyForDialog = null
+                }
+            },
+            onDismiss = {
+                showSpeedDialAssignDialog = false
+                speedDialKeyForDialog = null
+            }
+        )
+    }
+
+    if (pendingSpeedDialContactForNumberChoice != null && speedDialKeyForDialog != null) {
+        val contact = pendingSpeedDialContactForNumberChoice!!
+        val assignDigit = speedDialKeyForDialog!!
+        AlertDialog(
+            onDismissRequest = {
+                pendingSpeedDialContactForNumberChoice = null
+                speedDialKeyForDialog = null
+            },
+            title = { Text("Choose Number for ${contact.name}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    contact.phoneNumbers.forEach { numOption ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    pendingSpeedDialContactForNumberChoice = null
+                                    prefs.setSpeedDial(assignDigit, numOption, contact.name)
+                                    Toast.makeText(context, "Speed dial for key $assignDigit set to ${contact.name}", Toast.LENGTH_SHORT).show()
+                                    speedDialKeyForDialog = null
+                                }
+                                .padding(vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = numOption,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(14.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        pendingSpeedDialContactForNumberChoice = null
+                        speedDialKeyForDialog = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 
@@ -1563,7 +1687,11 @@ fun DialPadContent(
                                         onClick = { digit ->
                                             insertAtCursor(digit)
                                         },
-                                        onLongClick = if (key == "0") ({ insertAtCursor("+") }) else null,
+                                        onLongClick = when (key) {
+                                            "0" -> ({ insertAtCursor("+") })
+                                            in "2".."9" -> ({ handleSpeedDial(key) })
+                                            else -> null
+                                        },
                                         compact = true,
                                         overrideWidth = keyWidth,
                                         overrideHeight = keyHeight,
@@ -2355,7 +2483,11 @@ fun DialPadContent(
                                     onClick = { digit ->
                                         insertAtCursor(digit)
                                     },
-                                    onLongClick = if (key == "0") ({ insertAtCursor("+") }) else null,
+                                    onLongClick = when (key) {
+                                        "0" -> ({ insertAtCursor("+") })
+                                        in "2".."9" -> ({ handleSpeedDial(key) })
+                                        else -> null
+                                    },
                                     overrideWidth = keyWidth,
                                     overrideHeight = keyHeight,
                                     scaleFactor = scaleFactor
