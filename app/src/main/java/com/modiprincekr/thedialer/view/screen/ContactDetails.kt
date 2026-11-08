@@ -2851,8 +2851,6 @@ fun ContactDetailsScreen(
                             }
                         }
                     }
-                }
-            }
                     // Contact Info Settings — quick shortcut to Settings → Appearance → Contact Info Settings
                     "contact_info_settings" -> {
                         if (showContactInfoSettings) {

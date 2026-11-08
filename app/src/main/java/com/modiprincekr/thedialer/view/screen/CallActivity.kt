@@ -1,5 +1,7 @@
 package com.modiprincekr.thedialer.view.screen
 
+import com.modiprincekr.thedialer.R
+
 import android.app.Activity
 import android.app.KeyguardManager
 import android.content.Context
