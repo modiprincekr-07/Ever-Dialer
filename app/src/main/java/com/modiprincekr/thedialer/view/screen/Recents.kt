@@ -359,9 +359,9 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
         floatingActionButton = {
             val settingsVer by prefs.settingsChanged.collectAsState()
             val liquidGlass = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) }
-            val lgRecentsFab = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_LG_RECENTS_FAB, false) }
+            val lgRecentsFab = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_LG_RECENTS_FAB, true) }
             val blurEffects = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) }
-            val blurRecentsFab = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_BLUR_RECENTS_FAB, false) }
+            val blurRecentsFab = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_BLUR_RECENTS_FAB, true) }
             val lgRecentsConfig = remember(settingsVer) { prefs.getLiquidGlassConfig(PreferenceManager.KEY_LG_RECENTS_FAB) }
             val blurRecentsConfig = remember(settingsVer) { prefs.getBlurConfig(PreferenceManager.KEY_BLUR_RECENTS_FAB) }
             val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5

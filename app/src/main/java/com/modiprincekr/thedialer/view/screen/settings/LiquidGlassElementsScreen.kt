@@ -285,22 +285,19 @@ fun LiquidGlassElementsScreen(
                         RivoExpressiveCard {
                             LG_ELEMENTS.forEachIndexed { index, element ->
                                 val checked by lgStates[element.key]!!
-                                val isBuggy = element.key == PreferenceManager.KEY_LG_CONTACTS_FAB || element.key == PreferenceManager.KEY_LG_RECENTS_FAB
                                 RivoSwitchListItem(
-                                    headline = if (isBuggy) "${element.headline} 🚫" else element.headline,
-                                    supporting = if (isBuggy) "[Temporarily Disabled] App crash bug detected" else element.supporting,
-                                    leadingIcon = if (isBuggy) Icons.Outlined.Block else element.icon,
-                                    iconContainerColor = if (isBuggy) Color(0xFFE57373) else element.iconColor,
-                                    checked = if (isBuggy) false else checked,
-                                    enabled = isLgMainEnabled && !isBuggy,
+                                    headline = element.headline,
+                                    supporting = element.supporting,
+                                    leadingIcon = element.icon,
+                                    iconContainerColor = element.iconColor,
+                                    checked = checked,
+                                    enabled = isLgMainEnabled,
                                     onCheckedChange = { newValue ->
-                                        if (!isBuggy) {
-                                            lgStates[element.key]!!.value = newValue
-                                            prefs.setBoolean(element.key, newValue)
-                                        }
+                                        lgStates[element.key]!!.value = newValue
+                                        prefs.setBoolean(element.key, newValue)
                                     },
-                                    onArrowClick = if (isBuggy) null else {
-                                        { configuringLgElement = element }
+                                    onArrowClick = {
+                                        configuringLgElement = element
                                     }
                                 )
                                 if (index < LG_ELEMENTS.lastIndex) {
