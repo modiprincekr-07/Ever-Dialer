@@ -196,6 +196,27 @@ class PreferenceManager(context: Context) {
         remove(KEY_SPEED_DIAL_NAME_PREFIX + digit)
     }
 
+    fun clearAllSpeedDials() {
+        (1..9).forEach { digit ->
+            removeSpeedDial(digit.toString())
+        }
+    }
+
+    fun getVoicemailNumber(context: Context? = null): String? {
+        val custom = getSpeedDialNumber("1")
+        if (!custom.isNullOrBlank()) return custom
+        if (context != null) {
+            val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+            val carrierVm = try { telephonyManager?.voiceMailNumber } catch (_: Throwable) { null }
+            if (!carrierVm.isNullOrBlank()) return carrierVm
+        }
+        return null
+    }
+
+    fun setVoicemailNumber(number: String?) {
+        setSpeedDial("1", number, "Voicemail")
+    }
+
     fun getPinnedSmsThreads(): Set<Long> =
         getString(KEY_PINNED_SMS_THREADS, "")?.split(",")?.mapNotNull { it.trim().toLongOrNull() }?.toSet() ?: emptySet()
 

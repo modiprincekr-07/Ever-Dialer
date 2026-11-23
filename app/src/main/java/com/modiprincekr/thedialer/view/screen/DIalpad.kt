@@ -1037,6 +1037,17 @@ fun DialPadContent(
     }
 
     fun handleSpeedDial(digit: String) {
+        if (digit == "1") {
+            val vmNum = prefs.getVoicemailNumber(context)
+            if (!vmNum.isNullOrBlank()) {
+                initiateCall(vmNum)
+            } else {
+                Toast.makeText(context, "No voicemail set", Toast.LENGTH_SHORT).show()
+                speedDialKeyForDialog = "1"
+                showNoSpeedDialDialog = true
+            }
+            return
+        }
         val speedDialNum = prefs.getSpeedDialNumber(digit)
         if (!speedDialNum.isNullOrBlank()) {
             initiateCall(speedDialNum)
@@ -1147,13 +1158,14 @@ fun DialPadContent(
 
     if (showNoSpeedDialDialog && speedDialKeyForDialog != null) {
         val digit = speedDialKeyForDialog!!
+        val isVoicemail = digit == "1"
         AlertDialog(
             onDismissRequest = {
                 showNoSpeedDialDialog = false
                 speedDialKeyForDialog = null
             },
-            title = { Text("Speed Dial") },
-            text = { Text("No speed dial set for key $digit.") },
+            title = { Text(if (isVoicemail) "Voicemail" else "Speed Dial") },
+            text = { Text(if (isVoicemail) "No voicemail number configured for key 1." else "No speed dial set for key $digit.") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -1161,7 +1173,7 @@ fun DialPadContent(
                         showSpeedDialAssignDialog = true
                     }
                 ) {
-                    Text("Assign Contact")
+                    Text(if (isVoicemail) "Assign Number" else "Assign Contact")
                 }
             },
             dismissButton = {
@@ -1690,7 +1702,7 @@ fun DialPadContent(
                                         },
                                         onLongClick = when (key) {
                                             "0" -> ({ insertAtCursor("+") })
-                                            "2", "3", "4", "5", "6", "7", "8", "9" -> ({ handleSpeedDial(key) })
+                                            "1", "2", "3", "4", "5", "6", "7", "8", "9" -> ({ handleSpeedDial(key) })
                                             else -> null
                                         },
                                         compact = true,
@@ -2486,7 +2498,7 @@ fun DialPadContent(
                                     },
                                     onLongClick = when (key) {
                                         "0" -> ({ insertAtCursor("+") })
-                                        "2", "3", "4", "5", "6", "7", "8", "9" -> ({ handleSpeedDial(key) })
+                                        "1", "2", "3", "4", "5", "6", "7", "8", "9" -> ({ handleSpeedDial(key) })
                                         else -> null
                                     },
                                     overrideWidth = keyWidth,
