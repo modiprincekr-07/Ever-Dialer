@@ -266,24 +266,27 @@ fun CallLogTileSimple(
         else MaterialTheme.colorScheme.onPrimaryContainer
     }
 
-    val icon = when (log.type) {
-        CallLog.Calls.INCOMING_TYPE -> Icons.AutoMirrored.Filled.CallReceived
-        CallLog.Calls.OUTGOING_TYPE -> Icons.AutoMirrored.Filled.CallMade
-        CallLog.Calls.MISSED_TYPE   -> Icons.AutoMirrored.Filled.CallMissed
-        CallLog.Calls.BLOCKED_TYPE  -> Icons.Default.Block
-        else                        -> Icons.Default.Call
+    val icon = when {
+        log.isWhatsApp && log.isVideo           -> Icons.Default.Videocam
+        log.type == CallLog.Calls.INCOMING_TYPE -> Icons.AutoMirrored.Filled.CallReceived
+        log.type == CallLog.Calls.OUTGOING_TYPE -> Icons.AutoMirrored.Filled.CallMade
+        log.type == CallLog.Calls.MISSED_TYPE   -> Icons.AutoMirrored.Filled.CallMissed
+        log.type == CallLog.Calls.BLOCKED_TYPE  -> Icons.Default.Block
+        else                                    -> Icons.Default.Call
     }
     val showMissedCallDuration = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_SHOW_MISSED_CALL_DURATION, false) }
     val ringDurationText = if (isBlocked && log.duration > 0) "${log.duration}s rang" else if (isMissed && showMissedCallDuration && log.duration > 0) "${log.duration}s rang" else null
     val durationText = if (isMissed || isBlocked) ringDurationText else if (log.duration > 0) android.text.format.DateUtils.formatElapsedTime(log.duration) else null
 
     val count = if (log.count > 1) log.count else if (log.callIds.size > 1) log.callIds.size else if (log.types.size > 1) log.types.size else 1
-    val baseHeadline = when (log.type) {
-        CallLog.Calls.INCOMING_TYPE -> "Incoming"
-        CallLog.Calls.OUTGOING_TYPE -> "Outgoing"
-        CallLog.Calls.MISSED_TYPE   -> "Missed"
-        CallLog.Calls.BLOCKED_TYPE  -> "Blocked"
-        else                        -> "Call"
+    val baseHeadline = when {
+        log.isWhatsApp && log.isVideo           -> if (log.sourcePackage == "com.whatsapp.w4b") "WA Business Video" else "WhatsApp Video"
+        log.isWhatsApp                          -> if (log.sourcePackage == "com.whatsapp.w4b") "WA Business Voice" else "WhatsApp Voice"
+        log.type == CallLog.Calls.INCOMING_TYPE -> "Incoming"
+        log.type == CallLog.Calls.OUTGOING_TYPE -> "Outgoing"
+        log.type == CallLog.Calls.MISSED_TYPE   -> "Missed"
+        log.type == CallLog.Calls.BLOCKED_TYPE  -> "Blocked"
+        else                                    -> "Call"
     }
 
     RivoListItem(
@@ -520,6 +523,35 @@ fun CallLogTile(
                 modifier = Modifier.size(width = 14.dp, height = 16.dp)
             )
         }) else null
+        val whatsAppBadge: (@Composable () -> Unit)? = if (log.isWhatsApp) ({
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                modifier = Modifier.padding(end = 4.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        imageVector = if (log.isVideo) Icons.Default.Videocam else Icons.Default.Call,
+                        contentDescription = "WhatsApp",
+                        modifier = Modifier.size(11.dp),
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text(
+                        text = if (log.sourcePackage == "com.whatsapp.w4b") "Business" else "WhatsApp",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            lineHeight = 11.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+            }
+        }) else null
         val totalCallsBadge: (@Composable () -> Unit)? = if (showTotalCallsMade) {
             val total = totalCallsCount ?: log.count
             {
@@ -560,32 +592,40 @@ fun CallLogTile(
                     }
                 }
                 "delete", "delete_call_log" -> {
-                    try {
-                        val allIds = log.callIds.filter { it > 0 }.distinct()
-                        if (allIds.isNotEmpty()) {
-                            allIds.chunked(500).forEach { chunk ->
-                                val inClause = chunk.joinToString(",")
-                                context.contentResolver.delete(
-                                    CallLog.Calls.CONTENT_URI,
-                                    "${CallLog.Calls._ID} IN ($inClause)",
-                                    null
-                                )
-                            }
-                        }
-                        val targetDates = (log.dates + log.date).distinct()
-                        targetDates.chunked(100).forEach { dateChunk ->
-                            val placeholders = dateChunk.map { "?" }.joinToString(",")
-                            val args = (listOf(log.number) + dateChunk.map { it.toString() }).toTypedArray()
-                            context.contentResolver.delete(
-                                CallLog.Calls.CONTENT_URI,
-                                "${CallLog.Calls.NUMBER} = ? AND ${CallLog.Calls.DATE} IN ($placeholders)",
-                                args
-                            )
-                        }
+                    if (log.isWhatsApp) {
+                        com.modiprincekr.thedialer.controller.util.WhatsAppCallRepository.deleteByNumberAndDates(
+                            context, log.number, (log.dates + log.date).distinct()
+                        )
                         onDelete?.invoke()
                         Toast.makeText(context, "Deleted from call log", Toast.LENGTH_SHORT).show()
-                    } catch (_: Exception) {
-                        Toast.makeText(context, "Could not delete", Toast.LENGTH_SHORT).show()
+                    } else {
+                        try {
+                            val allIds = log.callIds.filter { it > 0 }.distinct()
+                            if (allIds.isNotEmpty()) {
+                                allIds.chunked(500).forEach { chunk ->
+                                    val inClause = chunk.joinToString(",")
+                                    context.contentResolver.delete(
+                                        CallLog.Calls.CONTENT_URI,
+                                        "${CallLog.Calls._ID} IN ($inClause)",
+                                        null
+                                    )
+                                }
+                            }
+                            val targetDates = (log.dates + log.date).distinct()
+                            targetDates.chunked(100).forEach { dateChunk ->
+                                val placeholders = dateChunk.map { "?" }.joinToString(",")
+                                val args = (listOf(log.number) + dateChunk.map { it.toString() }).toTypedArray()
+                                context.contentResolver.delete(
+                                    CallLog.Calls.CONTENT_URI,
+                                    "${CallLog.Calls.NUMBER} = ? AND ${CallLog.Calls.DATE} IN ($placeholders)",
+                                    args
+                                )
+                            }
+                            onDelete?.invoke()
+                            Toast.makeText(context, "Deleted from call log", Toast.LENGTH_SHORT).show()
+                        } catch (_: Exception) {
+                            Toast.makeText(context, "Could not delete", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
                 "select" -> onSelectMode?.invoke(log)
@@ -696,9 +736,9 @@ fun CallLogTile(
                     }
                 } else null,
                 avatarObeySolidIcons = false,
-                headlineStartContent = if (!showNumberOnSupportingLine) simBadge else null,
+                headlineStartContent = if (log.isWhatsApp && !showNumberOnSupportingLine) whatsAppBadge else if (!showNumberOnSupportingLine) simBadge else null,
                 headlineEndContent = totalCallsBadge,
-                supportingStartContent = if (showNumberOnSupportingLine) simBadge else null,
+                supportingStartContent = if (log.isWhatsApp) whatsAppBadge else if (showNumberOnSupportingLine) simBadge else null,
                 trailingText = formatTimeOnly(log.date, use24HourTime),
                 trailingTextColor = if (isMissed || isBlocked) MaterialTheme.colorScheme.error else null,
                 trailingSubText = if (groupCallsByLatest) {
@@ -732,6 +772,7 @@ fun CallLogTile(
                     log.isMultiCall -> Icons.Default.PhonePaused
                     log.type == CallLog.Calls.MISSED_TYPE   -> Icons.AutoMirrored.Filled.CallMissed
                     log.type == CallLog.Calls.BLOCKED_TYPE  -> Icons.Default.Block
+                    log.isWhatsApp && log.isVideo           -> Icons.Default.Videocam
                     log.type == CallLog.Calls.INCOMING_TYPE -> Icons.AutoMirrored.Filled.CallReceived
                     log.type == CallLog.Calls.OUTGOING_TYPE -> Icons.AutoMirrored.Filled.CallMade
                     else                        -> Icons.Default.Call
@@ -828,60 +869,69 @@ fun CallLogTile(
                             }
                         )
                         "call_back" -> {
-                            val hasTwoSims = remember(settingsVer) {
-                                prefs.getActiveSimCount() >= 2 || run {
-                                    val tm = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
-                                    try { (tm?.callCapablePhoneAccounts?.size ?: 0) >= 2 } catch (_: Throwable) { false }
+                            if (log.isWhatsApp) {
+                                RivoDropdownMenuItem(
+                                    text     = if (log.isVideo) "WhatsApp Video call" else "WhatsApp Voice call",
+                                    icon     = if (log.isVideo) Icons.Default.Videocam else Icons.Default.Call,
+                                    iconTint = Color(0xFF4CAF50),
+                                    onClick  = { showMenu = false; onButtonClick(log) }
+                                )
+                            } else {
+                                val hasTwoSims = remember(settingsVer) {
+                                    prefs.getActiveSimCount() >= 2 || run {
+                                        val tm = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+                                        try { (tm?.callCapablePhoneAccounts?.size ?: 0) >= 2 } catch (_: Throwable) { false }
+                                    }
                                 }
-                            }
-                            val sim1Color = remember(settingsVer) { Color(prefs.getInt(PreferenceManager.KEY_SIM1_COLOR, PreferenceManager.DEFAULT_SIM1_COLOR)) }
-                            val sim2Color = remember(settingsVer) { Color(prefs.getInt(PreferenceManager.KEY_SIM2_COLOR, PreferenceManager.DEFAULT_SIM2_COLOR)) }
-                            val tm = remember(context) { context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager }
-                            val accounts: List<PhoneAccountHandle> = try { tm?.callCapablePhoneAccounts } catch (_: Throwable) { null } ?: emptyList()
-                            val account1 = getPhoneAccountForSimSlot(context, accounts, 0)
-                            val account2 = getPhoneAccountForSimSlot(context, accounts, 1)
+                                val sim1Color = remember(settingsVer) { Color(prefs.getInt(PreferenceManager.KEY_SIM1_COLOR, PreferenceManager.DEFAULT_SIM1_COLOR)) }
+                                val sim2Color = remember(settingsVer) { Color(prefs.getInt(PreferenceManager.KEY_SIM2_COLOR, PreferenceManager.DEFAULT_SIM2_COLOR)) }
+                                val tm = remember(context) { context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager }
+                                val accounts: List<PhoneAccountHandle> = try { tm?.callCapablePhoneAccounts } catch (_: Throwable) { null } ?: emptyList()
+                                val account1 = getPhoneAccountForSimSlot(context, accounts, 0)
+                                val account2 = getPhoneAccountForSimSlot(context, accounts, 1)
 
-                            RivoDropdownMenuItem(
-                                text     = "Call back",
-                                icon     = Icons.Default.Call,
-                                iconTint = Color(0xFF4CAF50),
-                                onClick  = { showMenu = false; onButtonClick(log) },
-                                trailingContent = if (hasTwoSims && log.number.isNotBlank()) {
-                                    {
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Surface(
-                                                onClick = {
-                                                    showMenu = false
-                                                    makeCall(context, log.number, account1)
-                                                },
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                                modifier = Modifier.size(width = 36.dp, height = 32.dp)
+                                RivoDropdownMenuItem(
+                                    text     = "Call back",
+                                    icon     = Icons.Default.Call,
+                                    iconTint = Color(0xFF4CAF50),
+                                    onClick  = { showMenu = false; onButtonClick(log) },
+                                    trailingContent = if (hasTwoSims && log.number.isNotBlank()) {
+                                        {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    SimSlotBadge(slot = 0)
+                                                Surface(
+                                                    onClick = {
+                                                        showMenu = false
+                                                        makeCall(context, log.number, account1)
+                                                    },
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                    modifier = Modifier.size(width = 36.dp, height = 32.dp)
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        SimSlotBadge(slot = 0)
+                                                    }
                                                 }
-                                            }
-                                            Surface(
-                                                onClick = {
-                                                    showMenu = false
-                                                    makeCall(context, log.number, account2)
-                                                },
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                                modifier = Modifier.size(width = 36.dp, height = 32.dp)
-                                            ) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    SimSlotBadge(slot = 1)
+                                                Surface(
+                                                    onClick = {
+                                                        showMenu = false
+                                                        makeCall(context, log.number, account2)
+                                                    },
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                    modifier = Modifier.size(width = 36.dp, height = 32.dp)
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        SimSlotBadge(slot = 1)
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
-                                } else null
-                            )
+                                    } else null
+                                )
+                            }
                         }
                         "view_contact" -> {
                             if (isContact || log.isMultiCall) {
@@ -1072,32 +1122,40 @@ fun CallLogTile(
                             isDestructive = true,
                             onClick       = {
                                 showMenu = false
-                                try {
-                                    val allIds = log.callIds.filter { it > 0 }.distinct()
-                                    if (allIds.isNotEmpty()) {
-                                        allIds.chunked(500).forEach { chunk ->
-                                            val inClause = chunk.joinToString(",")
-                                            context.contentResolver.delete(
-                                                CallLog.Calls.CONTENT_URI,
-                                                "${CallLog.Calls._ID} IN ($inClause)",
-                                                null
-                                            )
-                                        }
-                                    }
-                                    val targetDates = (log.dates + log.date).distinct()
-                                    targetDates.chunked(100).forEach { dateChunk ->
-                                        val placeholders = dateChunk.map { "?" }.joinToString(",")
-                                        val args = (listOf(log.number) + dateChunk.map { it.toString() }).toTypedArray()
-                                        context.contentResolver.delete(
-                                            CallLog.Calls.CONTENT_URI,
-                                            "${CallLog.Calls.NUMBER} = ? AND ${CallLog.Calls.DATE} IN ($placeholders)",
-                                            args
-                                        )
-                                    }
+                                if (log.isWhatsApp) {
+                                    com.modiprincekr.thedialer.controller.util.WhatsAppCallRepository.deleteByNumberAndDates(
+                                        context, log.number, (log.dates + log.date).distinct()
+                                    )
                                     onDelete?.invoke()
                                     Toast.makeText(context, "Deleted from call log", Toast.LENGTH_SHORT).show()
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Could not delete", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    try {
+                                        val allIds = log.callIds.filter { it > 0 }.distinct()
+                                        if (allIds.isNotEmpty()) {
+                                            allIds.chunked(500).forEach { chunk ->
+                                                val inClause = chunk.joinToString(",")
+                                                context.contentResolver.delete(
+                                                    CallLog.Calls.CONTENT_URI,
+                                                    "${CallLog.Calls._ID} IN ($inClause)",
+                                                    null
+                                                )
+                                            }
+                                        }
+                                        val targetDates = (log.dates + log.date).distinct()
+                                        targetDates.chunked(100).forEach { dateChunk ->
+                                            val placeholders = dateChunk.map { "?" }.joinToString(",")
+                                            val args = (listOf(log.number) + dateChunk.map { it.toString() }).toTypedArray()
+                                            context.contentResolver.delete(
+                                                CallLog.Calls.CONTENT_URI,
+                                                "${CallLog.Calls.NUMBER} = ? AND ${CallLog.Calls.DATE} IN ($placeholders)",
+                                                args
+                                            )
+                                        }
+                                        onDelete?.invoke()
+                                        Toast.makeText(context, "Deleted from call log", Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Could not delete", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             }
                         )

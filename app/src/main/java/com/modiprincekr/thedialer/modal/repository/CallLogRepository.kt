@@ -252,7 +252,15 @@ class CallLogRepository(
         }
 
         val multiRecords = com.modiprincekr.thedialer.controller.call.MultiCallRecordStore.getAllRecords(context)
-        return combineMultiCalls(callLogs, multiRecords)
+        val combinedMultiCalls = combineMultiCalls(callLogs, multiRecords)
+        val showWhatsAppCalls = prefs.getBoolean(PreferenceManager.KEY_SHOW_WHATSAPP_CALLS, false)
+        val allLogs = if (showWhatsAppCalls) {
+            val whatsAppLogs = com.modiprincekr.thedialer.controller.util.WhatsAppCallRepository.getCallLogEntries(context)
+            (combinedMultiCalls + whatsAppLogs).sortedByDescending { it.date }
+        } else {
+            combinedMultiCalls
+        }
+        return if (limit != null && allLogs.size > limit) allLogs.take(limit) else allLogs
     }
 
     private fun combineMultiCalls(
@@ -619,7 +627,17 @@ class CallLogRepository(
     override fun deleteCallLogs(entries: Collection<CallLogEntry>): Boolean {
         if (entries.isEmpty()) return true
         return try {
-            val allIds = entries.flatMap { it.callIds }.filter { it > 0 }.distinct()
+            val (whatsAppEntries, standardEntries) = entries.partition { it.isWhatsApp }
+            if (whatsAppEntries.isNotEmpty()) {
+                for (w in whatsAppEntries) {
+                    com.modiprincekr.thedialer.controller.util.WhatsAppCallRepository.deleteByNumberAndDates(
+                        context, w.number, (w.dates + w.date).distinct()
+                    )
+                }
+            }
+            if (standardEntries.isEmpty()) return true
+
+            val allIds = standardEntries.flatMap { it.callIds }.filter { it > 0 }.distinct()
             if (allIds.isNotEmpty()) {
                 allIds.chunked(500).forEach { chunk ->
                     val inClause = chunk.joinToString(",")
@@ -632,7 +650,7 @@ class CallLogRepository(
             }
 
             // Also delete by number and dates as a guarantee / fallback for un-indexed rows
-            for (entry in entries) {
+            for (entry in standardEntries) {
                 val targetDates = (entry.dates + entry.date).distinct()
                 targetDates.chunked(100).forEach { dateChunk ->
                     val placeholders = dateChunk.map { "?" }.joinToString(",")

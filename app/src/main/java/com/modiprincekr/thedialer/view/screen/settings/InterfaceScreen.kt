@@ -759,7 +759,7 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             com.modiprincekr.thedialer.view.components.SettingsPillTopAppBar(
-                title = "User Interface",
+                title = "Appearance",
                 onBackClick = { navigator.navigateUp() }
             )
         },

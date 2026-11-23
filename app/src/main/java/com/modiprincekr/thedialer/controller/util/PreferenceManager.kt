@@ -614,7 +614,8 @@ class PreferenceManager(context: Context) {
             "unknown" to "Unknown",
             "missed" to "Missed",
             "incoming" to "Incoming",
-            "outgoing" to "Outgoing"
+            "outgoing" to "Outgoing",
+            "whatsapp" to "WhatsApp"
         )
         val order = getCallCategoryOrder()
         val result = mutableListOf<CallCategoryItem>()
@@ -1614,7 +1615,10 @@ class PreferenceManager(context: Context) {
         const val KEY_CALL_CATEGORY_HIDDEN         = "call_category_hidden"
         const val KEY_CALL_CUSTOM_CATEGORIES       = "call_custom_categories"
         const val KEY_DEFAULT_CALL_CATEGORY        = "default_call_category"
-        val DEFAULT_CALL_CATEGORY_ORDER            = listOf("all", "favourites", "contacts", "unknown", "missed", "incoming", "outgoing")
+        val DEFAULT_CALL_CATEGORY_ORDER            = listOf("all", "favourites", "contacts", "unknown", "missed", "incoming", "outgoing", "whatsapp")
+
+        // WhatsApp Calls
+        const val KEY_SHOW_WHATSAPP_CALLS          = "show_whatsapp_calls"
     }
 }
 

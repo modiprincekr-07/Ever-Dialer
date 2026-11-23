@@ -24,7 +24,10 @@ data class CallLogEntry(
     val secondNumber: String? = null,
     val secondName: String? = null,
     val secondContactId: String? = null,
-    val secondPhotoUri: String? = null
+    val secondPhotoUri: String? = null,
+    val isWhatsApp: Boolean = false,
+    val isVideo: Boolean = false,
+    val sourcePackage: String? = null
 ) {
     val count: Int get() = types.size.coerceAtLeast(1)
 }

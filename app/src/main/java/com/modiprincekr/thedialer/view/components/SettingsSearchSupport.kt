@@ -400,6 +400,7 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("App Name (Change)", "Change the name shown for the app", "app_name_link", Icons.Outlined.Badge, GsColorTeal) { it.navigate(InterfaceScreenDestination(highlightKey = "app_name_link")) },
         GlobalSettingsSearchEntry("Show call logs in the dialpad search list", "UI Elements: Show recent call logs in the search list when nothing is typed or searched", "show_call_logs_in_dialpad_search_list", Icons.Outlined.History, GsColorTeal) { it.navigate(DialpadSettingsScreenDestination(highlightKey = "show_call_logs_in_dialpad_search_list")) },
         GlobalSettingsSearchEntry("Show numbers in call logs", "UI Elements: Show phone numbers below contact names in call logs", "show_numbers_in_call_logs", Icons.Outlined.Numbers, GsColorBlue) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "show_numbers_in_call_logs")) },
+        GlobalSettingsSearchEntry("Show WhatsApp calls", "UI Elements: Display incoming, missed, and outgoing WhatsApp calls in call logs", "show_whatsapp_calls", Icons.Outlined.Call, GsColorGreen) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "show_whatsapp_calls")) },
         GlobalSettingsSearchEntry("Fonts", "Typography styles, Playwrite USA Modern, Comfortaa, Patrick Hand, Gochi Hand, and font scaling", "fonts", Icons.Outlined.TextFormat, GsColorPurple) { it.navigate(CustomFontScreenDestination()) },
 
         // ── Incoming Call UI screen ──────────────────────────────────────────────

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallMissed
 import androidx.compose.material.icons.automirrored.filled.CallReceived
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Dashboard
@@ -91,6 +92,27 @@ fun CallLogsSettingsScreen(
     var autoResetMissedCallDurationEnabled by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_AUTO_RESET_MISSED_CALL_DURATION_ENABLED, false)) }
     var autoResetMissedCallDurationValue by remember { mutableStateOf(prefs.getInt(PreferenceManager.KEY_AUTO_RESET_MISSED_CALL_DURATION_VALUE, 24).toString()) }
     var autoResetMissedCallDurationUnit by remember { mutableStateOf(prefs.getString(PreferenceManager.KEY_AUTO_RESET_MISSED_CALL_DURATION_UNIT, "hours") ?: "hours") }
+    var showWhatsAppCalls by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_SHOW_WHATSAPP_CALLS, false)) }
+    var showWhatsAppPermissionDialog by remember { mutableStateOf(false) }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val hasAccess = androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(context)
+                    .contains(context.packageName)
+                val storedPref = prefs.getBoolean(PreferenceManager.KEY_SHOW_WHATSAPP_CALLS, false)
+                if (storedPref && !hasAccess) {
+                    prefs.setBoolean(PreferenceManager.KEY_SHOW_WHATSAPP_CALLS, false)
+                    showWhatsAppCalls = false
+                } else if (hasAccess && storedPref != showWhatsAppCalls) {
+                    showWhatsAppCalls = storedPref
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // Call UI section checkboxes dialog
     var showCallUIDialog   by remember { mutableStateOf(false) }
@@ -370,6 +392,64 @@ fun CallLogsSettingsScreen(
         )
     }
 
+    if (showWhatsAppPermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showWhatsAppPermissionDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Call,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text(
+                    text = "Show WhatsApp calls",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+            },
+            text = {
+                Text(
+                    text = "The Dialer can list your WhatsApp calls in Logs (who called, when, and for how long) by reading WhatsApp call notifications. It reads nothing else and nothing leaves your phone. Turn on notification access for The Dialer on the next screen.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showWhatsAppPermissionDialog = false
+                        prefs.setBoolean(PreferenceManager.KEY_SHOW_WHATSAPP_CALLS, true)
+                        try {
+                            val intent = android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            val intent = android.content.Intent(android.provider.Settings.ACTION_SETTINGS).apply {
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        }
+                    }
+                ) {
+                    Text("OPEN SETTINGS")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showWhatsAppPermissionDialog = false
+                        showWhatsAppCalls = false
+                        prefs.setBoolean(PreferenceManager.KEY_SHOW_WHATSAPP_CALLS, false)
+                    }
+                ) {
+                    Text("CANCEL")
+                }
+            }
+        )
+    }
+
     Scaffold(
         modifier = Modifier.settingsMotionBlur(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -564,6 +644,60 @@ fun CallLogsSettingsScreen(
                                 prefs.setBoolean(PreferenceManager.KEY_SHOW_NUMBERS_IN_CALL_LOGS, it)
                             }
                         )
+                        HorizontalDivider(
+                            Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        RivoSwitchListItem(
+                            headline = "Show WhatsApp calls",
+                            supporting = "Display incoming, missed, and outgoing WhatsApp & WhatsApp Business calls in Call Logs",
+                            leadingIcon = Icons.Outlined.Call,
+                            iconContainerColor = ColorGreen,
+                            checked = showWhatsAppCalls,
+                            modifier = Modifier.settingsSearchHighlight("show_whatsapp_calls", highlightedKey) { highlightedKey = null },
+                            onCheckedChange = { enable ->
+                                if (enable) {
+                                    val hasAccess = androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(context)
+                                        .contains(context.packageName)
+                                    if (hasAccess) {
+                                        showWhatsAppCalls = true
+                                        prefs.setBoolean(PreferenceManager.KEY_SHOW_WHATSAPP_CALLS, true)
+                                    } else {
+                                        showWhatsAppPermissionDialog = true
+                                    }
+                                } else {
+                                    showWhatsAppCalls = false
+                                    prefs.setBoolean(PreferenceManager.KEY_SHOW_WHATSAPP_CALLS, false)
+                                }
+                            }
+                        )
+                        if (showWhatsAppCalls) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 68.dp, end = 16.dp, bottom = 12.dp, top = 2.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        com.modiprincekr.thedialer.controller.util.WhatsAppCallRepository.clearLogs(context)
+                                        Toast.makeText(context, "WhatsApp call logs cleared", Toast.LENGTH_SHORT).show()
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.error
+                                    ),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Delete,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Clear WhatsApp call logs")
+                                }
+                            }
+                        }
                         HorizontalDivider(
                             Modifier.padding(horizontal = 16.dp),
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)

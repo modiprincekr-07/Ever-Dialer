@@ -777,6 +777,7 @@ fun CallLogFullContent(
                     "missed" -> base.filter { it.type == CallLog.Calls.MISSED_TYPE }
                     "incoming" -> base.filter { it.type == CallLog.Calls.INCOMING_TYPE }
                     "outgoing" -> base.filter { it.type == CallLog.Calls.OUTGOING_TYPE }
+                    "whatsapp" -> base.filter { it.isWhatsApp }
                     else -> base
                 }
             }
@@ -1473,9 +1474,17 @@ fun CallLogFullContent(
                                                             val key = "${log.number}|${log.date}"
                                                             onSelectedLogsChange(if (selectedLogs.contains(key)) selectedLogs - key else selectedLogs + key)
                                                         } else if (directCall) {
-                                                            val recentSlot = if (log.simSlot in 0..1) log.simSlot else null
-                                                            placeCallHonoringContactSim(context, prefs, log.contactId ?: log.number, log.number, recentSlot) {
-                                                                pendingNumber = log.number; showSimPicker = true
+                                                            if (log.isWhatsApp) {
+                                                                if (log.isVideo) {
+                                                                    com.modiprincekr.thedialer.controller.util.launchDirectWhatsAppVideoCall(context, log.number)
+                                                                } else {
+                                                                    com.modiprincekr.thedialer.controller.util.startWhatsAppVoiceCall(context, log.number)
+                                                                }
+                                                            } else {
+                                                                val recentSlot = if (log.simSlot in 0..1) log.simSlot else null
+                                                                placeCallHonoringContactSim(context, prefs, log.contactId ?: log.number, log.number, recentSlot) {
+                                                                    pendingNumber = log.number; showSimPicker = true
+                                                                }
                                                             }
                                                         } else {
                                                             navigator.navigate(ContactDetailsScreenDestination(contactId = log.contactId ?: "null", phoneNumber = log.number))
@@ -1485,9 +1494,17 @@ fun CallLogFullContent(
                                                         navigator.navigate(ContactDetailsScreenDestination(contactId = log.contactId ?: "null", phoneNumber = log.number))
                                                     },
                                                     onButtonClick = { log ->
-                                                        val recentSlot = if (log.simSlot in 0..1) log.simSlot else null
-                                                        placeCallHonoringContactSim(context, prefs, log.contactId ?: log.number, log.number, recentSlot) {
-                                                            pendingNumber = log.number; showSimPicker = true
+                                                        if (log.isWhatsApp) {
+                                                            if (log.isVideo) {
+                                                                com.modiprincekr.thedialer.controller.util.launchDirectWhatsAppVideoCall(context, log.number)
+                                                            } else {
+                                                                com.modiprincekr.thedialer.controller.util.startWhatsAppVoiceCall(context, log.number)
+                                                            }
+                                                        } else {
+                                                            val recentSlot = if (log.simSlot in 0..1) log.simSlot else null
+                                                            placeCallHonoringContactSim(context, prefs, log.contactId ?: log.number, log.number, recentSlot) {
+                                                                pendingNumber = log.number; showSimPicker = true
+                                                            }
                                                         }
                                                     },
                                                     onDelete = { viewModel.refreshLogs() }

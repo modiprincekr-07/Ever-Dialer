@@ -163,6 +163,12 @@ class CallLogViewModel(
             }
         }
 
+        viewModelScope.launch {
+            com.modiprincekr.thedialer.controller.util.WhatsAppCallRepository.callLogsChanged.collect {
+                fetchLogs(forceRefresh = true)
+            }
+        }
+
         // Watching CallService's call-session state means we refetch both when a call starts
         // and when it ends (both incoming and outgoing, including call waiting).
         viewModelScope.launch {
