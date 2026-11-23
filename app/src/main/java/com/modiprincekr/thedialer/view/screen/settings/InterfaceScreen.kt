@@ -302,6 +302,7 @@ fun InterfaceScreen(navigator: DestinationsNavigator, highlightKey: String? = nu
             ContextMenuItemOption("edit_contact",      "Edit contact",              Icons.Default.Edit),
             ContextMenuItemOption("copy_number",       "Copy number",               Icons.Default.ContentCopy),
             ContextMenuItemOption("add_to_contacts",   "Add contact",               Icons.Default.PersonAdd),
+            ContextMenuItemOption("save_to_alternate", "Save to Alternate",         Icons.Outlined.ContactPhone),
             ContextMenuItemOption("share",             "Share contact",             Icons.Default.Share),
             ContextMenuItemOption("call_chat_via",     "Call/Chat Via",             Icons.AutoMirrored.Filled.Chat),
             ContextMenuItemOption("send_text",         "Send text",                 Icons.AutoMirrored.Filled.Message),

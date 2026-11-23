@@ -615,7 +615,8 @@ class PreferenceManager(context: Context) {
             "missed" to "Missed",
             "incoming" to "Incoming",
             "outgoing" to "Outgoing",
-            "whatsapp" to "WhatsApp"
+            "whatsapp" to "WhatsApp",
+            "alternate" to "Alternate"
         )
         val order = getCallCategoryOrder()
         val result = mutableListOf<CallCategoryItem>()
@@ -1346,14 +1347,15 @@ class PreferenceManager(context: Context) {
         const val KEY_TAB_SHOW_GROUPS          = "tab_show_groups"
         const val KEY_TAB_SHOW_RECORDINGS      = "tab_show_recordings"
         const val KEY_TAB_SHOW_NOTES           = "tab_show_notes"
+        const val KEY_TAB_SHOW_ALTERNATE       = "tab_show_alternate"
         const val KEY_TAB_SHOW_DIALPAD         = "tab_show_dialpad"
-        // Comma-separated list of tab keys (favorites, calls, contacts, sms, groups, recordings, notes, dialpad)
+        // Comma-separated list of tab keys (favorites, calls, contacts, sms, groups, recordings, notes, alternate, dialpad)
         // describing the order tabs appear in the bottom navigation bar.
         const val KEY_TAB_ORDER                = "tab_order"
         const val KEY_MISSED_CALL_RESET_TIME   = "missed_call_reset_time"
         const val KEY_NEW_CALL_LOGS_LOGIC      = "new_call_logs_logic"
         const val KEY_NEW_CONTACTS_LOGIC       = "new_contacts_logic"
-        const val DEFAULT_TAB_ORDER            = "favorites,calls,contacts,sms,groups,recordings,notes,dialpad"
+        const val DEFAULT_TAB_ORDER            = "favorites,calls,contacts,sms,groups,recordings,notes,alternate,dialpad"
         // Passwords & Security / Biometrics
         const val KEY_BIOMETRICS_TYPE          = "biometrics_type"         // "system" | "pin" | "password" | "pattern" | ""
         const val KEY_BIOMETRICS_PIN           = "biometrics_pin"
@@ -1615,7 +1617,7 @@ class PreferenceManager(context: Context) {
         const val KEY_CALL_CATEGORY_HIDDEN         = "call_category_hidden"
         const val KEY_CALL_CUSTOM_CATEGORIES       = "call_custom_categories"
         const val KEY_DEFAULT_CALL_CATEGORY        = "default_call_category"
-        val DEFAULT_CALL_CATEGORY_ORDER            = listOf("all", "favourites", "contacts", "unknown", "missed", "incoming", "outgoing", "whatsapp")
+        val DEFAULT_CALL_CATEGORY_ORDER            = listOf("all", "favourites", "contacts", "unknown", "missed", "incoming", "outgoing", "whatsapp", "alternate")
 
         // WhatsApp Calls
         const val KEY_SHOW_WHATSAPP_CALLS          = "show_whatsapp_calls"

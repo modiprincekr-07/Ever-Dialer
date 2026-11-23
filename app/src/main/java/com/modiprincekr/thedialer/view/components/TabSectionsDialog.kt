@@ -58,6 +58,7 @@ fun TabSectionsDialog(
     var tabShowGroups     by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_GROUPS,     false)) }
     var tabShowRecordings by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_RECORDINGS, true)) }
     var tabShowNotes      by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_NOTES,      true)) }
+    var tabShowAlternate  by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_ALTERNATE,  true)) }
     var tabShowDialpad    by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_DIALPAD,    false)) }
     var scrollIndication  by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_SCROLL_INDICATION,     true)) }
     var pillNav           by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_PILL_NAV,              true)) }
@@ -76,6 +77,7 @@ fun TabSectionsDialog(
                 add(TabSectionItem("recordings", "Recordings", Icons.Outlined.FiberManualRecord))
             }
             add(TabSectionItem("notes",      "Note",       Icons.Outlined.Note))
+            add(TabSectionItem("alternate",  "Alternate",  Icons.Outlined.ContactPhone))
             add(TabSectionItem("dialpad",    "Dialpad",    Icons.Outlined.Dialpad))
         }
     }
@@ -102,6 +104,7 @@ fun TabSectionsDialog(
         "groups"     -> tabShowGroups
         "recordings" -> tabShowRecordings
         "notes"      -> tabShowNotes
+        "alternate"  -> tabShowAlternate
         "dialpad"    -> tabShowDialpad
         else         -> true
     }
@@ -115,6 +118,7 @@ fun TabSectionsDialog(
             "groups"     -> { tabShowGroups = value;     prefs.setBoolean(PreferenceManager.KEY_TAB_SHOW_GROUPS,     value) }
             "recordings" -> { tabShowRecordings = value; prefs.setBoolean(PreferenceManager.KEY_TAB_SHOW_RECORDINGS, value) }
             "notes"      -> { tabShowNotes = value;      prefs.setBoolean(PreferenceManager.KEY_TAB_SHOW_NOTES,      value) }
+            "alternate"  -> { tabShowAlternate = value;  prefs.setBoolean(PreferenceManager.KEY_TAB_SHOW_ALTERNATE,  value) }
             "dialpad"    -> { tabShowDialpad = value;    prefs.setBoolean(PreferenceManager.KEY_TAB_SHOW_DIALPAD,    value) }
         }
     }
@@ -131,6 +135,7 @@ fun TabSectionsDialog(
         tabShowGroups     = false; prefs.setBoolean(PreferenceManager.KEY_TAB_SHOW_GROUPS,     false)
         tabShowRecordings = true;  prefs.setBoolean(PreferenceManager.KEY_TAB_SHOW_RECORDINGS, true)
         tabShowNotes      = true;  prefs.setBoolean(PreferenceManager.KEY_TAB_SHOW_NOTES,      true)
+        tabShowAlternate  = true;  prefs.setBoolean(PreferenceManager.KEY_TAB_SHOW_ALTERNATE,  true)
         tabShowDialpad    = false; prefs.setBoolean(PreferenceManager.KEY_TAB_SHOW_DIALPAD,    false)
         scrollIndication  = true;  prefs.setBoolean(PreferenceManager.KEY_SCROLL_INDICATION,  true)
         pillNav           = true;  prefs.setBoolean(PreferenceManager.KEY_PILL_NAV,           true)

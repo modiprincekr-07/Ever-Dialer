@@ -1309,6 +1309,16 @@ fun SettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                                 }
                             }
                             RivoListItem(
+                                headline = "Alternate Numbers",
+                                supporting = "Save numbers in-app without syncing to device contacts",
+                                leadingIcon = Icons.Outlined.ContactPhone,
+                                iconContainerColor = Color(0xFF00897B),
+                                trailingIcon = Icons.Default.ChevronRight,
+                                modifier = Modifier.settingsSearchHighlight("alternate_numbers", highlightedSettingKey) { highlightedSettingKey = null },
+                                onClick = { navigator.navigate(com.ramcosta.composedestinations.generated.destinations.AlternateNumbersScreenDestination()) }
+                            )
+                            CardDivider()
+                            RivoListItem(
                                 headline = "Fake Call",
                                 supporting = "Schedule fake incoming calls without calling the real person",
                                 leadingIcon = Icons.Outlined.PhoneCallback,

@@ -44,6 +44,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.ContactPhone
 import androidx.compose.material.icons.outlined.PhoneCallback
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -180,6 +181,7 @@ private object DialpadDraftHolder {
  *  panel, gated by the persisted "Filter" checkboxes (see [SearchFilterButton]). */
 private sealed class DialpadExtraResult {
     data class NonContact(val entry: CallLogEntry) : DialpadExtraResult()
+    data class Alternate(val item: com.modiprincekr.thedialer.modal.data.AlternateNumber) : DialpadExtraResult()
     data class Recording(val item: RecordingItem) : DialpadExtraResult()
     data class ContactNote(val note: com.modiprincekr.thedialer.controller.util.NoteEntry) : DialpadExtraResult()
     data class RecordingNote(val item: RecordingItem) : DialpadExtraResult()
@@ -205,6 +207,31 @@ private fun DialpadExtraResultTile(
             phoneNumber = result.entry.number,
             onAvatarClick = { onOpenContactInfo(result.entry.number) },
             onClick = { onCallNumber(result.entry.number) }
+        )
+        is DialpadExtraResult.Alternate -> SingleTile(
+            title = result.item.name,
+            subtitle = "${result.item.phoneNumber} • ${result.item.categoryTag}",
+            icon = Icons.Outlined.ContactPhone,
+            phoneNumber = result.item.phoneNumber,
+            titleTrailing = {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.padding(start = 4.dp)
+                ) {
+                    Text(
+                        text = "Alt",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.sp,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                    )
+                }
+            },
+            onAvatarClick = { onCallNumber(result.item.phoneNumber) },
+            onClick = { onCallNumber(result.item.phoneNumber) }
         )
         is DialpadExtraResult.Recording -> SingleTile(
             title = result.item.contactName?.ifBlank { result.item.phoneNumber } ?: result.item.phoneNumber,
@@ -757,6 +784,8 @@ fun DialPadContent(
                             (q.isNotEmpty() && entry.isCallerIdName && (entry.name?.contains(q, ignoreCase = true) == true))
                 }.take(3).forEach { results.add(DialpadExtraResult.NonContact(it)) }
             }
+            val altResults = com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.search(context, effectiveQuery)
+            altResults.take(3).forEach { results.add(DialpadExtraResult.Alternate(it)) }
             // Notes and call recordings are intentionally excluded from the dialpad's search
             // list — it only ever shows contacts, phone numbers, or unknown (non-contact)
             // numbers. Notes/recordings still show up in the dedicated Search screen.

@@ -4,6 +4,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
+import com.ramcosta.composedestinations.generated.destinations.AlternateNumbersScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.ContactScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.DialPadScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.FavoritesScreenDestination
@@ -23,6 +24,7 @@ object TabNavigationHelper {
         "groups"     -> GroupsScreenDestination.route
         "recordings" -> RecordingsScreenDestination.route
         "notes"      -> NotesScreenDestination.route
+        "alternate"  -> AlternateNumbersScreenDestination.route
         "dialpad"    -> DialPadScreenDestination().route
         else         -> null
     }
@@ -38,6 +40,8 @@ object TabNavigationHelper {
             base.contains(GroupsScreenDestination.route, ignoreCase = true)    -> "groups"
             base.contains(RecordingsScreenDestination.route, ignoreCase = true)-> "recordings"
             base.contains(NotesScreenDestination.route, ignoreCase = true)     -> "notes"
+            base.contains(AlternateNumbersScreenDestination.route, ignoreCase = true) ||
+                base.contains("alternate_numbers", ignoreCase = true)           -> "alternate"
             base.contains(DialPadScreenDestination().route, ignoreCase = true) ||
                 base.contains("dial_pad_screen", ignoreCase = true)             -> "dialpad"
             else -> null
@@ -52,6 +56,7 @@ object TabNavigationHelper {
         "groups"     -> prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_GROUPS, false)
         "recordings" -> com.coolappstore.everdialer.by.svhp.feature.AppFeatures.isCallRecorderAvailable && prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_RECORDINGS, true)
         "notes"      -> prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_NOTES, true)
+        "alternate"  -> prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_ALTERNATE, true)
         "dialpad"    -> prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_DIALPAD, false)
         else         -> false
     }

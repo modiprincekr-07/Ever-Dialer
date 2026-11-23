@@ -205,7 +205,10 @@ class CallLogRepository(
             if (hiddenIds.isNotEmpty() && contactIdStr != null && contactIdStr in hiddenIds) {
                 continue
             }
-            val resolvedMatchName = match?.name?.takeIf { it.isNotBlank() }
+            val altMatch = if (match == null && raw.number.isNotBlank()) {
+                com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.findByNumber(context, raw.number)
+            } else null
+            val resolvedMatchName = match?.name?.takeIf { it.isNotBlank() } ?: altMatch?.name
             val displayName = resolvedMatchName ?: raw.number
             val isCallerIdName = false
 
@@ -245,7 +248,10 @@ class CallLogRepository(
                         isCallerIdName = isCallerIdName,
                         simSlot = raw.simSlot,
                         callIds = raw.callIds,
-                        dates = listOf(raw.date)
+                        dates = listOf(raw.date),
+                        isAlternate = altMatch != null,
+                        alternateName = altMatch?.name,
+                        alternateTag = altMatch?.categoryTag
                     )
                 )
             }

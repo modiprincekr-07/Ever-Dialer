@@ -540,7 +540,8 @@ class CallActivity : FragmentActivity() {
                                 photoUri = if (hideNames && contact.id in hiddenIds) null else contact.photoUri
                                 contactId = contact.id
                             } else {
-                                contactName = number
+                                val alt = com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.findByNumber(this@CallActivity, number)
+                                contactName = alt?.name ?: number
                                 contactId = null
                             }
                         } else {
@@ -556,7 +557,8 @@ class CallActivity : FragmentActivity() {
                                 heldContactName = if (hideNames && c.id in hiddenIds) heldNumber else c.name
                                 heldPhotoUri = if (hideNames && c.id in hiddenIds) null else c.photoUri
                             } else {
-                                heldContactName = heldNumber
+                                val alt = com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.findByNumber(this@CallActivity, heldNumber)
+                                heldContactName = alt?.name ?: heldNumber
                                 heldPhotoUri = null
                             }
                         } else {
@@ -571,6 +573,10 @@ class CallActivity : FragmentActivity() {
                             if (c != null) {
                                 incomingContactName = if (hideNames && c.id in hiddenIds) incomingNumber else c.name
                                 incomingPhotoUri = if (hideNames && c.id in hiddenIds) null else c.photoUri
+                            } else {
+                                val alt = com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.findByNumber(this@CallActivity, incomingNumber)
+                                incomingContactName = alt?.name ?: incomingNumber
+                                incomingPhotoUri = null
                             }
                         }
                     }

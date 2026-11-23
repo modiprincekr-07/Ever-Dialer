@@ -31,10 +31,11 @@ object BackupManager {
         val hasContacts: Boolean = false,
         val hasCallLogs: Boolean = false,
         val hasSms: Boolean = false,
-        val hasLiquidGlass: Boolean = false
+        val hasLiquidGlass: Boolean = false,
+        val hasAlternateNumbers: Boolean = false
     ) {
         val hasAny: Boolean
-            get() = hasSettings || hasCallingCards || hasNotes || hasContactGroups || hasRecordings || hasContacts || hasCallLogs || hasSms || hasLiquidGlass
+            get() = hasSettings || hasCallingCards || hasNotes || hasContactGroups || hasRecordings || hasContacts || hasCallLogs || hasSms || hasLiquidGlass || hasAlternateNumbers
     }
 
     const val PREFS_RIVO = "rivo_prefs"
@@ -49,6 +50,7 @@ object BackupManager {
     const val PREFS_WIDGET = "recent_calls_widget_prefs"
     const val PREFS_DIRECT_CALL_WIDGET = "direct_call_widget_prefs"
     const val PREFS_CONTACT_INFO_WIDGET = "contact_info_widget_prefs"
+    const val PREFS_ALTERNATE_NUMBERS = "alternate_numbers_prefs"
 
     val KNOWN_PREFS = listOf(
         PREFS_RIVO,
@@ -62,7 +64,8 @@ object BackupManager {
         PREFS_MISSED_CALL_DURATION,
         PREFS_WIDGET,
         PREFS_DIRECT_CALL_WIDGET,
-        PREFS_CONTACT_INFO_WIDGET
+        PREFS_CONTACT_INFO_WIDGET,
+        PREFS_ALTERNATE_NUMBERS
     )
 
     fun getBackupDir(context: Context): File {
@@ -371,6 +374,16 @@ object BackupManager {
                     } catch (_: Exception) {}
                 }
 
+                // Backup alternate numbers
+                try {
+                    val altArray = AlternateNumberRepository.exportToJsonArray(context)
+                    if (altArray.length() > 0) {
+                        zip.putNextEntry(ZipEntry("alternate_numbers.json"))
+                        zip.write(altArray.toString().toByteArray(Charsets.UTF_8))
+                        zip.closeEntry()
+                    }
+                } catch (_: Exception) {}
+
                 // 6. Backup call recordings & their metadata (favourites & notes)
                 if (backupRecordings) {
                     val backedUpRecordingNames = mutableSetOf<String>()
@@ -603,6 +616,7 @@ object BackupManager {
         var hasCallLogs = false
         var hasSms = false
         var hasLiquidGlass = false
+        var hasAlternateNumbers = false
 
         try {
             ZipInputStream(FileInputStream(backupFile)).use { zip ->
@@ -658,6 +672,9 @@ object BackupManager {
                         name == "contact_groups.json" -> {
                             hasContactGroups = true
                         }
+                        name == "alternate_numbers.json" -> {
+                            hasAlternateNumbers = true
+                        }
                         name.startsWith("recordings/") && !name.endsWith("/") -> {
                             hasRecordings = true
                         }
@@ -690,7 +707,8 @@ object BackupManager {
             hasContacts = hasContacts,
             hasCallLogs = hasCallLogs,
             hasSms = hasSms,
-            hasLiquidGlass = hasLiquidGlass
+            hasLiquidGlass = hasLiquidGlass,
+            hasAlternateNumbers = hasAlternateNumbers
         )
     }
 
@@ -965,6 +983,14 @@ object BackupManager {
                                     restoredAny = true
                                 } catch (_: Exception) {}
                             }
+                        }
+                        name == "alternate_numbers.json" -> {
+                            try {
+                                val json = zip.readBytes().toString(Charsets.UTF_8)
+                                val arr = JSONArray(json)
+                                AlternateNumberRepository.importFromJsonArray(context, arr)
+                                restoredAny = true
+                            } catch (_: Exception) {}
                         }
                         name == "recordings/recordings_meta.json" -> {
                             if (restoreRecordings) {

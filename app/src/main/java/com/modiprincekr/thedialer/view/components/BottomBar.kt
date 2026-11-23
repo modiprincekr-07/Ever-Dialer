@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.ContactPhone
 import androidx.compose.material.icons.outlined.Dialpad
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.FiberManualRecord
@@ -63,6 +64,7 @@ import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Note
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.ContactPhone
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -99,6 +101,7 @@ import com.ramcosta.composedestinations.generated.destinations.DialPadScreenDest
 import com.ramcosta.composedestinations.generated.destinations.FavoritesScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.GroupsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.NotesScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.AlternateNumbersScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.RecentScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.RecordingsScreenDestination
 import com.coolappstore.everdialer.by.svhp.feature.AppFeatures
@@ -129,6 +132,7 @@ private val TAB_ROUTES = setOf(
     GroupsScreenDestination.route,
     RecordingsScreenDestination.route,
     NotesScreenDestination.route,
+    AlternateNumbersScreenDestination.route,
     DialPadScreenDestination().route
 )
 
@@ -180,6 +184,7 @@ fun BottomBar(navController: NavController) {
         AppFeatures.isCallRecorderAvailable && prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_RECORDINGS, true)
     }
     val showNotesTab      = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_NOTES,      true) }
+    val showAlternateTab  = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_ALTERNATE,  true) }
     val showDialpadTab    = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_TAB_SHOW_DIALPAD,    false) }
     val tabOrder          = remember(settingsState) { parseTabOrder(prefs.getString(PreferenceManager.KEY_TAB_ORDER, null)) }
     val labelStyle: TextStyle = MaterialTheme.typography.labelMedium
@@ -195,10 +200,11 @@ fun BottomBar(navController: NavController) {
     val isGroupsSelected     = currentDestination?.hierarchy?.any { it.route == GroupsScreenDestination.route } == true
     val isRecordingsSelected = currentDestination?.hierarchy?.any { it.route == RecordingsScreenDestination.route } == true
     val isNotesSelected      = currentDestination?.hierarchy?.any { it.route == NotesScreenDestination.route } == true
+    val isAlternateSelected  = currentDestination?.hierarchy?.any { it.route == AlternateNumbersScreenDestination.route } == true
     val isDialpadSelected    = currentDestination?.hierarchy?.any { it.route == DialPadScreenDestination.route } == true
 
     // Build visible tab routes dynamically based on prefs
-    val visibleTabRoutes = remember(showFavoritesTab, showCallsTab, showContactsTab, showSmsTab, showGroupsTab, showRecordingsTab, showNotesTab, showDialpadTab) {
+    val visibleTabRoutes = remember(showFavoritesTab, showCallsTab, showContactsTab, showSmsTab, showGroupsTab, showRecordingsTab, showNotesTab, showAlternateTab, showDialpadTab) {
         buildSet {
             if (showFavoritesTab)  add(FavoritesScreenDestination.route)
             if (showCallsTab)      add(RecentScreenDestination.route)
@@ -207,6 +213,7 @@ fun BottomBar(navController: NavController) {
             if (showGroupsTab)     add(GroupsScreenDestination.route)
             if (showRecordingsTab) add(RecordingsScreenDestination.route)
             if (showNotesTab)      add(NotesScreenDestination.route)
+            if (showAlternateTab)  add(AlternateNumbersScreenDestination.route)
             if (showDialpadTab)    add(DialPadScreenDestination.route)
         }
     }
@@ -292,8 +299,8 @@ fun BottomBar(navController: NavController) {
 
     val appLang = com.modiprincekr.thedialer.controller.util.LocalAppLanguage.current
     val orderedTabs: List<TabSpec> = remember(
-        tabOrder, showFavoritesTab, showCallsTab, showContactsTab, showSmsTab, showGroupsTab, showRecordingsTab, showNotesTab, showDialpadTab,
-        isFavoritesSelected, isRecentsSelected, isContactsSelected, isSmsSelected, isGroupsSelected, isRecordingsSelected, isNotesSelected, isDialpadSelected,
+        tabOrder, showFavoritesTab, showCallsTab, showContactsTab, showSmsTab, showGroupsTab, showRecordingsTab, showNotesTab, showAlternateTab, showDialpadTab,
+        isFavoritesSelected, isRecentsSelected, isContactsSelected, isSmsSelected, isGroupsSelected, isRecordingsSelected, isNotesSelected, isAlternateSelected, isDialpadSelected,
         appLang
     ) {
         tabOrder.mapNotNull { key ->
@@ -339,6 +346,12 @@ fun BottomBar(navController: NavController) {
                     selectedIcon = Icons.Filled.Note, unselectedIcon = Icons.Outlined.Note,
                     selected = isNotesSelected,
                     onClick = { doHaptic(); navigate(NotesScreenDestination.route) }
+                ) else null
+                "alternate" -> if (showAlternateTab) TabSpec(
+                    key = key, route = AlternateNumbersScreenDestination.route, label = com.modiprincekr.thedialer.controller.util.AppStrings.get("Alternate", appLang),
+                    selectedIcon = Icons.Filled.ContactPhone, unselectedIcon = Icons.Outlined.ContactPhone,
+                    selected = isAlternateSelected,
+                    onClick = { doHaptic(); navigate(AlternateNumbersScreenDestination.route) }
                 ) else null
                 "dialpad" -> if (showDialpadTab) TabSpec(
                     key = key, route = DialPadScreenDestination().route, label = com.modiprincekr.thedialer.controller.util.AppStrings.get("Dialpad", appLang),

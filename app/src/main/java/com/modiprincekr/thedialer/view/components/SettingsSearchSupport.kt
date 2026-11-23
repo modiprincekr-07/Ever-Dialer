@@ -249,6 +249,7 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Scroll Haptics", "Vibrate on scroll gestures across the app", "scroll_haptics", Icons.Outlined.SwipeVertical, GsColorIndigo),
         GlobalSettingsSearchEntry("Passwords & Security", "App lock, biometrics, PIN, pattern, and password", "passwords_and_security", Icons.Outlined.Security, Color(0xFF6750A4)) { it.navigate(BiometricScreenDestination()) },
         GlobalSettingsSearchEntry("Contacts Hider", "Hide contacts behind a secret code", "contacts_hider", Icons.Outlined.Lock, Color(0xFF5E35B1)),
+        GlobalSettingsSearchEntry("Alternate Numbers", "Save numbers in-app without syncing to device contacts", "alternate_numbers", Icons.Outlined.ContactPhone, Color(0xFF00897B)) { it.navigate(com.ramcosta.composedestinations.generated.destinations.AlternateNumbersScreenDestination()) },
         GlobalSettingsSearchEntry("Fake Call", "Schedule fake incoming calls without calling the real person", "fake_call", Icons.Outlined.PhoneCallback, GsColorRed),
         GlobalSettingsSearchEntry("Call Recording", "Open Ever Call Recorder", "call_recording", Icons.Default.FiberManualRecord, Color(0xFFE53935)),
         GlobalSettingsSearchEntry("Silence Unknown Callers", "Automatically decline calls from unknown numbers", "silence_unknown", Icons.Outlined.PhoneDisabled, GsColorRed),

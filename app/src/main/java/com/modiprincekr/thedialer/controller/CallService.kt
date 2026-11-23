@@ -185,7 +185,10 @@ class CallService : InCallService() {
 
             if (shouldShowPopup && handledCallEndedPopups.add(call)) {
                 val contact = try { contactsRepository.getContactByNumber(number) } catch (_: Exception) { null }
-                val name = contact?.name ?: number
+                val alt = if (contact == null && number.isNotEmpty()) {
+                    com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.findByNumber(this, number)
+                } else null
+                val name = contact?.name ?: alt?.name ?: number
                 val photo = contact?.photoUri
                 val contactId = contact?.id
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -1603,10 +1606,15 @@ class CallService : InCallService() {
         val hiddenIds = if (hiddenIdsRaw.isBlank()) emptySet() else hiddenIdsRaw.split(",").filter { it.isNotBlank() }.toSet()
         val isHiddenContact = contact != null && contact.id in hiddenIds
         val isConf = (call.details?.hasProperty(Call.Details.PROPERTY_CONFERENCE) == true) || call.children.isNotEmpty()
+        val alt = if (contact == null && number.isNotEmpty()) {
+            com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.findByNumber(this, number)
+        } else null
         val contactName = when {
             isConf -> "Conference call"
             isHiddenContact && hideNames -> number.ifEmpty { "Unknown Number" }
-            else -> contact?.name ?: number.ifEmpty { "Unknown Number" }
+            contact != null -> contact.name
+            alt != null -> alt.name
+            else -> number.ifEmpty { "Unknown Number" }
         }
 
         val fsi = PendingIntent.getActivity(this, 0,

@@ -778,6 +778,7 @@ fun CallLogFullContent(
                     "incoming" -> base.filter { it.type == CallLog.Calls.INCOMING_TYPE }
                     "outgoing" -> base.filter { it.type == CallLog.Calls.OUTGOING_TYPE }
                     "whatsapp" -> base.filter { it.isWhatsApp }
+                    "alternate" -> base.filter { it.isAlternate || com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.findByNumber(context, it.number) != null }
                     else -> base
                 }
             }

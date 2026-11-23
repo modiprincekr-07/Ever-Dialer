@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.ContactPhone
 import androidx.compose.material.icons.outlined.PhoneCallback
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Checkbox
@@ -473,10 +474,18 @@ fun CallLogTile(
 
     var showFakeCallSheet by remember { mutableStateOf(false) }
     var showCallChatViaPicker by remember { mutableStateOf(false) }
+    var showSaveToAlternateDialog by remember { mutableStateOf(false) }
 
     val isHiddenContact = remember(log.contactId, hiddenIds, hideNames) {
         hideNames && hiddenIds.isNotEmpty() && log.contactId != null && log.contactId in hiddenIds
     }
+    val altMatch = remember(log.number, isContact) {
+        if (!isContact && log.number.isNotBlank()) {
+            com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.findByNumber(context, log.number)
+        } else null
+    }
+    val isAlt = log.isAlternate || altMatch != null
+    val altName = log.alternateName ?: altMatch?.name
     val displayName = when {
         log.isMergedCall || log.isMultiCall -> {
             val name1 = (if (isContact) resolvedContactName else log.name)?.ifBlank { null } ?: log.number
@@ -485,6 +494,7 @@ fun CallLogTile(
         }
         isHiddenContact -> log.number
         isContact -> resolvedContactName ?: log.number
+        !altName.isNullOrBlank() -> altName
         isCallerId -> log.name ?: log.number
         nameNonContactsAsUnknown -> "Unknown"
         else -> log.number
@@ -494,6 +504,7 @@ fun CallLogTile(
         log.isMultiCall -> "Group"
         isHiddenContact -> log.number
         isContact -> resolvedContactName ?: log.number
+        !altName.isNullOrBlank() -> altName
         isCallerId -> log.name ?: log.number
         else -> nationalNumberDigits(log.number).ifEmpty { "Unknown" }
     }
@@ -574,6 +585,24 @@ fun CallLogTile(
                 }
             }
         } else null
+        val altBadge: (@Composable () -> Unit)? = if (isAlt) ({
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.padding(start = 4.dp)
+            ) {
+                Text(
+                    text = "Alt",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 11.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                )
+            }
+        }) else null
         val colorScheme = MaterialTheme.colorScheme
         val leftSwipeKey = config?.leftSwipeKey ?: prefs.getSwipeAction("call_logs", "left")
         val rightSwipeKey = config?.rightSwipeKey ?: prefs.getSwipeAction("call_logs", "right")
@@ -718,7 +747,7 @@ fun CallLogTile(
                     else -> null
                 },
                 avatarName  = if (showAvatars && (!log.isMultiCall || log.secondNumber.isNullOrBlank())) avatarSourceName else null,
-                avatarForcePersonIcon = !isContact && !log.isMultiCall,
+                avatarForcePersonIcon = !isContact && !log.isMultiCall && !isAlt,
                 photoUri    = if (showAvatars && !log.isMultiCall) resolvedPhotoUri else null,
                 customAvatar = if (showAvatars && log.isMultiCall && !log.secondNumber.isNullOrBlank()) {
                     {
@@ -737,7 +766,12 @@ fun CallLogTile(
                 } else null,
                 avatarObeySolidIcons = false,
                 headlineStartContent = if (log.isWhatsApp && !showNumberOnSupportingLine) whatsAppBadge else if (!showNumberOnSupportingLine) simBadge else null,
-                headlineEndContent = totalCallsBadge,
+                headlineEndContent = if (altBadge != null || totalCallsBadge != null) ({
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        altBadge?.invoke()
+                        totalCallsBadge?.invoke()
+                    }
+                }) else null,
                 supportingStartContent = if (log.isWhatsApp) whatsAppBadge else if (showNumberOnSupportingLine) simBadge else null,
                 trailingText = formatTimeOnly(log.date, use24HourTime),
                 trailingTextColor = if (isMissed || isBlocked) MaterialTheme.colorScheme.error else null,
@@ -813,6 +847,7 @@ fun CallLogTile(
             // Respect Settings → Appearance → "Context Menu Elements" customization (show/hide + order)
             val defaultCallLogOrder = listOf(
                 "select", "call_back", "view_contact", "edit_contact", "copy_number", "add_to_contacts",
+                "save_to_alternate",
                 "share", "call_chat_via", "send_text", "search_truecaller", "move_contact", "toggle_favorite",
                 "block_number", "fake_call", "delete_call_log"
             )
@@ -826,6 +861,7 @@ fun CallLogTile(
                         "view_contact"      -> isContact
                         "edit_contact"      -> isContact
                         "add_to_contacts"   -> !isContact
+                        "save_to_alternate" -> !isContact && log.number.isNotBlank()
                         "search_truecaller" -> !isContact && log.number.isNotBlank() && hasTruecaller
                         "move_contact"      -> isContact && matchedContact != null
                         "toggle_favorite"   -> isContact && matchedContact != null
@@ -1000,6 +1036,19 @@ fun CallLogTile(
                                     onClick  = {
                                         showMenu = false
                                         showAddContactChoiceDialog = true
+                                    }
+                                )
+                            }
+                        }
+                        "save_to_alternate" -> {
+                            if (!isContact) {
+                                RivoDropdownMenuItem(
+                                    text     = "Save to Alternate",
+                                    icon     = Icons.Outlined.ContactPhone,
+                                    iconTint = Color(0xFF00897B),
+                                    onClick  = {
+                                        showMenu = false
+                                        showSaveToAlternateDialog = true
                                     }
                                 )
                             }
@@ -1247,6 +1296,32 @@ fun CallLogTile(
                 }
             },
             onDismiss = { showMultiCallPicker = false }
+        )
+    }
+
+    if (showSaveToAlternateDialog) {
+        val existingAlt = altMatch ?: remember(log.number) {
+            com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.findByNumber(context, log.number)
+        }
+        com.modiprincekr.thedialer.view.screen.AddEditAlternateNumberDialog(
+            initialItem = existingAlt,
+            initialNumber = log.number,
+            onDismiss = { showSaveToAlternateDialog = false },
+            onSave = { name, number, tag, note ->
+                val toSave = existingAlt?.copy(
+                    name = name,
+                    phoneNumber = number,
+                    categoryTag = tag,
+                    note = note
+                ) ?: com.modiprincekr.thedialer.modal.data.AlternateNumber(
+                    name = name,
+                    phoneNumber = number,
+                    categoryTag = tag,
+                    note = note
+                )
+                com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.save(context, toSave)
+                showSaveToAlternateDialog = false
+            }
         )
     }
 }
