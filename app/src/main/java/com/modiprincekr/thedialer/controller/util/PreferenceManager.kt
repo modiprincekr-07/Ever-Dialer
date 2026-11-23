@@ -217,6 +217,82 @@ class PreferenceManager(context: Context) {
         setSpeedDial("1", number, "Voicemail")
     }
 
+    fun getSelectedUssdCountry(context: Context): String =
+        com.modiprincekr.thedialer.controller.UssdRepository.getSelectedCountry(context, this)
+
+    fun setSelectedUssdCountry(countryCode: String) {
+        setString(KEY_USSD_COUNTRY, countryCode.uppercase())
+    }
+
+    fun getCustomUssdCodes(): List<com.modiprincekr.thedialer.controller.UssdCodeItem> {
+        val json = getString(KEY_USSD_CUSTOM_CODES, "[]") ?: "[]"
+        return try {
+            val array = org.json.JSONArray(json)
+            val list = mutableListOf<com.modiprincekr.thedialer.controller.UssdCodeItem>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    com.modiprincekr.thedialer.controller.UssdCodeItem(
+                        id = obj.optString("id", java.util.UUID.randomUUID().toString()),
+                        title = obj.getString("title"),
+                        code = obj.getString("code"),
+                        category = com.modiprincekr.thedialer.controller.UssdCategory.CUSTOM,
+                        countryCode = obj.optString("countryCode").takeIf { !it.isNullOrBlank() },
+                        brand = obj.optString("brand").takeIf { !it.isNullOrBlank() },
+                        isCustom = true,
+                        description = obj.optString("description").takeIf { !it.isNullOrBlank() }
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveCustomUssdCodes(list: List<com.modiprincekr.thedialer.controller.UssdCodeItem>) {
+        val array = org.json.JSONArray()
+        list.forEach { item ->
+            val obj = org.json.JSONObject()
+            obj.put("id", item.id)
+            obj.put("title", item.title)
+            obj.put("code", item.code)
+            if (item.countryCode != null) obj.put("countryCode", item.countryCode)
+            if (item.brand != null) obj.put("brand", item.brand)
+            if (item.description != null) obj.put("description", item.description)
+            array.put(obj)
+        }
+        setString(KEY_USSD_CUSTOM_CODES, array.toString())
+    }
+
+    fun addCustomUssdCode(title: String, code: String, description: String? = null): com.modiprincekr.thedialer.controller.UssdCodeItem {
+        val current = getCustomUssdCodes().toMutableList()
+        val newItem = com.modiprincekr.thedialer.controller.UssdCodeItem(
+            id = java.util.UUID.randomUUID().toString(),
+            title = title.trim(),
+            code = code.trim(),
+            category = com.modiprincekr.thedialer.controller.UssdCategory.CUSTOM,
+            isCustom = true,
+            description = description?.trim()?.ifBlank { null }
+        )
+        current.add(0, newItem)
+        saveCustomUssdCodes(current)
+        return newItem
+    }
+
+    fun updateCustomUssdCode(id: String, title: String, code: String, description: String? = null) {
+        val current = getCustomUssdCodes().map {
+            if (it.id == id) it.copy(title = title.trim(), code = code.trim(), description = description?.trim()?.ifBlank { null })
+            else it
+        }
+        saveCustomUssdCodes(current)
+    }
+
+    fun deleteCustomUssdCode(id: String) {
+        val current = getCustomUssdCodes().filter { it.id != id }
+        saveCustomUssdCodes(current)
+    }
+
     fun getPinnedSmsThreads(): Set<Long> =
         getString(KEY_PINNED_SMS_THREADS, "")?.split(",")?.mapNotNull { it.trim().toLongOrNull() }?.toSet() ?: emptySet()
 
@@ -1510,6 +1586,10 @@ class PreferenceManager(context: Context) {
         // Speed Dial (Keys 2-9)
         const val KEY_SPEED_DIAL_PREFIX            = "speed_dial_"
         const val KEY_SPEED_DIAL_NAME_PREFIX       = "speed_dial_name_"
+
+        // USSD & Secret Codes
+        const val KEY_USSD_COUNTRY                 = "ussd_selected_country"
+        const val KEY_USSD_CUSTOM_CODES            = "ussd_custom_codes_json"
 
         // PC Connect & Bluetooth PC Sync
         const val KEY_PC_SYNC_FAVOURITES           = "pc_sync_favourites"

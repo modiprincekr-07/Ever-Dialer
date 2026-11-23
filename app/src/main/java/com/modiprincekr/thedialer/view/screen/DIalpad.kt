@@ -124,6 +124,10 @@ import com.modiprincekr.thedialer.modal.data.Contact
 import com.ramcosta.composedestinations.generated.destinations.ContactEditScreenDestination
 import com.modiprincekr.thedialer.view.components.CallChatViaOverlay
 import com.modiprincekr.thedialer.controller.UssdRepository
+import com.modiprincekr.thedialer.controller.UssdCategory
+import com.modiprincekr.thedialer.controller.UssdCodeItem
+import androidx.compose.material.icons.outlined.Numbers
+import androidx.compose.material.icons.rounded.Call
 import com.modiprincekr.thedialer.modal.data.RecordingItem
 import com.modiprincekr.thedialer.modal.data.CallLogEntry
 import com.modiprincekr.thedialer.view.components.CallLogTile
@@ -656,6 +660,12 @@ fun DialPadContent(
     // Collect USSD / MMI responses from CallService and show inline dialog
     val ussdResult by UssdRepository.response.collectAsState()
     DisposableEffect(Unit) { onDispose { UssdRepository.clear() } }
+
+    val isUssdQuery = number.startsWith("*") || number.startsWith("#")
+    val settingsVer by prefs.settingsChanged.collectAsState()
+    val matchingUssdCodes = remember(number, settingsVer) {
+        if (isUssdQuery) UssdRepository.getMatchingCodes(context, prefs, number) else emptyList()
+    }
 
     ussdResult?.let { (request, response) ->
         AlertDialog(
@@ -1426,8 +1436,24 @@ fun DialPadContent(
                     verticalArrangement = Arrangement.Top,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    AnimatedVisibility(
+                        visible = isUssdQuery && matchingUssdCodes.isNotEmpty(),
+                        enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) +
+                                expandVertically(tween(240, easing = FastOutSlowInEasing)),
+                        exit  = fadeOut(tween(180, easing = FastOutLinearInEasing)) +
+                                shrinkVertically(tween(200, easing = FastOutLinearInEasing))
+                    ) {
+                        UssdDialpadSuggestions(
+                            matchingCodes = matchingUssdCodes,
+                            onSelectCode = { item ->
+                                replaceNumber(item.code)
+                                UssdRepository.executeCode(context, item.code)
+                            }
+                        )
+                    }
+
                     // Search results
-                    val showResultsPanelLandscape = if (isSearching) {
+                    val showResultsPanelLandscape = if (isUssdQuery) false else if (isSearching) {
                         searchResults.isNotEmpty() || extraSearchResults.isNotEmpty()
                     } else {
                         showCallLogsInDialpadSearchList && recentCallLogs.isNotEmpty()
@@ -1566,7 +1592,7 @@ fun DialPadContent(
 
                     // Create contact / Add to contact chips when number entered & not searching
                     AnimatedVisibility(
-                        visible = number.isNotEmpty() && searchResults.isEmpty() && extraSearchResults.isEmpty() && searchQuery.isEmpty(),
+                        visible = number.isNotEmpty() && !isUssdQuery && searchResults.isEmpty() && extraSearchResults.isEmpty() && searchQuery.isEmpty(),
                         enter = fadeIn(tween(200)) + expandVertically(tween(220)),
                         exit = fadeOut(tween(160)) + shrinkVertically(tween(180))
                     ) {
@@ -2006,8 +2032,24 @@ fun DialPadContent(
             )
         }
 
+        AnimatedVisibility(
+            visible = isUssdQuery && matchingUssdCodes.isNotEmpty(),
+            enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) +
+                    expandVertically(tween(240, easing = FastOutSlowInEasing)),
+            exit  = fadeOut(tween(180, easing = FastOutLinearInEasing)) +
+                    shrinkVertically(tween(200, easing = FastOutLinearInEasing))
+        ) {
+            UssdDialpadSuggestions(
+                matchingCodes = matchingUssdCodes,
+                onSelectCode = { item ->
+                    replaceNumber(item.code)
+                    UssdRepository.executeCode(context, item.code)
+                }
+            )
+        }
+
         // Search results
-        val showResultsPanelPortrait = if (isSearching) {
+        val showResultsPanelPortrait = if (isUssdQuery) false else if (isSearching) {
             searchResults.isNotEmpty() || extraSearchResults.isNotEmpty()
         } else {
             showCallLogsInDialpadSearchList && recentCallLogs.isNotEmpty()
@@ -2147,7 +2189,7 @@ fun DialPadContent(
         }
 
         AnimatedVisibility(
-            visible = number.isNotEmpty() && searchResults.isEmpty() && extraSearchResults.isEmpty() && searchQuery.isEmpty(),
+            visible = number.isNotEmpty() && !isUssdQuery && searchResults.isEmpty() && extraSearchResults.isEmpty() && searchQuery.isEmpty(),
             enter = fadeIn(tween(200)) + expandVertically(tween(220)),
             exit = fadeOut(tween(160)) + shrinkVertically(tween(180))
         ) {
@@ -3445,5 +3487,165 @@ private fun BackspaceActionButton(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.size(size)
         )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun UssdDialpadSuggestions(
+    matchingCodes: List<UssdCodeItem>,
+    onSelectCode: (UssdCodeItem) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (matchingCodes.isEmpty()) return
+
+    val context = LocalContext.current
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .animateContentSize()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Outlined.Numbers,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Shortcuts & USSD (${matchingCodes.size})",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    text = "Tap to run • Hold to copy",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 210.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                matchingCodes.forEachIndexed { index, item ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 14.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .combinedClickable(
+                                onClick = { onSelectCode(item) },
+                                onLongClick = {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(item.code))
+                                    android.widget.Toast.makeText(context, "Copied ${item.code}", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val badgeLabel = item.brand ?: when (item.category) {
+                            UssdCategory.CUSTOM -> "Custom"
+                            UssdCategory.CARRIER -> item.brand ?: "Carrier"
+                            UssdCategory.STANDARD -> "Standard"
+                            UssdCategory.DIAGNOSTIC -> "Android"
+                            UssdCategory.HARDWARE -> "Test"
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = when (item.category) {
+                                UssdCategory.CUSTOM -> MaterialTheme.colorScheme.primaryContainer
+                                UssdCategory.CARRIER -> MaterialTheme.colorScheme.secondaryContainer
+                                UssdCategory.STANDARD -> MaterialTheme.colorScheme.tertiaryContainer
+                                else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                            }
+                        ) {
+                            Text(
+                                text = badgeLabel,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    fontSize = 10.sp
+                                ),
+                                color = when (item.category) {
+                                    UssdCategory.CUSTOM -> MaterialTheme.colorScheme.onPrimaryContainer
+                                    UssdCategory.CARRIER -> MaterialTheme.colorScheme.onSecondaryContainer
+                                    UssdCategory.STANDARD -> MaterialTheme.colorScheme.onTertiaryContainer
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = item.title,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = item.code,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { onSelectCode(item) },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Call,
+                                        contentDescription = "Run",
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

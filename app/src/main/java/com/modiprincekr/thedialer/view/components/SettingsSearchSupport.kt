@@ -118,6 +118,7 @@ import com.ramcosta.composedestinations.generated.destinations.ContactInfoSettin
 import com.ramcosta.composedestinations.generated.destinations.CustomFontScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.DialpadSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.SpeedDialScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.UssdCodesScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.FavouritesSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.NavigationSettingsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.DefaultMessageAppScreenDestination
@@ -360,6 +361,7 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Call Logs Settings", "UI Elements: Customize call log grouping, SIM icons, call counts, formatting and auto-deletion", "call_logs_settings_link", Icons.Outlined.Call, GsColorGreen) { it.navigate(CallLogsSettingsScreenDestination()) },
         GlobalSettingsSearchEntry("Dialpad Settings", "UI Elements: Customize dialpad memory, search list call logs, and startup behavior", "dialpad_settings_link", Icons.Outlined.Dialpad, GsColorBlue) { it.navigate(DialpadSettingsScreenDestination()) },
         GlobalSettingsSearchEntry("Speed Dial", "Dialpad: Configure 3x3 speed dial grid (Keys 1–9) and voicemail", "speed_dial", Icons.Outlined.Speed, GsColorTeal) { it.navigate(SpeedDialScreenDestination()) },
+        GlobalSettingsSearchEntry("USSD Codes", "Dialpad: Carrier balances, IMEI, network shortcuts, and hardware diagnostics", "ussd_codes", Icons.Outlined.Numbers, GsColorPurple) { it.navigate(UssdCodesScreenDestination()) },
         GlobalSettingsSearchEntry("Circle buttons", "Dialpad: Use circular buttons on the dialpad", "circle_buttons", Icons.Outlined.Lens, GsColorPurple) { it.navigate(DialpadSettingsScreenDestination(highlightKey = "circle_buttons")) },
         GlobalSettingsSearchEntry("Contact info Settings", "UI Elements: Customize contact info display and duplicate numbers", "contact_info_settings_link", Icons.Outlined.Person, GsColorPurple) { it.navigate(ContactInfoSettingsScreenDestination()) },
         GlobalSettingsSearchEntry("Favourites Settings", "UI Elements: Customize favourites layout and view mode", "favourites_settings_link", Icons.Outlined.Star, Color(0xFFE91E63)) { it.navigate(FavouritesSettingsScreenDestination()) },

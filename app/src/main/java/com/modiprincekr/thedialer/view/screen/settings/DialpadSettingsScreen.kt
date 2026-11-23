@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.Dialpad
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Lens
+import androidx.compose.material.icons.outlined.Numbers
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +28,7 @@ import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.generated.destinations.SpeedDialScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.UssdCodesScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import org.koin.compose.koinInject
 
@@ -144,6 +146,28 @@ fun DialpadSettingsScreen(
                             trailingIcon = Icons.Default.ChevronRight,
                             modifier = Modifier.settingsSearchHighlight("speed_dial", highlightedKey) { highlightedKey = null },
                             onClick = { navigator.navigate(SpeedDialScreenDestination()) }
+                        )
+                    }
+                }
+            }
+
+            RivoAnimatedSection(delayMs = 30L) {
+                Column {
+                    Text(
+                        "Shortcuts & Codes",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = rivoHeadingColor(),
+                        modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
+                    )
+                    RivoExpressiveCard {
+                        RivoListItem(
+                            headline = "USSD & Secret Codes",
+                            supporting = "Carrier codes, balance checks, IMEI, and hardware test diagnostics",
+                            leadingIcon = Icons.Outlined.Numbers,
+                            iconContainerColor = ColorPurple,
+                            trailingIcon = Icons.Default.ChevronRight,
+                            modifier = Modifier.settingsSearchHighlight("ussd_codes", highlightedKey) { highlightedKey = null },
+                            onClick = { navigator.navigate(UssdCodesScreenDestination()) }
                         )
                     }
                 }
