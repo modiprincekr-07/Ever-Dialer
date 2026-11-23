@@ -26,6 +26,48 @@ const val WHATSAPP_PACKAGE = "com.whatsapp"
 const val WHATSAPP_BUSINESS_PACKAGE = "com.whatsapp.w4b"
 val WHATSAPP_PACKAGES = setOf(WHATSAPP_PACKAGE, WHATSAPP_BUSINESS_PACKAGE)
 const val OFFICIAL_TELEGRAM_PACKAGE = "org.telegram.messenger"
+val PREFERRED_TELEGRAM_PACKAGES = listOf(
+    "org.telegram.messenger",
+    "org.telegram.messenger.web",
+    "com.radolyn.ayugram",
+    "tw.nekomimi.nekogram",
+    "org.thunderdog.challegram",
+    "org.telegram.BETA",
+    "org.telegram.plus"
+)
+
+/** Resolves the genuine Telegram client package, prioritizing official and popular forks (like AyuGram)
+ *  and filtering out third-party media players (e.g., TMPlayer). */
+fun getTelegramClientPackage(context: Context): String? {
+    for (pkg in PREFERRED_TELEGRAM_PACKAGES) {
+        if (isPackageInstalled(context, pkg)) return pkg
+    }
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?phone=0"))
+    val packageManager = context.packageManager
+    val handlers = try {
+        packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+    } catch (_: Exception) { emptyList() }
+        .mapNotNull { it.activityInfo?.packageName }
+        .filterNot { pkg ->
+            pkg == "android" || pkg.startsWith("com.android.internal") || pkg == context.packageName ||
+            pkg.contains("tmplayer", ignoreCase = true) || pkg.contains("player", ignoreCase = true)
+        }
+        .filter { isPackageInstalled(context, it) }
+        .distinct()
+
+    return handlers.firstOrNull()
+}
+
+/** Returns the display name of the detected Telegram client (e.g. "AyuGram", "Nekogram", "Telegram"). */
+fun getTelegramLabel(context: Context): String {
+    val pkg = getTelegramClientPackage(context)
+    return when {
+        pkg == "com.radolyn.ayugram" -> "AyuGram"
+        pkg == "tw.nekomimi.nekogram" -> "Nekogram"
+        pkg == "org.thunderdog.challegram" -> "Telegram X"
+        else -> "Telegram"
+    }
+}
 const val GOOGLE_MEET_PACKAGE = "com.google.android.apps.tachyon"
 const val TRUECALLER_PACKAGE = "com.truecaller"
 
@@ -63,39 +105,14 @@ fun getWhatsAppBusinessIcon(context: Context): ImageBitmap? {
     return try { drawableToImageBitmap(context.packageManager.getApplicationIcon(WHATSAPP_BUSINESS_PACKAGE)) } catch (_: Exception) { null }
 }
 
-/** Telegram has many third-party clients/forks. Rather than guessing a package name, this
- *  resolves the exact same "tg://resolve" intent used to actually open the chat, and loads the
- *  icon of whichever app is registered to handle it — so the icon shown always matches an app
- *  that will really open. If the official Telegram app is one of the installed handlers, its icon
- *  is used; otherwise the first genuine handler is used. Android's own "Open with…" chooser
- *  (which has its own generic share icon and isn't a real Telegram client) is always excluded. */
+/** Loads the real launcher icon of the detected Telegram client (official or genuine fork like AyuGram). */
 fun getTelegramIcon(context: Context): ImageBitmap? {
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?phone=0"))
-    val packageManager = context.packageManager
-    val handlers = try {
-        packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
-    } catch (_: Exception) { emptyList() }
-        .mapNotNull { it.activityInfo?.packageName }
-        .filterNot { it == "android" || it.startsWith("com.android.internal") || it == context.packageName }
-        .filter { isPackageInstalled(context, it) }
-        .distinct()
-
-    val chosenPackage = handlers.firstOrNull { it == OFFICIAL_TELEGRAM_PACKAGE } ?: handlers.firstOrNull() ?: return null
-    return try { drawableToImageBitmap(packageManager.getApplicationIcon(chosenPackage)) } catch (_: Exception) { null }
+    val chosenPackage = getTelegramClientPackage(context) ?: return null
+    return try { drawableToImageBitmap(context.packageManager.getApplicationIcon(chosenPackage)) } catch (_: Exception) { null }
 }
 
-/** True if at least one Telegram-capable app (official app or a fork) is installed, using the
- *  same tg:// resolution Telegram chat/call actions rely on. */
-fun isTelegramInstalled(context: Context): Boolean {
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?phone=0"))
-    val handlers = try {
-        context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
-    } catch (_: Exception) { emptyList() }
-        .mapNotNull { it.activityInfo?.packageName }
-        .filterNot { it == "android" || it.startsWith("com.android.internal") || it == context.packageName }
-        .filter { isPackageInstalled(context, it) }
-    return handlers.isNotEmpty()
-}
+/** True if at least one genuine Telegram-capable app (official app or verified fork like AyuGram) is installed. */
+fun isTelegramInstalled(context: Context): Boolean = getTelegramClientPackage(context) != null
 
 /** True if Google Meet is installed on the device. */
 fun isGoogleMeetInstalled(context: Context): Boolean = isPackageInstalled(context, GOOGLE_MEET_PACKAGE)
@@ -207,7 +224,7 @@ fun openWhatsAppBusinessChat(context: Context, phoneNumber: String, message: Str
     }
 }
 
-/** Opens a Telegram chat with [phoneNumber] via Android's own app chooser. If [message] is provided, pre-fills the message. Returns false if no Telegram-capable app is installed. */
+/** Opens a Telegram chat with [phoneNumber]. If [message] is provided, pre-fills the message. Targets the detected genuine Telegram package (e.g. AyuGram) directly without TMPlayer hijacking. Returns false if no Telegram-capable app is installed. */
 fun openTelegramChat(context: Context, phoneNumber: String, message: String? = null): Boolean {
     val clean = phoneNumber.filter { it.isDigit() || it == '+' }
     val uriStr = if (!message.isNullOrBlank()) {
@@ -215,19 +232,24 @@ fun openTelegramChat(context: Context, phoneNumber: String, message: String? = n
     } else {
         "tg://resolve?phone=$clean"
     }
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uriStr))
-    val handlers = try { context.packageManager.queryIntentActivities(intent, 0) } catch (_: Exception) { emptyList() }
-    if (handlers.isEmpty()) {
-        val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?phone=$clean"))
-        return try {
-            context.startActivity(Intent.createChooser(fallbackIntent, "Open with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    val clientPkg = getTelegramClientPackage(context) ?: return false
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uriStr)).apply {
+        setPackage(clientPkg)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    return try {
+        context.startActivity(intent)
+        true
+    } catch (_: Exception) {
+        val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse(uriStr)).apply {
+            setPackage(clientPkg)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(fallbackIntent)
             true
         } catch (_: Exception) { false }
     }
-    return try {
-        context.startActivity(Intent.createChooser(intent, "Open with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        true
-    } catch (_: Exception) { false }
 }
 
 /** Opens the Google Meet app without targeting any particular contact. Returns false if it isn't installed. */
@@ -661,7 +683,12 @@ fun startTelegramVoiceCall(context: Context, phoneNumber: String): Boolean {
     val uri = findTelegramCallDataUri(context, phoneNumber, wantVideo = false)
     if (uri != null) {
         return try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                val clientPkg = getTelegramClientPackage(context)
+                if (clientPkg != null) setPackage(clientPkg)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
             true
         } catch (_: Exception) { openTelegramChat(context, phoneNumber) }
     }
@@ -677,7 +704,12 @@ fun startTelegramVideoCall(context: Context, phoneNumber: String): Boolean {
     val uri = findTelegramCallDataUri(context, phoneNumber, wantVideo = true)
     if (uri != null) {
         return try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                val clientPkg = getTelegramClientPackage(context)
+                if (clientPkg != null) setPackage(clientPkg)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
             true
         } catch (_: Exception) { openTelegramChat(context, phoneNumber) }
     }

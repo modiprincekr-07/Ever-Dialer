@@ -312,8 +312,7 @@ class CallSessionManager private constructor(context: Context) {
         // disabled, don't start the foreground service at all — not even in standby. Starting it
         // in that state has nothing to actually do and was the source of spurious "Error
         // recording" notifications appearing on calls the user never asked to be recorded.
-        val recordingConfigured = preferences.isCallRecordingEnabled() && preferences.isDisclaimerAccepted() &&
-            (preferences.isAutoRecordIncomingEnabled() || preferences.isAutoRecordOutgoingEnabled() || preferences.isAnyAppCallRecordingEnabled())
+        val recordingConfigured = preferences.isCallRecordingEnabled() && preferences.isDisclaimerAccepted()
         if (!recordingConfigured) {
             AppLogger.d(TAG, "Call recording has not been set up / is fully disabled. Not starting the recording service for this call.")
             return

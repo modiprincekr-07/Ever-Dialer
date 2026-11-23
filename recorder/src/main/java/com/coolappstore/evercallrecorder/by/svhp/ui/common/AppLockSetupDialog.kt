@@ -341,7 +341,7 @@ private fun MethodChooserStep(
         Text("Set Up App Lock", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            "Choose how you'd like to confirm it's really you before Ever Call Recorder opens.",
+            "Choose how you'd like to confirm it's really you before Call Recorder opens.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

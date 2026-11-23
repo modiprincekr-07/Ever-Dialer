@@ -191,7 +191,7 @@ fun AppSearchBar(
                         ) {
                             if (query.text.isEmpty()) {
                                 Text(
-                                    text = if (animProgress < 0.35f) placeholderText else tr("Search in Ever Dialer"),
+                                    text = if (animProgress < 0.35f) placeholderText else tr("Search in The Dialer"),
                                     color = searchBarPlaceholder,
                                     style = MaterialTheme.typography.bodyLarge.copy(
                                         platformStyle = PlatformTextStyle(includeFontPadding = false)

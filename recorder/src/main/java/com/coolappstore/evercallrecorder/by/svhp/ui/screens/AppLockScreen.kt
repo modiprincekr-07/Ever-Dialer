@@ -133,7 +133,7 @@ fun AppLockScreen(
                     ) {
                         Icon(Icons.Outlined.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(18.dp))
                     }
-                    Text("Ever Call Recorder", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Call Recorder", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 }
 
                 when (method) {
@@ -306,7 +306,7 @@ internal fun ColumnScope.BiometricUnlockContent(onUnlocked: () -> Unit) {
         if (attempt == 0 && hasShownInitialPrompt) return@LaunchedEffect
         errorText = null
         hasShownInitialPrompt = true
-        showPrompt("Unlock Ever Call Recorder", null)
+        showPrompt("Unlock Call Recorder", null)
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "lockScreenBiometricPulse")

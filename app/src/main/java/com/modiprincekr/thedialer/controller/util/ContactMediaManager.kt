@@ -193,9 +193,10 @@ object ContactMediaManager {
     }
 
     /**
-     * Reads, validates, duration-checks, and saves a custom background GIF or Video (up to 30s) for a contact.
-     * Enforces the 30-second duration cap. Returns [Result.success] with the absolute file path
-     * or [Result.failure] on violation or I/O error.
+     * Reads, validates, duration-checks (for animated media), and saves a custom background
+     * (Static Images, GIFs, or Videos up to 30s) for a contact into persistent internal app storage.
+     * Enforces the 30-second duration cap on GIFs and videos; static images bypass duration check.
+     * Returns [Result.success] with the absolute file path or [Result.failure] on violation or I/O error.
      */
     fun saveContactMedia(
         context: Context,
@@ -209,19 +210,26 @@ object ContactMediaManager {
             val uriString = sourceUri.toString().lowercase()
 
             val isGif = mimeType == "image/gif" || uriString.endsWith(".gif") || isGifStream(context, sourceUri)
+            val isImage = mimeType.startsWith("image/") || uriString.endsWith(".jpg") ||
+                    uriString.endsWith(".jpeg") || uriString.endsWith(".png") ||
+                    uriString.endsWith(".webp") || uriString.endsWith(".bmp")
 
-            val dir = File(context.filesDir, "contact_media")
+            val dir = File(context.filesDir, "contact_backgrounds")
             if (!dir.exists()) dir.mkdirs()
 
             val sanitizedKey = contactKey.replace(Regex("[^a-zA-Z0-9_]"), "_")
-            // Clean up any existing media files for this contact
-            File(dir, "media_${sanitizedKey}.gif").delete()
-            File(dir, "media_${sanitizedKey}.mp4").delete()
-            File(dir, "media_${sanitizedKey}.webm").delete()
-            File(dir, "media_${sanitizedKey}.mkv").delete()
+
+            // Clean up any existing media files for this contact across all storage folders
+            dir.listFiles { _, name -> name.startsWith("${sanitizedKey}_") || name.startsWith("media_${sanitizedKey}") }?.forEach { it.delete() }
+            val legacyDir = File(context.filesDir, "contact_media")
+            if (legacyDir.exists()) {
+                legacyDir.listFiles { _, name -> name.startsWith("media_${sanitizedKey}") }?.forEach { it.delete() }
+            }
             File(context.filesDir, "contact_gifs/gif_${sanitizedKey}.gif").delete()
 
             val targetFile: File
+            val timestamp = System.currentTimeMillis()
+
             if (isGif) {
                 val bytes = cr.openInputStream(sourceUri)?.use { it.readBytes() }
                     ?: return Result.failure(IllegalArgumentException("Could not read GIF from selected URI"))
@@ -236,8 +244,22 @@ object ContactMediaManager {
                     return Result.failure(IllegalArgumentException("GIF duration (${sec}s) exceeds the 30-second limit"))
                 }
 
-                targetFile = File(dir, "media_${sanitizedKey}.gif")
+                targetFile = File(dir, "${sanitizedKey}_${timestamp}.gif")
                 targetFile.writeBytes(bytes)
+            } else if (isImage) {
+                // Static image: bypass duration validation, persist with proper extension
+                val ext = when {
+                    mimeType.contains("png") || uriString.endsWith(".png") -> ".png"
+                    mimeType.contains("webp") || uriString.endsWith(".webp") -> ".webp"
+                    mimeType.contains("bmp") || uriString.endsWith(".bmp") -> ".bmp"
+                    else -> ".jpg"
+                }
+                targetFile = File(dir, "${sanitizedKey}_${timestamp}$ext")
+                cr.openInputStream(sourceUri)?.use { input ->
+                    FileOutputStream(targetFile).use { output ->
+                        input.copyTo(output)
+                    }
+                } ?: return Result.failure(IllegalArgumentException("Could not read image from selected URI"))
             } else {
                 val isVideo = mimeType.startsWith("video/") ||
                         uriString.endsWith(".mp4") || uriString.endsWith(".mkv") ||
@@ -245,7 +267,7 @@ object ContactMediaManager {
                         uriString.endsWith(".3gp") || isVideoMetadata(context, sourceUri)
 
                 if (!isVideo) {
-                    return Result.failure(IllegalArgumentException("Selected file must be a GIF or Video (up to 30s)"))
+                    return Result.failure(IllegalArgumentException("Selected file must be an image, GIF, or Video (up to 30s)"))
                 }
 
                 val durationMs = parseVideoDurationMs(context, sourceUri)
@@ -260,7 +282,7 @@ object ContactMediaManager {
                     else -> ".mp4"
                 }
 
-                targetFile = File(dir, "media_${sanitizedKey}$ext")
+                targetFile = File(dir, "${sanitizedKey}_${timestamp}$ext")
                 cr.openInputStream(sourceUri)?.use { input ->
                     FileOutputStream(targetFile).use { output ->
                         input.copyTo(output)
@@ -299,13 +321,26 @@ object ContactMediaManager {
 
     /**
      * Resolves the saved media background path for a contact by contact ID or phone number.
+     * Looks up internal storage `contact_backgrounds` and `PreferenceManager`.
      */
     fun getContactMedia(context: Context, contactId: String?, phoneNumber: String?): String? {
         val prefs = PreferenceManager(context)
+        val bgDir = File(context.filesDir, "contact_backgrounds")
+
         if (!contactId.isNullOrBlank()) {
             val path = prefs.getString("contact_${contactId}_media_bg", null)
                 ?: prefs.getString("contact_${contactId}_gif_bg", null)
             if (!path.isNullOrBlank() && File(path).exists()) return path
+
+            // File system fallback by contact key
+            if (bgDir.exists()) {
+                val sanitized = contactId.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                val found = bgDir.listFiles { _, name -> name.startsWith("${sanitized}_") }?.firstOrNull()
+                if (found != null && found.exists()) {
+                    prefs.setString("contact_${contactId}_media_bg", found.absolutePath)
+                    return found.absolutePath
+                }
+            }
         }
         if (!phoneNumber.isNullOrBlank()) {
             val clean = normalizeNumber(phoneNumber)
@@ -313,6 +348,14 @@ object ContactMediaManager {
                 val path = prefs.getString("contact_num_${clean}_media_bg", null)
                     ?: prefs.getString("contact_num_${clean}_gif_bg", null)
                 if (!path.isNullOrBlank() && File(path).exists()) return path
+
+                if (bgDir.exists()) {
+                    val found = bgDir.listFiles { _, name -> name.startsWith("${clean}_") }?.firstOrNull()
+                    if (found != null && found.exists()) {
+                        prefs.setString("contact_num_${clean}_media_bg", found.absolutePath)
+                        return found.absolutePath
+                    }
+                }
             }
             // Fallback: look up contact ID via PhoneLookup
             try {
@@ -324,6 +367,15 @@ object ContactMediaManager {
                             val path = prefs.getString("contact_${resolvedId}_media_bg", null)
                                 ?: prefs.getString("contact_${resolvedId}_gif_bg", null)
                             if (!path.isNullOrBlank() && File(path).exists()) return path
+
+                            if (bgDir.exists()) {
+                                val sanitized = resolvedId.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                                val found = bgDir.listFiles { _, name -> name.startsWith("${sanitized}_") }?.firstOrNull()
+                                if (found != null && found.exists()) {
+                                    prefs.setString("contact_${resolvedId}_media_bg", found.absolutePath)
+                                    return found.absolutePath
+                                }
+                            }
                         }
                     }
                 }
@@ -346,6 +398,11 @@ object ContactMediaManager {
                 if (file.exists()) file.delete()
             }
 
+            val sanitizedKey = contactKey.replace(Regex("[^a-zA-Z0-9_]"), "_")
+            File(context.filesDir, "contact_backgrounds").listFiles { _, name ->
+                name.startsWith("${sanitizedKey}_") || name.startsWith("media_${sanitizedKey}")
+            }?.forEach { it.delete() }
+
             prefs.remove("contact_${contactKey}_media_bg")
             prefs.remove("contact_${contactKey}_gif_bg")
 
@@ -354,6 +411,9 @@ object ContactMediaManager {
                 if (clean.isNotEmpty()) {
                     prefs.remove("contact_num_${clean}_media_bg")
                     prefs.remove("contact_num_${clean}_gif_bg")
+                    File(context.filesDir, "contact_backgrounds").listFiles { _, name ->
+                        name.startsWith("${clean}_")
+                    }?.forEach { it.delete() }
                 }
             }
             prefs.notifyChanged()
@@ -488,8 +548,13 @@ fun ContactMediaBackground(
         )
     } else {
         val imageLoader = rememberGifImageLoader()
+        val imageModel = remember(mediaPath) {
+            val clean = mediaPath.removePrefix("file://")
+            val f = File(clean)
+            if (f.exists()) f else mediaPath
+        }
         AsyncImage(
-            model = mediaPath,
+            model = imageModel,
             imageLoader = imageLoader,
             contentDescription = contentDescription,
             modifier = modifier,

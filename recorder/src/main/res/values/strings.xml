@@ -10,7 +10,7 @@
     <!-- ========================================== -->
     <!-- GENERAL MESSAGES & APP LEVEL               -->
     <!-- ========================================== -->
-    <string name="app_name" translatable="false">Ever Call Recorder</string>
+    <string name="app_name" translatable="false">Call Recorder</string>
     <string name="general_close">Close</string>
     <string name="general_continue">Continue</string>
     <string name="general_ok">OK</string>
@@ -25,14 +25,14 @@
     <string name="general_outgoing">outgoing</string>
     <string name="general_reset">Reset</string>
     <string name="general_system_limitation">System Limitation</string>
-    <string name="general_system_limitation_message">Ever Call Recorder will not work on this device as your shell application does not have the required permissions:\n\n%1$s\n\nThere is nothing you can do about this, the app cannot function and will now close.</string>
+    <string name="general_system_limitation_message">Call Recorder will not work on this device as your shell application does not have the required permissions:\n\n%1$s\n\nThere is nothing you can do about this, the app cannot function and will now close.</string>
 
     <!-- ========================================== -->
     <!-- UI SECTIONS                                -->
     <!-- ========================================== -->
 
     <!-- Disclaimer Screen -->
-    <string name="disclaimer_title">Welcome to Ever Call Recorder</string>
+    <string name="disclaimer_title">Welcome to Call Recorder</string>
     <string name="disclaimer_wiki_link_KEYWORD">Wiki</string>
     <string name="disclaimer_introduction">Please open and read the setup instructions on our Wiki before proceeding. Then, read the disclaimer below.</string>
     <string name="disclaimer_body" translatable="false">
@@ -140,7 +140,7 @@
     <string name="storage_choice_folder_title">Choose a Folder</string>
     <string name="storage_choice_folder_description">Pick a folder on your device. Recordings can be browsed and shared with any file manager.</string>
     <string name="storage_choice_private_title">Save Privately In-App</string>
-    <string name="storage_choice_private_description">Recordings stay inside Ever Call Recorder\'s own private storage, for extra privacy. Only this app can access them.</string>
+    <string name="storage_choice_private_description">Recordings stay inside Call Recorder\'s own private storage, for extra privacy. Only this app can access them.</string>
 
     <string name="settings_file_name_template">File Name Template</string>
     <string name="settings_file_name_template_placeholders">Placeholders:</string>
@@ -158,7 +158,7 @@
     <string name="settings_app_call_recording_dialog_title">Record Calls From Apps</string>
     <string name="settings_app_call_recording_dialog_description">Automatically record voice and video calls placed through the apps below, using the same privileged audio capture mechanism this app already uses for normal calls.</string>
     <string name="settings_app_call_recording_permission_title">Notification access required</string>
-    <string name="settings_app_call_recording_permission_description">To detect when a call starts in these apps, Ever Call Recorder needs permission to read notifications.</string>
+    <string name="settings_app_call_recording_permission_description">To detect when a call starts in these apps, Call Recorder needs permission to read notifications.</string>
     <string name="settings_app_call_recording_grant_access">Grant Access</string>
     <string name="settings_app_call_recording_access_granted">Notification access granted</string>
     <string name="app_call_target_whatsapp" translatable="false">WhatsApp</string>

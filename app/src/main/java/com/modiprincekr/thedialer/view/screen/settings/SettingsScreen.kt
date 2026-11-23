@@ -1029,7 +1029,7 @@ fun SettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                         RivoExpressiveCard {
                             RivoListItem(
                                 headline = "Call Recording",
-                                supporting = "Open Ever Call Recorder",
+                                supporting = "Open Call Recorder",
                                 leadingIcon = Icons.Default.FiberManualRecord,
                                 iconContainerColor = Color(0xFFE53935),
                                 trailingIcon = Icons.Default.ChevronRight,
@@ -1338,7 +1338,7 @@ fun SettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                         RivoExpressiveCard {
                             RivoListItem(
                                 headline = "Call Recording",
-                                supporting = "Open Ever Call Recorder",
+                                supporting = "Open Call Recorder",
                                 leadingIcon = Icons.Default.FiberManualRecord,
                                 iconContainerColor = Color(0xFFE53935),
                                 trailingIcon = Icons.Default.ChevronRight,

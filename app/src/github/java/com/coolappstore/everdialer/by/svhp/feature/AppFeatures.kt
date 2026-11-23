@@ -54,6 +54,9 @@ object AppFeatures {
         } catch (_: Throwable) {}
     }
 
+    fun isCurrentlyRecordingFlow(): kotlinx.coroutines.flow.StateFlow<Boolean> =
+        RecordingForegroundService.isRecordingActiveFlow
+
     fun openRecorderMainActivity(context: Context) {
         try {
             context.startActivity(Intent(context, com.coolappstore.evercallrecorder.by.svhp.MainActivity::class.java))

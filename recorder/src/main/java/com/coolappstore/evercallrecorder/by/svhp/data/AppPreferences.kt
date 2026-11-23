@@ -51,8 +51,8 @@ class AppPreferences(private val context: Context) {
         // foreground service) is entirely off until the user explicitly turns this on.
         const val CALL_RECORDING_ENABLED = false
         const val VIBRATION_ENABLED = true
-        const val AUTO_RECORD_INCOMING = true
-        const val AUTO_RECORD_OUTGOING = true
+        const val AUTO_RECORD_INCOMING = false
+        const val AUTO_RECORD_OUTGOING = false
         const val RECORD_ON_ANSWER = true
         const val IGNORE_ANONYMOUS_INCOMING = false
         const val IGNORE_CROSS_COUNTRY_INCOMING = false
@@ -95,8 +95,8 @@ class AppPreferences(private val context: Context) {
         val APP_LOCK_METHOD = AppLockMethod.NONE
         val APP_LOCK_SECRET_HASH: String? = null
         val APP_LOCK_SALT: String? = null
-        // Record calls from apps defaults — both OFF (unticked) until the user opts in.
-        const val RECORD_WHATSAPP_CALLS = false
+        // Record calls from apps defaults — WhatsApp auto-record enabled by default.
+        const val RECORD_WHATSAPP_CALLS = true
         const val RECORD_TELEGRAM_CALLS = false
         // Call detection defaults to the original, proven phone-state broadcast method.
         val CALL_DETECTION_MODE = CallDetectionMode.PHONE_STATE

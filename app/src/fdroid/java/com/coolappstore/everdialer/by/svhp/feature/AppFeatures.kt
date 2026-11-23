@@ -23,6 +23,9 @@ object AppFeatures {
 
     fun toggleManualRecording(context: Context, isCurrentlyRecording: Boolean = false) {}
 
+    private val _inactiveRecordingFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
+    fun isCurrentlyRecordingFlow(): kotlinx.coroutines.flow.StateFlow<Boolean> = _inactiveRecordingFlow
+
     fun openRecorderMainActivity(context: Context) {}
 
     fun syncCallRecordingComponentGuard(context: Context) {}

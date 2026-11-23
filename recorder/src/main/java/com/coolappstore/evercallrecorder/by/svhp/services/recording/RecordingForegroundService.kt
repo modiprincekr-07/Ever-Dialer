@@ -96,6 +96,9 @@ class RecordingForegroundService : Service() {
 
         /** Intent action sent to this service when the user dismisses the notification (Android 14+). */
         const val ACTION_NOTIFICATION_DISMISSED = "com.coolappstore.evercallrecorder.by.svhp.SERVICE_NOTIFICATION_DISMISSED"
+
+        private val _isRecordingActiveFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
+        val isRecordingActiveFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _isRecordingActiveFlow
     }
 
     // ── Dependencies ──────────────────────────────────────────────────────────
@@ -122,6 +125,7 @@ class RecordingForegroundService : Service() {
             if (field != value) {
                 val oldState = field
                 field = value
+                _isRecordingActiveFlow.value = (value is RecordingServiceState.Active || value is RecordingServiceState.Starting)
                 updateNotification()
                 notificationHelper.handleStateChangeToasts(oldState, value)
             }
@@ -310,6 +314,7 @@ class RecordingForegroundService : Service() {
         // Always clean up, even if the OS kills the service mid-recording.
         // This is the guaranteed last callback before the service process is cleaned up.
         AppLogger.v(TAG, "RecordingForegroundService is destroying... Ensuring cleanup...")
+        _isRecordingActiveFlow.value = false
         serviceScope.cancel()
         stopRecordingSessionAndService()
         shizukuManager.unbind()

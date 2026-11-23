@@ -9,6 +9,8 @@ import android.net.Uri
 import android.provider.ContactsContract
 import android.telecom.TelecomManager
 import android.media.RingtoneManager
+import java.io.File
+import java.io.FileOutputStream
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -109,6 +111,7 @@ import com.modiprincekr.thedialer.controller.util.isTruecallerInstalled
 import com.modiprincekr.thedialer.controller.util.getWhatsAppIcon
 import com.modiprincekr.thedialer.controller.util.getWhatsAppBusinessIcon
 import com.modiprincekr.thedialer.controller.util.getTelegramIcon
+import com.modiprincekr.thedialer.controller.util.getTelegramLabel
 import com.modiprincekr.thedialer.controller.util.getGoogleMeetIcon
 import com.modiprincekr.thedialer.controller.util.getTruecallerIcon
 import com.modiprincekr.thedialer.controller.util.openWhatsAppChat
@@ -311,6 +314,7 @@ fun ContactDetailsScreen(
     val whatsAppIcon = remember(context, whatsAppInstalled) { if (whatsAppInstalled) getWhatsAppIcon(context) else null }
     val whatsAppBusinessIcon = remember(context, whatsAppBusinessInstalled) { if (whatsAppBusinessInstalled) getWhatsAppBusinessIcon(context) else null }
     val telegramIcon = remember(context, telegramInstalled) { if (telegramInstalled) getTelegramIcon(context) else null }
+    val telegramLabel = remember(context, telegramInstalled) { if (telegramInstalled) getTelegramLabel(context) else "Telegram" }
     val meetIcon = remember(context, meetInstalled) { if (meetInstalled) getGoogleMeetIcon(context) else null }
     val truecallerIcon = remember(context, truecallerInstalled) { if (truecallerInstalled) getTruecallerIcon(context) else null }
 
@@ -389,8 +393,44 @@ fun ContactDetailsScreen(
     var showTopActionMenu by remember { mutableStateOf(false) }
     BackHandler(enabled = showTopActionMenu) { showTopActionMenu = false }
     var showMediaOptionsDialog by remember { mutableStateOf(false) }
+    var showPfpOptionsDialog by remember { mutableStateOf(false) }
     var contactMediaPath by remember(contactSimKey, settingsVer) {
         mutableStateOf(ContactMediaManager.getContactMedia(context, contact?.id ?: contactSimKey, phoneNumber))
+    }
+
+    LaunchedEffect(contact?.id, contactSimKey, phoneNumber, settingsVer) {
+        contactMediaPath = ContactMediaManager.getContactMedia(context, contact?.id ?: contactSimKey, phoneNumber)
+    }
+
+    val pfpPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null && contact != null) {
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val pfpDir = File(context.filesDir, "contact_pfp")
+                    if (!pfpDir.exists()) pfpDir.mkdirs()
+                    val pfpFile = File(pfpDir, "${contact.id}_${System.currentTimeMillis()}.jpg")
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(pfpFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    val cachedUri = Uri.fromFile(pfpFile).toString()
+                    contactsViewModel.saveContact(
+                        contact = contact.copy(photoUri = cachedUri),
+                        originalContact = contact
+                    )
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        android.widget.Toast.makeText(context, "Contact photo updated", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        android.widget.Toast.makeText(context, e.message ?: "Failed to update photo", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
     }
 
     val mediaPickerLauncher = rememberLauncherForActivityResult(
@@ -406,7 +446,8 @@ fun ContactDetailsScreen(
                         onSuccess = { savedPath ->
                             contactMediaPath = savedPath
                             val isVid = ContactMediaManager.isVideo(savedPath)
-                            val label = if (isVid) "Video" else "GIF"
+                            val isGf = savedPath.lowercase().endsWith(".gif")
+                            val label = if (isVid) "Video" else if (isGf) "GIF" else "Image"
                             android.widget.Toast.makeText(context, "$label background set successfully", android.widget.Toast.LENGTH_SHORT).show()
                         },
                         onFailure = { error ->
@@ -605,7 +646,7 @@ fun ContactDetailsScreen(
         val appLabel = when (app) {
             "whatsapp" -> "WhatsApp"
             "whatsapp_business" -> "WhatsApp Business"
-            "telegram" -> "Telegram"
+            "telegram" -> telegramLabel
             else -> "Google Meet"
         }
         AppQuickActionsDialog(
@@ -972,6 +1013,47 @@ fun ContactDetailsScreen(
                         Surface(
                             onClick = {
                                 showBackgroundPfpChoiceDialog = false
+                                if (contact == null) {
+                                    android.widget.Toast.makeText(context, "Save this number as a contact first", android.widget.Toast.LENGTH_SHORT).show()
+                                } else if (contact.photoUri != null) {
+                                    showPfpOptionsDialog = true
+                                } else {
+                                    pfpPickerLauncher.launch(
+                                        androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                }
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.AccountCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                                    }
+                                }
+                                Spacer(Modifier.width(14.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Contact Profile Picture (PFP)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                    Text("Add, change, or remove contact photo", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        Surface(
+                            onClick = {
+                                showBackgroundPfpChoiceDialog = false
                                 navigator.navigate(
                                     CustomBackgroundPickerScreenDestination(
                                         isIncoming = true,
@@ -1052,7 +1134,7 @@ fun ContactDetailsScreen(
                                 if (contactMediaPath != null) {
                                     showMediaOptionsDialog = true
                                 } else {
-                                    mediaPickerLauncher.launch(arrayOf("image/gif", "video/*"))
+                                    mediaPickerLauncher.launch(arrayOf("image/*", "video/*"))
                                 }
                             },
                             shape = RoundedCornerShape(20.dp),
@@ -1078,7 +1160,7 @@ fun ContactDetailsScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Contact Background Media", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                     Text(
-                                        if (contactMediaPath != null) "Custom media active (max 30s) • Tap to manage" else "Looping GIF or video for header & popups (max 30s)",
+                                        if (contactMediaPath != null) "Custom media active • Tap to manage" else "Image, GIF, or looping video for header (max 30s)",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -1101,16 +1183,57 @@ fun ContactDetailsScreen(
         }
     }
 
+    if (showPfpOptionsDialog) {
+        AlertDialog(
+            onDismissRequest = { showPfpOptionsDialog = false },
+            title = { Text("Contact Profile Picture (PFP)") },
+            text = { Text("Add, change, or remove contact photo for this contact.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPfpOptionsDialog = false
+                        pfpPickerLauncher.launch(
+                            androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
+                ) {
+                    Text("Change Photo")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            showPfpOptionsDialog = false
+                            if (contact != null) {
+                                contactsViewModel.saveContact(
+                                    contact = contact.copy(photoUri = null),
+                                    originalContact = contact
+                                )
+                                android.widget.Toast.makeText(context, "Profile photo removed", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    ) {
+                        Text("Remove Photo", color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(onClick = { showPfpOptionsDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
+
     if (showMediaOptionsDialog) {
         AlertDialog(
             onDismissRequest = { showMediaOptionsDialog = false },
             title = { Text("Contact Background Media") },
-            text = { Text("Manage the looping background GIF or video (up to 30s) for this contact.") },
+            text = { Text("Manage the background image, looping GIF, or video (up to 30s) for this contact.") },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showMediaOptionsDialog = false
-                        mediaPickerLauncher.launch(arrayOf("image/gif", "video/*"))
+                        mediaPickerLauncher.launch(arrayOf("image/*", "video/*"))
                     }
                 ) {
                     Text("Change Media")
@@ -2228,7 +2351,7 @@ fun ContactDetailsScreen(
                                             if (telegramInstalled) {
                                                 RivoExpressiveButton(
                                                     modifier = Modifier.widthIn(min = 76.dp),
-                                                    icon = Icons.Default.Send, iconBitmap = telegramIcon, label = "Telegram", size = 56.dp, iconSize = 22.dp, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface, onClick = {
+                                                    icon = Icons.Default.Send, iconBitmap = telegramIcon, label = telegramLabel, size = 56.dp, iconSize = 22.dp, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface, onClick = {
                                                         if (displayPhone == "Unknown") return@RivoExpressiveButton
                                                         chooseSocialApp("telegram")
                                                     }

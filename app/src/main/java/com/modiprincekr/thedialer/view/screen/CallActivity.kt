@@ -1383,6 +1383,7 @@ fun ExpressiveCallScreen(
     // recorder's foreground service on/off for this call. Purely a manual trigger; the
     // recorder's own auto-record setting (Settings → Call Recording) is unaffected.
     var isManuallyRecording by remember { mutableStateOf(false) }
+    val isRecordingServiceActive by com.coolappstore.everdialer.by.svhp.feature.AppFeatures.isCurrentlyRecordingFlow().collectAsState()
     var showNoteWindow by remember { mutableStateOf(false) }
 
     // ── Call-lock biometric ────────────────────────────────────────────────
@@ -1491,26 +1492,26 @@ fun ExpressiveCallScreen(
         prefs?.let { CallButtonPrefs.getActiveActionIds(it) } ?: listOf(
             CallButtonPrefs.ID_HOLD, CallButtonPrefs.ID_ADD, CallButtonPrefs.ID_DIALPAD,
             CallButtonPrefs.ID_NOTE, CallButtonPrefs.ID_MUTE, CallButtonPrefs.ID_SPEAKER,
-            CallButtonPrefs.ID_AUTO_REDIAL,
+            CallButtonPrefs.ID_RECORD,
             CallButtonPrefs.ID_WHATSAPP_VIDEO
         )
     }
     // Legacy standalone Bluetooth button is removed in favor of the newer expandable audio button (ID_SPEAKER).
-    // Auto Redial and WhatsApp Video MUST be persistently visible at all times.
+    // Auto Redial is removed from the active call grid in favor of Record; Record & WhatsApp Video are persistently visible.
     val displayedButtonIds = remember(activeButtonIds) {
-        var base = activeButtonIds.filter { it != CallButtonPrefs.ID_BLUETOOTH }
-        if (CallButtonPrefs.ID_AUTO_REDIAL !in base) {
+        var base = activeButtonIds.filter { it != CallButtonPrefs.ID_BLUETOOTH && it != CallButtonPrefs.ID_AUTO_REDIAL }
+        if (CallButtonPrefs.ID_RECORD !in base) {
             val spkIdx = base.indexOf(CallButtonPrefs.ID_SPEAKER)
             if (spkIdx != -1) {
-                base = base.toMutableList().apply { add(spkIdx + 1, CallButtonPrefs.ID_AUTO_REDIAL) }
+                base = base.toMutableList().apply { add(spkIdx + 1, CallButtonPrefs.ID_RECORD) }
             } else {
-                base = base + CallButtonPrefs.ID_AUTO_REDIAL
+                base = base + CallButtonPrefs.ID_RECORD
             }
         }
         if (CallButtonPrefs.ID_WHATSAPP_VIDEO !in base) {
-            val autoIdx = base.indexOf(CallButtonPrefs.ID_AUTO_REDIAL)
-            if (autoIdx != -1) {
-                base = base.toMutableList().apply { add(autoIdx + 1, CallButtonPrefs.ID_WHATSAPP_VIDEO) }
+            val recIdx = base.indexOf(CallButtonPrefs.ID_RECORD)
+            if (recIdx != -1) {
+                base = base.toMutableList().apply { add(recIdx + 1, CallButtonPrefs.ID_WHATSAPP_VIDEO) }
             } else {
                 base = base + CallButtonPrefs.ID_WHATSAPP_VIDEO
             }
@@ -1966,15 +1967,18 @@ fun ExpressiveCallScreen(
                     (context as? CallActivity)?.updateActivityProximityScreenOffGate()
                 }
             }
-            CallButtonPrefs.ID_RECORD -> AnimatedCallButton(
-                icon = Icons.Default.FiberManualRecord,
-                label = if (isManuallyRecording) "Stop" else "Record",
-                isActive = isManuallyRecording,
-                btnColor = controlBtnColor, activeBtnColor = Color(0xFFE53935),
-                fgColor = controlBtnFg, activeFgColor = Color.White
-            ) {
-                com.coolappstore.everdialer.by.svhp.feature.AppFeatures.toggleManualRecording(context, isManuallyRecording)
-                isManuallyRecording = !isManuallyRecording
+            CallButtonPrefs.ID_RECORD -> {
+                val isRecActive = isManuallyRecording || isRecordingServiceActive
+                AnimatedCallButton(
+                    icon = if (isRecActive) Icons.Default.Stop else Icons.Default.FiberManualRecord,
+                    label = if (isRecActive) "Recording" else "Record",
+                    isActive = isRecActive,
+                    btnColor = controlBtnColor, activeBtnColor = Color(0xFFE53935),
+                    fgColor = controlBtnFg, activeFgColor = Color.White
+                ) {
+                    com.coolappstore.everdialer.by.svhp.feature.AppFeatures.toggleManualRecording(context, isRecActive)
+                    isManuallyRecording = !isRecActive
+                }
             }
             // Only reached when Freeform is on — Hang Up is otherwise rendered separately as the
             // fixed, dedicated end-call action below/beside the grid.

@@ -122,7 +122,7 @@ fun HomeScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("Ever Call Recorder", fontWeight = FontWeight.Bold) },
+                title = { Text("Call Recorder", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     if (onBackClick != null && !isSelectionMode) {
                         IconButton(onClick = onBackClick) {
@@ -421,7 +421,7 @@ fun GlobalSearchPill(onClick: () -> Unit, modifier: Modifier = Modifier) {
                 tint = searchBarFg
             )
             Text(
-                text = "Search in Ever Dialer",
+                text = "Search recordings",
                 style = MaterialTheme.typography.bodyLarge,
                 color = searchBarFg,
                 maxLines = 1,

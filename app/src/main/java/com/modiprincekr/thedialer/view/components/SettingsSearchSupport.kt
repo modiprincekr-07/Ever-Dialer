@@ -251,7 +251,7 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Contacts Hider", "Hide contacts behind a secret code", "contacts_hider", Icons.Outlined.Lock, Color(0xFF5E35B1)),
         GlobalSettingsSearchEntry("Alternate Numbers", "Save numbers in-app without syncing to device contacts", "alternate_numbers", Icons.Outlined.ContactPhone, Color(0xFF00897B)) { it.navigate(com.ramcosta.composedestinations.generated.destinations.AlternateNumbersScreenDestination()) },
         GlobalSettingsSearchEntry("Fake Call", "Schedule fake incoming calls without calling the real person", "fake_call", Icons.Outlined.PhoneCallback, GsColorRed),
-        GlobalSettingsSearchEntry("Call Recording", "Open Ever Call Recorder", "call_recording", Icons.Default.FiberManualRecord, Color(0xFFE53935)),
+        GlobalSettingsSearchEntry("Call Recording", "Open Call Recorder", "call_recording", Icons.Default.FiberManualRecord, Color(0xFFE53935)),
         GlobalSettingsSearchEntry("Silence Unknown Callers", "Automatically decline calls from unknown numbers", "silence_unknown", Icons.Outlined.PhoneDisabled, GsColorRed),
         GlobalSettingsSearchEntry("Blocked Numbers", "Numbers you've blocked from calling you", "blocked_numbers", Icons.Outlined.PersonOff, GsColorBluGrey),
         GlobalSettingsSearchEntry("Notifications", "PC Connect, Call Recording, and 4G/5G Switcher notifications", "notifications", Icons.Outlined.Notifications, GsColorOrange) { it.navigate(NotificationsSettingsScreenDestination()) },

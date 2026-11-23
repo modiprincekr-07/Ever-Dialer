@@ -48,7 +48,7 @@ object CallButtonPrefs {
     const val ID_HANGUP         = "hangup"
 
     /** Buttons that can never be hidden by the user. */
-    val ALWAYS_ENABLED = setOf(ID_HANGUP, ID_AUTO_REDIAL, ID_WHATSAPP_VIDEO)
+    val ALWAYS_ENABLED = setOf(ID_HANGUP, ID_RECORD, ID_WHATSAPP_VIDEO)
 
     val SPECS: List<CallButtonSpec> = listOf(
         CallButtonSpec(ID_HOLD,           "Hold",           Icons.Default.Pause,                      Color(0xFFFFA000)),
@@ -57,20 +57,19 @@ object CallButtonPrefs {
         CallButtonSpec(ID_NOTE,           "Note",           Icons.Default.EditNote,                   Color(0xFF2196F3)),
         CallButtonSpec(ID_MUTE,           "Mute",           Icons.Default.Mic,                        Color(0xFFE53935)),
         CallButtonSpec(ID_SPEAKER,        "Speaker",        Icons.Default.VolumeDown,                 Color(0xFF4CAF50)),
-        CallButtonSpec(ID_AUTO_REDIAL,    "Auto Redial",    Icons.AutoMirrored.Filled.PhoneCallback,  Color(0xFF00ACC1)),
+        CallButtonSpec(ID_RECORD,         "Record",         Icons.Default.FiberManualRecord,          Color(0xFFE53935)),
         CallButtonSpec(ID_WHATSAPP_VIDEO, "WA Video",       Icons.Default.Videocam,                   Color(0xFF25D366)),
         CallButtonSpec(ID_BLUETOOTH,      "Bluetooth",      Icons.Default.Bluetooth,                  Color(0xFF1976D2)),
         CallButtonSpec(ID_MORE,           "More",           Icons.Default.MoreHoriz,                  Color(0xFF757575)),
-        CallButtonSpec(ID_RECORD,         "Record",         Icons.Default.FiberManualRecord,          Color(0xFFE53935)),
+        CallButtonSpec(ID_AUTO_REDIAL,    "Auto Redial",    Icons.AutoMirrored.Filled.PhoneCallback,  Color(0xFF00ACC1)),
         CallButtonSpec(ID_HANGUP,         "Hang Up",        Icons.Default.CallEnd,                    Color(0xFFD32F2F))
     )
 
     val ALL_IDS: List<String> = SPECS.map { it.id }
 
-    const val DEFAULT_ORDER = "hold,add,dialpad,note,mute,speaker,auto_redial,whatsapp_video,bluetooth,more,record,hangup"
-    // "more" and "record" are new — both off by default (unticked in the 3-dot menu) so
-    // existing users see the same buttons as before until they opt in.
-    const val DEFAULT_DISABLED = "more,record"
+    const val DEFAULT_ORDER = "hold,add,dialpad,note,mute,speaker,record,whatsapp_video,bluetooth,more,auto_redial,hangup"
+    // "more" and "auto_redial" are optional / off by default
+    const val DEFAULT_DISABLED = "more,auto_redial"
 
     fun specFor(id: String): CallButtonSpec? = SPECS.find { it.id == id }
 
@@ -78,16 +77,16 @@ object CallButtonPrefs {
     fun getOrder(prefs: PreferenceManager): List<String> {
         val raw = prefs.getString(PreferenceManager.KEY_CALL_BUTTONS_ORDER, DEFAULT_ORDER) ?: DEFAULT_ORDER
         val stored = raw.split(",").map { it.trim() }.filter { it.isNotEmpty() && it in ALL_IDS }.toMutableList()
-        // Ensure ID_AUTO_REDIAL is present right before ID_BLUETOOTH if missing from stored pref
-        if (ID_AUTO_REDIAL !in stored) {
-            val btIdx = stored.indexOf(ID_BLUETOOTH)
-            if (btIdx != -1) stored.add(btIdx, ID_AUTO_REDIAL)
-            else stored.add(ID_AUTO_REDIAL)
+        // Ensure ID_RECORD is present right before ID_WHATSAPP_VIDEO or after ID_SPEAKER if missing
+        if (ID_RECORD !in stored) {
+            val spkIdx = stored.indexOf(ID_SPEAKER)
+            if (spkIdx != -1) stored.add(spkIdx + 1, ID_RECORD)
+            else stored.add(ID_RECORD)
         }
-        // Ensure ID_WHATSAPP_VIDEO is present right after ID_AUTO_REDIAL or before ID_BLUETOOTH
+        // Ensure ID_WHATSAPP_VIDEO is present right after ID_RECORD or before ID_BLUETOOTH
         if (ID_WHATSAPP_VIDEO !in stored) {
-            val autoIdx = stored.indexOf(ID_AUTO_REDIAL)
-            if (autoIdx != -1) stored.add(autoIdx + 1, ID_WHATSAPP_VIDEO)
+            val recIdx = stored.indexOf(ID_RECORD)
+            if (recIdx != -1) stored.add(recIdx + 1, ID_WHATSAPP_VIDEO)
             else {
                 val btIdx = stored.indexOf(ID_BLUETOOTH)
                 if (btIdx != -1) stored.add(btIdx, ID_WHATSAPP_VIDEO)

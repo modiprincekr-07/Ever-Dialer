@@ -100,7 +100,7 @@ fun enqueueApkDownload(context: Context, apkUrl: String): Long? {
         if (file.exists()) file.delete()
 
         val request = DownloadManager.Request(Uri.parse(apkUrl)).apply {
-            setTitle("Ever Call Recorder Update")
+            setTitle("Call Recorder Update")
             setDescription("Downloading latest version…")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
             setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, APK_FILE_NAME)

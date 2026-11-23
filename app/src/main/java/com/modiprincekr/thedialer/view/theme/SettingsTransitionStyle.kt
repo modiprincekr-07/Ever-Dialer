@@ -54,25 +54,25 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Ultra-smooth expressive easing curves for slow, luxurious zoom motion.
+ * Snappy, responsive animation curves and durations (180ms - 220ms) with FastOutSlowInEasing.
  */
-val SettingsSmoothEase = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-val SettingsSmoothEaseIn = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
-val SettingsSmoothEaseOut = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+val SettingsSmoothEase = FastOutSlowInEasing
+val SettingsSmoothEaseIn = FastOutSlowInEasing
+val SettingsSmoothEaseOut = FastOutSlowInEasing
 
-const val SETTINGS_ANIM_DURATION_ENTER = 420
-const val SETTINGS_ANIM_DURATION_EXIT = 800
+const val SETTINGS_ANIM_DURATION_ENTER = 210
+const val SETTINGS_ANIM_DURATION_EXIT = 190
 
-const val CHAT_ANIM_DURATION_ENTER = 600
-const val CHAT_ANIM_DURATION_EXIT = 550
-val ChatSmoothEase = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-val ChatSmoothEaseOut = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-val ChatSmoothEaseIn = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
+const val CHAT_ANIM_DURATION_ENTER = 210
+const val CHAT_ANIM_DURATION_EXIT = 190
+val ChatSmoothEase = FastOutSlowInEasing
+val ChatSmoothEaseOut = FastOutSlowInEasing
+val ChatSmoothEaseIn = FastOutSlowInEasing
 
-const val CONTACT_DETAILS_ANIM_DURATION_ENTER = 800
-const val CONTACT_DETAILS_ANIM_DURATION_EXIT = 800
-val ContactDetailsSmoothEase = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-val ContactDetailsSmoothEaseExit = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+const val CONTACT_DETAILS_ANIM_DURATION_ENTER = 210
+const val CONTACT_DETAILS_ANIM_DURATION_EXIT = 190
+val ContactDetailsSmoothEase = FastOutSlowInEasing
+val ContactDetailsSmoothEaseExit = FastOutSlowInEasing
 
 const val SETTINGS_SCALE_ENTER_FROM = 0.88f
 const val SETTINGS_SCALE_EXIT_TO = 0.96f
@@ -93,12 +93,11 @@ fun isContactOrChatRoute(route: String?): Boolean {
 }
 
 /**
- * Windows Phone Metro-style turnstile page transition specifications,
- * modeled after the Windows Phone 7/8 animation physics and MangoTile's implementation.
+ * Windows Phone Metro-style turnstile page transition specifications.
  */
-val MetroSlideInEasing = CubicBezierEasing(0.22f, 0f, 0.05f, 1f)
-const val SETTINGS_WP_ANIM_DURATION_ENTER = 750
-const val SETTINGS_WP_ANIM_DURATION_EXIT = 650
+val MetroSlideInEasing = FastOutSlowInEasing
+const val SETTINGS_WP_ANIM_DURATION_ENTER = 210
+const val SETTINGS_WP_ANIM_DURATION_EXIT = 190
 
 fun isWindowsPhoneAnimation(): Boolean {
     return try {
@@ -109,12 +108,12 @@ fun isWindowsPhoneAnimation(): Boolean {
     }
 }
 
-val PetalM3EmphasizedEasing = CubicBezierEasing(0.2f, 0.0f, 0.2f, 1.0f)
-val PetalPopSlideEasing = CubicBezierEasing(0.2f, 0.0f, 0.2f, 1.0f)
-val PetalPopExitSlideEasing = CubicBezierEasing(0.2f, 0.0f, 0.2f, 1.0f)
-const val CARDS_ANIM_DURATION = 750
-const val CARDS_PUSH_DURATION = 780
-const val CARDS_POP_DURATION = 700
+val PetalM3EmphasizedEasing = FastOutSlowInEasing
+val PetalPopSlideEasing = FastOutSlowInEasing
+val PetalPopExitSlideEasing = FastOutSlowInEasing
+const val CARDS_ANIM_DURATION = 210
+const val CARDS_PUSH_DURATION = 220
+const val CARDS_POP_DURATION = 190
 
 fun isCardsAnimation(): Boolean {
     return try {
@@ -361,7 +360,7 @@ object SettingsTransitionStyle : NavHostAnimatedDestinationStyle() {
         val isExpanding = isExpandingRoute(targetState)
         val duration = when {
             isContact -> CONTACT_DETAILS_ANIM_DURATION_ENTER
-            else -> 600
+            else -> SETTINGS_ANIM_DURATION_ENTER
         }
         val easing = when {
             isContact -> ContactDetailsSmoothEase
@@ -595,18 +594,26 @@ fun Modifier.settingsMotionBlur(maxBlurDp: Float = 10f): Modifier {
     var mod: Modifier = this.nestedScroll(nestedScrollConnection)
 
     if (motionBlurEnabled) {
-        var isSettled by remember { mutableStateOf(false) }
+        val anim = remember { Animatable(1f) }
         LaunchedEffect(Unit) {
-            isSettled = true
+            anim.animateTo(0f, tween(SETTINGS_ANIM_DURATION_ENTER, easing = FastOutSlowInEasing))
         }
-        val blurFactor by animateFloatAsState(
-            targetValue = if (isSettled) 0f else 1f,
-            animationSpec = tween(durationMillis = SETTINGS_ANIM_DURATION_ENTER, easing = SettingsSmoothEase),
-            label = "settingsMotionBlur"
-        )
-        val blurRadius = (blurFactor * maxBlurDp).dp
-        if (blurRadius > 0.1.dp) {
-            mod = mod.blur(radius = blurRadius, edgeTreatment = BlurredEdgeTreatment.Rectangle)
+        val factor = anim.value
+        if (factor > 0.005f) {
+            val blurRadius = (factor * maxBlurDp.coerceAtLeast(16f)).dp
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                mod = mod
+                    .graphicsLayer {
+                        scaleX = 1f - factor * 0.03f
+                        scaleY = 1f - factor * 0.03f
+                        alpha = 1f - factor * 0.12f
+                    }
+                    .blur(radius = blurRadius, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+            } else {
+                mod = mod.graphicsLayer {
+                    alpha = 1f - factor * 0.15f
+                }
+            }
         }
     }
 
