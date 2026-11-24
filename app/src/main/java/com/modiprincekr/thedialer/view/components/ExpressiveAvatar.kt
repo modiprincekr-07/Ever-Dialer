@@ -177,66 +177,85 @@ fun ExpressiveAvatar(
     val letterFontSize = (size.value * 0.40f).coerceIn(14f, 72f).sp
     val iconSize       = (size.value * 0.55f).coerceIn(16f, 130f).dp
 
-    Box(
-        modifier = modifier
-            .size(size)
-            .then(if (shouldRotate) Modifier.graphicsLayer { rotationZ = effectiveAngle } else Modifier)
-            .clip(effectiveShape)
-            .background(backgroundColor)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        contentAlignment = Alignment.Center
-    ) {
+    @Composable
+    fun AvatarInnerContent() {
+        if (content != null) {
+            Box(contentAlignment = Alignment.Center) { content() }
+        } else {
+            when {
+                showPicture && !photoUri.isNullOrEmpty() -> {
+                    AsyncImage(
+                        model = photoUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                icon != null -> {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(iconSize)
+                    )
+                }
+                !forcePersonIcon && showFirstLetter && hasName -> {
+                    Text(
+                        text = name.trim().take(1).uppercase(),
+                        fontSize = letterFontSize,
+                        fontWeight = FontWeight.Bold,
+                        color = contentColor,
+                        lineHeight = letterFontSize
+                    )
+                }
+                else -> {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(iconSize)
+                    )
+                }
+            }
+        }
+    }
+
+    if (shouldRotate) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (shouldRotate) Modifier.graphicsLayer {
+            modifier = modifier
+                .size(size)
+                .graphicsLayer {
+                    rotationZ = effectiveAngle
+                    this.shape = effectiveShape
+                    this.clip = true
+                }
+                .background(backgroundColor)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
                         rotationZ = -effectiveAngle
                         scaleX = 1.18f
                         scaleY = 1.18f
-                    } else Modifier
-                ),
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                AvatarInnerContent()
+            }
+        }
+    } else {
+        Box(
+            modifier = modifier
+                .size(size)
+                .clip(effectiveShape)
+                .background(backgroundColor)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
             contentAlignment = Alignment.Center
         ) {
-            if (content != null) {
-                content()
-            } else {
-                when {
-                    showPicture && !photoUri.isNullOrEmpty() -> {
-                        AsyncImage(
-                            model = photoUri,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
-                    icon != null -> {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = contentColor,
-                            modifier = Modifier.size(iconSize)
-                        )
-                    }
-                    !forcePersonIcon && showFirstLetter && hasName -> {
-                        Text(
-                            text = name.trim().take(1).uppercase(),
-                            fontSize = letterFontSize,
-                            fontWeight = FontWeight.Bold,
-                            color = contentColor,
-                            lineHeight = letterFontSize
-                        )
-                    }
-                    else -> {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = contentColor,
-                            modifier = Modifier.size(iconSize)
-                        )
-                    }
-                }
-            }
+            AvatarInnerContent()
         }
     }
 }

@@ -21,6 +21,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.graphics.Path
@@ -215,10 +216,11 @@ private fun DialpadExtraResultTile(
             icon = Icons.Outlined.ContactPhone,
             phoneNumber = result.item.phoneNumber,
             titleTrailing = {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    modifier = Modifier.padding(start = 4.dp)
+                Box(
+                    modifier = Modifier
+                        .padding(start = 4.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer)
                 ) {
                     Text(
                         text = "Alt",
@@ -454,7 +456,7 @@ fun DialPadScreen(
                     .offset(y = slideDistance * closeProgress.value),
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                 color = if (isWhiteMode) Color.White else MaterialTheme.colorScheme.surface,
-                tonalElevation = if (isWhiteMode) 0.dp else 4.dp
+                tonalElevation = 0.dp
             ) {
                 val predictiveBackEnabled = remember(prefs.settingsChanged.collectAsState().value) {
                     prefs.getBoolean(PreferenceManager.KEY_PREDICTIVE_BACK_GESTURE, true)
@@ -553,11 +555,11 @@ fun DialPadScreen(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(percent = 50),
-                            color = handleColor,
-                            modifier = Modifier.size(width = handleWidth, height = handleHeight)
-                        ) {}
+                        Box(
+                            modifier = Modifier
+                                .size(width = handleWidth, height = handleHeight)
+                                .background(handleColor, RoundedCornerShape(percent = 50))
+                        )
                     }
                     DialPadContent(
                         initialNumber = initialNumber,
@@ -1505,10 +1507,12 @@ fun DialPadContent(
                         exit  = fadeOut(tween(180, easing = FastOutLinearInEasing)) +
                                 shrinkVertically(tween(200, easing = FastOutLinearInEasing))
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerLow,
-                            modifier = Modifier.fillMaxWidth().animateContentSize(spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy))
                         ) {
                             AnimatedContent(
                                 targetState = isSearching,
@@ -1640,18 +1644,19 @@ fun DialPadContent(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Surface(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    val intent = Intent(Intent.ACTION_INSERT).apply {
-                                        type = ContactsContract.RawContacts.CONTENT_TYPE
-                                        putExtra(ContactsContract.Intents.Insert.PHONE, number)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(50.dp))
+                                    .background(MaterialTheme.colorScheme.primaryContainer)
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        val intent = Intent(Intent.ACTION_INSERT).apply {
+                                            type = ContactsContract.RawContacts.CONTENT_TYPE
+                                            putExtra(ContactsContract.Intents.Insert.PHONE, number)
+                                        }
+                                        context.startActivity(intent)
                                     }
-                                    context.startActivity(intent)
-                                },
-                                shape = RoundedCornerShape(50.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.weight(1f)
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
@@ -1663,14 +1668,15 @@ fun DialPadContent(
                                     Text("Create contact", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                                 }
                             }
-                            Surface(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    showSelectExistingContactDialog = true
-                                },
-                                shape = RoundedCornerShape(50.dp),
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                modifier = Modifier.weight(1f)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(50.dp))
+                                    .background(MaterialTheme.colorScheme.secondaryContainer)
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        showSelectExistingContactDialog = true
+                                    }
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
@@ -1700,13 +1706,13 @@ fun DialPadContent(
             }
 
             CompositionLocalProvider(LocalDensity provides dialpadDensity) {
-            Surface(
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
             ) {
                 BoxWithConstraints(
                     modifier = Modifier.fillMaxSize()
@@ -2121,10 +2127,12 @@ fun DialPadContent(
                     shrinkVertically(tween(200, easing = FastOutLinearInEasing))
         ) {
             Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    modifier = Modifier.fillMaxWidth().animateContentSize(spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy))
                 ) {
                     AnimatedContent(
                         targetState = isSearching,
@@ -2256,18 +2264,19 @@ fun DialPadContent(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Surface(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        val intent = Intent(Intent.ACTION_INSERT).apply {
-                            type = ContactsContract.RawContacts.CONTENT_TYPE
-                            putExtra(ContactsContract.Intents.Insert.PHONE, number)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            val intent = Intent(Intent.ACTION_INSERT).apply {
+                                type = ContactsContract.RawContacts.CONTENT_TYPE
+                                putExtra(ContactsContract.Intents.Insert.PHONE, number)
+                            }
+                            context.startActivity(intent)
                         }
-                        context.startActivity(intent)
-                    },
-                    shape = RoundedCornerShape(50.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.weight(1f)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -2279,14 +2288,15 @@ fun DialPadContent(
                         Text("Create contact", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                 }
-                Surface(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        showSelectExistingContactDialog = true
-                    },
-                    shape = RoundedCornerShape(50.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    modifier = Modifier.weight(1f)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showSelectExistingContactDialog = true
+                        }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -2307,10 +2317,12 @@ fun DialPadContent(
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically()
         ) {
-            Surface(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.secondaryContainer)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -2427,10 +2439,11 @@ fun DialPadContent(
                 ((digitRowWidth.value - simBtnW.value * 4f) / 3f).coerceIn(10f, 28f).dp
             } else effectiveKeySpacingH
 
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(32.dp),
-            color = if (isWhiteMode) Color.White else MaterialTheme.colorScheme.surfaceContainerLow
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(32.dp))
+                .background(if (isWhiteMode) Color.White else MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = (9 * scaleFactor).coerceIn(8f, 13f).dp),
@@ -2560,27 +2573,12 @@ fun DialPadContent(
                 }
 
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                    val dialpadBackdrop = rememberLayerBackdrop()
-                    val lgDialpadEnabled = remember(settingsState) {
-                        prefs.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) &&
-                        prefs.getBoolean(PreferenceManager.KEY_LG_DIALPAD_CALL_BUTTON, true)
-                    }
-                    val blurDialpadEnabled = remember(settingsState) {
-                        prefs.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) &&
-                        prefs.getBoolean(PreferenceManager.KEY_BLUR_DIALPAD_CALL_BUTTON, true) &&
-                        !lgDialpadEnabled
-                    }
-
-                    val needDialpadBackdrop = (lgDialpadEnabled || blurDialpadEnabled) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-
                     // Dialpad keys
                     val keys = listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9"), listOf("*","0","#"))
                     val subKeys = mapOf("1" to "   ","2" to "ABC","3" to "DEF","4" to "GHI","5" to "JKL","6" to "MNO","7" to "PQRS","8" to "TUV","9" to "WXYZ","*" to "paste","0" to "+")
 
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .then(if (needDialpadBackdrop) Modifier.layerBackdrop(dialpadBackdrop) else Modifier),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(effectiveKeySpacingV)
                     ) {
                         keys.forEach { row ->
@@ -2659,9 +2657,6 @@ fun DialPadContent(
                                     contentColor = Color.White,
                                     modifier = Modifier.width(simBtnW).height(effectiveSimCallH),
                                     isLarge = true,
-                                    liquidGlassBackdrop = dialpadBackdrop,
-                                    liquidGlassEnabled = lgDialpadEnabled,
-                                    blurEnabled = blurDialpadEnabled,
                                     isCallButton = true
                                 )
 
@@ -2685,9 +2680,6 @@ fun DialPadContent(
                                     contentColor = Color.White,
                                     modifier = Modifier.width(simBtnW).height(effectiveSimCallH),
                                     isLarge = true,
-                                    liquidGlassBackdrop = dialpadBackdrop,
-                                    liquidGlassEnabled = lgDialpadEnabled,
-                                    blurEnabled = blurDialpadEnabled,
                                     isCallButton = true
                                 )
 
@@ -2729,9 +2721,6 @@ fun DialPadContent(
                                     contentColor = Color.White,
                                     modifier = Modifier.width(keyWidth).height(callH),
                                     isLarge = true,
-                                    liquidGlassBackdrop = dialpadBackdrop,
-                                    liquidGlassEnabled = lgDialpadEnabled,
-                                    blurEnabled = blurDialpadEnabled,
                                     isCallButton = true
                                 )
 
@@ -2825,12 +2814,7 @@ fun DialerActionExpressive(
 
     val prefs = koinInject<PreferenceManager>()
     val haptic = LocalHapticFeedback.current
-    val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
     val settingsState by prefs.settingsChanged.collectAsState()
-    val isSaturatedActive = remember(settingsState, isDark) { prefs.isSaturatedForTheme(isDark) }
-    val isSaturatedContainer = remember(settingsState) { prefs.getSaturatedTarget() == PreferenceManager.SATURATED_TARGET_CONTAINER }
-    val lgCallButtonConfig = remember(settingsState) { prefs.getLiquidGlassConfig(PreferenceManager.KEY_LG_DIALPAD_CALL_BUTTON) }
-    val blurCallButtonConfig = remember(settingsState) { prefs.getBlurConfig(PreferenceManager.KEY_BLUR_DIALPAD_CALL_BUTTON) }
 
     val triggerTapPulse = {
         tapJob?.cancel()
@@ -2865,27 +2849,16 @@ fun DialerActionExpressive(
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy), label = "ButtonScale"
     )
 
-    val restingBgColor = when {
-        customColor != null -> customColor
-        isCallButton -> if (isSaturatedActive) MaterialTheme.colorScheme.primary else Color(0xFF34A853)
-        isSaturatedActive && isSaturatedContainer -> androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary, 0.35f)
-        else -> MaterialTheme.colorScheme.primaryContainer
-    }
-    val targetBgColor = if (isVisuallyPressed) (customColor?.let { it.copy(alpha = 0.85f) } ?: MaterialTheme.colorScheme.primary) else restingBgColor
+    val restingBgColor = customColor ?: containerColor
+    val targetBgColor = if (isVisuallyPressed) (customColor ?: containerColor).copy(alpha = 0.85f) else restingBgColor
     val animatedBgColor by animateColorAsState(targetBgColor, spring(stiffness = Spring.StiffnessMedium), "ActionBtnBgColor")
 
-    val restingContentColor = when {
-        customColor != null -> Color.White
-        isCallButton -> Color.White
-        isSaturatedActive && isSaturatedContainer -> MaterialTheme.colorScheme.onPrimaryContainer
-        else -> MaterialTheme.colorScheme.onPrimaryContainer
-    }
-    val isPrimaryBright = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.primary.toArgb()) > 0.45
+    val restingContentColor = contentColor
+    val isPrimaryBright = androidx.core.graphics.ColorUtils.calculateLuminance(containerColor.toArgb()) > 0.45
     val pressedContentColor = if (isPrimaryBright) Color(0xFF1C1B1F) else Color.White
-    val targetContentColor = if (isVisuallyPressed) (if (customColor != null) Color.White else pressedContentColor) else restingContentColor
+    val targetContentColor = if (isVisuallyPressed) pressedContentColor else restingContentColor
     val animatedContentColor by animateColorAsState(targetContentColor, spring(stiffness = Spring.StiffnessMedium), "ActionBtnContentColor")
 
-    val useLiquidGlass = liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && liquidGlassBackdrop != null
     val isExpressive = com.modiprincekr.thedialer.view.theme.isMaterialExpressive()
     val isCircleButtons = remember(settingsState) {
         prefs.getBoolean(PreferenceManager.KEY_DIALPAD_CIRCLE_BUTTONS, false)
@@ -2903,7 +2876,6 @@ fun DialerActionExpressive(
     } else {
         RoundedCornerShape(cornerRadius)
     }
-    val useBackdropBlur = blurEnabled && !useLiquidGlass && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     val actionContent = @Composable {
         Box(contentAlignment = Alignment.Center) {
@@ -2919,89 +2891,23 @@ fun DialerActionExpressive(
         }
     }
 
-    BoxWithConstraints(
-        modifier = modifier,
+    val btnModifier = modifier
+        .then(if (scale != 1f) Modifier.scale(scale) else Modifier)
+        .clip(buttonShape)
+        .background(animatedBgColor)
+        .combinedClickable(
+            onClick = wrappedOnClick,
+            onLongClick = wrappedOnLongClick,
+            interactionSource = interactionSource,
+            indication = null
+        )
+
+    Box(
+        modifier = btnModifier,
         contentAlignment = Alignment.Center
     ) {
-        val targetSize = if (isCircleButtons) minOf(maxWidth, maxHeight) else null
-        val btnModifier = if (targetSize != null) Modifier.size(targetSize) else Modifier.fillMaxSize()
-
-        if (useLiquidGlass && liquidGlassBackdrop != null) {
-            Box(
-                modifier = btnModifier
-                    .scale(scale)
-                    .drawBackdrop(
-                        backdrop = liquidGlassBackdrop,
-                        shape = { buttonShape },
-                        effects = {
-                            val d = density
-                            colorControls(brightness = lgCallButtonConfig.brightness, saturation = lgCallButtonConfig.saturation)
-                            if (lgCallButtonConfig.blurRadiusDp > 0f) blur(lgCallButtonConfig.blurRadiusDp * d)
-                            lens(
-                                refractionHeight = lgCallButtonConfig.refractionHeightDp * d,
-                                refractionAmount = lgCallButtonConfig.refractionAmountDp * d,
-                                chromaticAberration = lgCallButtonConfig.chromaticAberration,
-                                depthEffect = lgCallButtonConfig.depthEffect
-                            )
-                        },
-                        highlight = { Highlight.Default }
-                    )
-                    .combinedClickable(
-                        onClick = wrappedOnClick,
-                        onLongClick = wrappedOnLongClick,
-                        interactionSource = interactionSource,
-                        indication = null
-                    )
-            ) {
-                Surface(
-                    shape = buttonShape,
-                    color = animatedBgColor.copy(alpha = 0.5f),
-                    contentColor = animatedContentColor,
-                    modifier = Modifier.matchParentSize()
-                ) {
-                    actionContent()
-                }
-            }
-        } else if (useBackdropBlur && liquidGlassBackdrop != null) {
-            Box(
-                modifier = btnModifier
-                    .scale(scale)
-                    .drawBackdrop(
-                        backdrop = liquidGlassBackdrop,
-                        shape    = { buttonShape },
-                        effects  = {
-                            val d = density
-                            colorControls(saturation = blurCallButtonConfig.saturation)
-                            blur(blurCallButtonConfig.blurRadiusDp * d)
-                        },
-                        highlight = { Highlight.Default }
-                    )
-                    .combinedClickable(
-                        onClick = wrappedOnClick,
-                        onLongClick = wrappedOnLongClick,
-                        interactionSource = interactionSource,
-                        indication = null
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(animatedBgColor.copy(alpha = 0.45f), buttonShape)
-                )
-                actionContent()
-            }
-        } else {
-            Surface(
-                modifier = btnModifier
-                    .scale(scale)
-                    .combinedClickable(onClick = wrappedOnClick, onLongClick = wrappedOnLongClick, interactionSource = interactionSource, indication = null),
-                shape = buttonShape,
-                color = animatedBgColor,
-                contentColor = animatedContentColor
-            ) {
-                actionContent()
-            }
+        CompositionLocalProvider(LocalContentColor provides animatedContentColor) {
+            actionContent()
         }
     }
 }
@@ -3163,80 +3069,74 @@ fun DialPadKey(
         }
     }
 
+    val keyModifier = Modifier
+        .size(width = buttonWidth, height = buttonHeight)
+        .then(if (scale != 1f) Modifier.scale(scale) else Modifier)
+        .clip(buttonShape)
+        .background(bgColor)
+        .combinedClickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = {
+                triggerTapPulse()
+                if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                if (prefs.getBoolean(PreferenceManager.KEY_DTMF_TONE, false)) playDtmf(context, number, soundPool, prefs)
+                onClick(number)
+            },
+            onLongClick = if (onLongClick != null) ({
+                triggerTapPulse()
+                if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onLongClick()
+            }) else null
+        )
+        .padding(horizontal = 4.dp, vertical = 2.dp)
+
     Box(
-        modifier = Modifier.size(
-            width = if (isCircleButtons) buttonWidth else keyWidth,
-            height = if (isCircleButtons) buttonHeight else keyHeight
-        ),
+        modifier = keyModifier,
         contentAlignment = Alignment.Center
     ) {
-        Surface(
-            modifier = Modifier
-                .size(width = buttonWidth, height = buttonHeight)
-                .scale(scale)
-                .combinedClickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = {
-                        triggerTapPulse()
-                        if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        if (prefs.getBoolean(PreferenceManager.KEY_DTMF_TONE, false)) playDtmf(context, number, soundPool, prefs)
-                        onClick(number)
-                    },
-                    onLongClick = if (onLongClick != null) ({
-                        triggerTapPulse()
-                        if (prefs.getBoolean(PreferenceManager.KEY_APP_HAPTICS, true)) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onLongClick()
-                    }) else null
-                ),
-            shape = buttonShape,
-            color = bgColor
+        Column(
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxSize()
         ) {
-            Column(
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
-            ) {
+            Text(
+                text = number,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontSize = finalMainFontSize.sp,
+                    lineHeight = finalMainFontSize.sp,
+                    lineHeightStyle = LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Center,
+                        trim = LineHeightStyle.Trim.Both
+                    ),
+                    platformStyle = PlatformTextStyle(includeFontPadding = false)
+                ),
+                color = mainTextColor,
+                fontWeight = if (isStarKey) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false
+            )
+            if (hasLetters) {
+                if (gapHeight > 0f) {
+                    Spacer(modifier = Modifier.height(gapHeight.dp))
+                }
                 Text(
-                    text = number,
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontSize = finalMainFontSize.sp,
-                        lineHeight = finalMainFontSize.sp,
+                    text = letters,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = finalSubFontSize.sp,
+                        lineHeight = finalSubFontSize.sp,
                         lineHeightStyle = LineHeightStyle(
                             alignment = LineHeightStyle.Alignment.Center,
                             trim = LineHeightStyle.Trim.Both
                         ),
                         platformStyle = PlatformTextStyle(includeFontPadding = false)
                     ),
-                    color = mainTextColor,
-                    fontWeight = if (isStarKey) FontWeight.SemiBold else FontWeight.Medium,
+                    color = subTextColor,
+                    letterSpacing = if (isPlusSubKey || isPasteSubKey) 0.sp else 0.4.sp,
+                    fontWeight = if (isPlusSubKey) FontWeight.Bold else if (isPasteSubKey) FontWeight.Medium else FontWeight.Normal,
                     maxLines = 1,
                     softWrap = false
                 )
-                if (hasLetters) {
-                    if (gapHeight > 0f) {
-                        Spacer(modifier = Modifier.height(gapHeight.dp))
-                    }
-                    Text(
-                        text = letters,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = finalSubFontSize.sp,
-                            lineHeight = finalSubFontSize.sp,
-                            lineHeightStyle = LineHeightStyle(
-                                alignment = LineHeightStyle.Alignment.Center,
-                                trim = LineHeightStyle.Trim.Both
-                            ),
-                            platformStyle = PlatformTextStyle(includeFontPadding = false)
-                        ),
-                        color = subTextColor,
-                        letterSpacing = if (isPlusSubKey || isPasteSubKey) 0.sp else 0.4.sp,
-                        fontWeight = if (isPlusSubKey) FontWeight.Bold else if (isPasteSubKey) FontWeight.Medium else FontWeight.Normal,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
             }
         }
     }
@@ -3383,8 +3283,7 @@ private fun DialpadNumberDisplay(
                         modifier = Modifier
                             .width(2.5.dp)
                             .height(with(density) { (textStyle.fontSize.toDp() * 0.95f).coerceAtLeast(20.dp) })
-                            .graphicsLayer { this.alpha = cursorAlpha }
-                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(1.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = cursorAlpha), RoundedCornerShape(1.dp))
                     )
                 }
             } else {
@@ -3441,8 +3340,7 @@ private fun DialpadNumberDisplay(
                                         .width(2.5.dp)
                                         .height(with(density) { (textStyle.fontSize.toDp() * 0.95f).coerceAtLeast(18.dp) })
                                         .align(Alignment.CenterStart)
-                                        .graphicsLayer { this.alpha = cursorAlpha }
-                                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(1.dp))
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = cursorAlpha), RoundedCornerShape(1.dp))
                                 )
                             }
                             Text(
@@ -3490,8 +3388,7 @@ private fun DialpadNumberDisplay(
                                     modifier = Modifier
                                         .width(2.5.dp)
                                         .height(with(density) { (textStyle.fontSize.toDp() * 0.95f).coerceAtLeast(18.dp) })
-                                        .graphicsLayer { this.alpha = cursorAlpha }
-                                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(1.dp))
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = cursorAlpha), RoundedCornerShape(1.dp))
                                 )
                             }
                         }
@@ -3550,6 +3447,7 @@ private fun FadeScaleBox(visible: Boolean, content: @Composable () -> Unit) {
  * always present and always hit-testable; only its visual alpha/scale animate, and the action
  * itself is simply a no-op once the number is empty — so every tap reliably registers.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BackspaceActionButton(
     number: String,
@@ -3558,27 +3456,36 @@ private fun BackspaceActionButton(
     size: Dp = 64.dp
 ) {
     val prefs = koinInject<PreferenceManager>()
-    val themeMode = remember(prefs.settingsChanged.collectAsState().value) {
+    val settingsState by prefs.settingsChanged.collectAsState()
+    val themeMode = remember(settingsState) {
         prefs.getString(PreferenceManager.KEY_THEME_MODE, "auto") ?: "auto"
     }
     val isWhiteMode = themeMode == "white"
+    val isCircleButtons = remember(settingsState) {
+        prefs.getBoolean(PreferenceManager.KEY_DIALPAD_CIRCLE_BUTTONS, false)
+    }
+    val buttonShape = if (isCircleButtons) CircleShape else RoundedCornerShape(20.dp)
+
     val hasContent = number.isNotEmpty()
     val alpha by animateFloatAsState(if (hasContent) 1f else 0f, animationSpec = tween(120), label = "BackspaceAlpha")
     val scale by animateFloatAsState(if (hasContent) 1f else 0.7f, animationSpec = tween(120), label = "BackspaceScale")
     Box(
         modifier = Modifier
             .size(size)
-            .graphicsLayer { this.alpha = alpha; scaleX = scale; scaleY = scale },
+            .then(if (scale != 1f) Modifier.scale(scale) else Modifier)
+            .clip(buttonShape)
+            .background(if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.surfaceContainerHigh)
+            .combinedClickable(
+                onClick = { if (hasContent) onBackspace() },
+                onLongClick = { if (hasContent) onClear() }
+            ),
         contentAlignment = Alignment.Center
     ) {
-        DialerActionExpressive(
-            onLongClick = { if (hasContent) onClear() },
-            onClick = { if (hasContent) onBackspace() },
-            icon = Icons.Default.Backspace,
+        Icon(
+            imageVector = Icons.Default.Backspace,
             contentDescription = "Backspace",
-            containerColor = if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = Color(0xFFE53935),
-            modifier = Modifier.size(size)
+            tint = Color(0xFFE53935).copy(alpha = alpha),
+            modifier = Modifier.size(24.dp)
         )
     }
 }
@@ -3596,13 +3503,13 @@ fun UssdDialpadSuggestions(
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .border(androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)), RoundedCornerShape(20.dp))
             .animateContentSize()
     ) {
         Column(
@@ -3673,14 +3580,17 @@ fun UssdDialpadSuggestions(
                             UssdCategory.DIAGNOSTIC -> "Android"
                             UssdCategory.HARDWARE -> "Test"
                         }
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = when (item.category) {
-                                UssdCategory.CUSTOM -> MaterialTheme.colorScheme.primaryContainer
-                                UssdCategory.CARRIER -> MaterialTheme.colorScheme.secondaryContainer
-                                UssdCategory.STANDARD -> MaterialTheme.colorScheme.tertiaryContainer
-                                else -> MaterialTheme.colorScheme.surfaceContainerHighest
-                            }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    when (item.category) {
+                                        UssdCategory.CUSTOM -> MaterialTheme.colorScheme.primaryContainer
+                                        UssdCategory.CARRIER -> MaterialTheme.colorScheme.secondaryContainer
+                                        UssdCategory.STANDARD -> MaterialTheme.colorScheme.tertiaryContainer
+                                        else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                                    }
+                                )
                         ) {
                             Text(
                                 text = badgeLabel,
@@ -3721,19 +3631,19 @@ fun UssdDialpadSuggestions(
                             onClick = { onSelectCode(item) },
                             modifier = Modifier.size(34.dp)
                         ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(28.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Call,
-                                        contentDescription = "Run",
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Rounded.Call,
+                                    contentDescription = "Run",
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(15.dp)
+                                )
                             }
                         }
                     }
