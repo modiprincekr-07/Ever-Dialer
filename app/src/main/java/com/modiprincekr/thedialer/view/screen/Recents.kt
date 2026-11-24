@@ -9,6 +9,7 @@ import android.provider.CallLog
 import android.telecom.TelecomManager
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallMissed
 import androidx.compose.material.icons.automirrored.filled.CallReceived
+import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.CallReceived
 import androidx.compose.material.icons.filled.*
 import android.content.Intent
 import androidx.compose.material3.*
@@ -981,6 +984,7 @@ fun CallLogFullContent(
             }
 
             val totalToday        = remember(todayLogs) { todayLogs.size }
+            val incomingToday     = remember(todayLogs) { todayLogs.count { it.type == CallLog.Calls.INCOMING_TYPE } }
             val missedToday       = remember(todayLogs, missedResetTime) { todayLogs.count { it.type == CallLog.Calls.MISSED_TYPE && it.date > missedResetTime } }
             val outgoingToday     = remember(todayLogs) { todayLogs.count { it.type == CallLog.Calls.OUTGOING_TYPE } }
             val totalDurationToday = remember(todayLogs) {
@@ -991,6 +995,7 @@ fun CallLogFullContent(
 
                 // Stat cards – visibility and order controlled by Call UI settings
                 val showToday    = remember(settingsVersion) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_CALL_UI_SHOW_TODAY, true) }
+                val showIncoming = remember(settingsVersion) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_CALL_UI_SHOW_INCOMING, true) }
                 val showMissed   = remember(settingsVersion) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_CALL_UI_SHOW_MISSED, true) }
                 val showOutgoing = remember(settingsVersion) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_CALL_UI_SHOW_OUTGOING, true) }
                 val showCallTime = remember(settingsVersion) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_CALL_UI_SHOW_CALL_TIME, true) }
@@ -1014,10 +1019,11 @@ fun CallLogFullContent(
                 }
                 val groupsCount = visibleContactGroups.size
 
-                val visibleStatCards = remember(callUIOrder, showToday, showMissed, showOutgoing, showCallTime, showContacts, showGroups) {
+                val visibleStatCards = remember(callUIOrder, showToday, showIncoming, showMissed, showOutgoing, showCallTime, showContacts, showGroups) {
                     callUIOrder.filter { key ->
                         when (key) {
                             "today"     -> showToday
+                            "incoming"  -> showIncoming
                             "missed"    -> showMissed
                             "outgoing"  -> showOutgoing
                             "call_time" -> showCallTime
@@ -1031,7 +1037,8 @@ fun CallLogFullContent(
                 @Composable
                 fun StatCardItem(cardKey: String, delayMs: Long) {
                     when (cardKey) {
-                        "today" -> AnimatedStatCard(delayMs, com.modiprincekr.thedialer.controller.util.tr("Today"), totalToday.toString(), Icons.AutoMirrored.Filled.CallReceived, ColorBlue, Modifier.size(110.dp)) { viewModel.setFilter(CallLogFilter.All) }
+                        "today" -> AnimatedStatCard(delayMs, com.modiprincekr.thedialer.controller.util.tr("Today"), totalToday.toString(), Icons.Rounded.Call, ColorBlue, Modifier.size(110.dp)) { viewModel.setFilter(CallLogFilter.All) }
+                        "incoming" -> AnimatedStatCard(delayMs, com.modiprincekr.thedialer.controller.util.tr("Incoming"), incomingToday.toString(), Icons.Rounded.CallReceived, Color(0xFF2196F3), Modifier.size(110.dp)) { viewModel.setFilter(CallLogFilter.Incoming) }
                         "missed" -> AnimatedStatCard(
                             delayMs = delayMs,
                             label = com.modiprincekr.thedialer.controller.util.tr("Missed"),
@@ -1552,7 +1559,8 @@ private fun AnimatedStatCard(
     Box(modifier = Modifier.alpha(cardAlpha).offset(y = cardOffset)) {
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = Color.Transparent,
+            color = containerColor,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = modifier
                 .clip(RoundedCornerShape(20.dp))
                 .combinedClickable(

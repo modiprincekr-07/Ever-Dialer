@@ -623,7 +623,6 @@ fun DialPadContent(
     val settingsState by prefs.settingsChanged.collectAsState()
     val themeMode = remember(settingsState) { prefs.getString(PreferenceManager.KEY_THEME_MODE, "auto") ?: "auto" }
     val isWhiteMode = themeMode == "white"
-    var isKeypadVisible by remember { mutableStateOf(true) }
     // Settings → App Settings → Call Settings → "Direct Call on Tap". When off, tapping a
     // search-result row (saved contact or non-contact) should open Contact Info instead of
     // placing a call directly — same behaviour Recents/Favorites already apply.
@@ -656,13 +655,11 @@ fun DialPadContent(
     // matter where the edit originates from (dialpad keys, backspace, paste, clipboard banner,
     // clearing on secret-code detection, etc.)
     fun insertAtCursor(text: String) {
-        isKeypadVisible = true
         val at = cursorPosition.coerceIn(0, number.length)
         number = number.substring(0, at) + text + number.substring(at)
         cursorPosition = at + text.length
     }
     fun backspaceAtCursor() {
-        isKeypadVisible = true
         val at = cursorPosition.coerceIn(0, number.length)
         if (at > 0) {
             number = number.removeRange(at - 1, at)
@@ -670,7 +667,6 @@ fun DialPadContent(
         }
     }
     fun replaceNumber(text: String) {
-        isKeypadVisible = true
         number = text
         cursorPosition = text.length
     }
@@ -2020,24 +2016,6 @@ fun DialPadContent(
         // gesture's overscroll to reach the sheet again — so a second, deliberate pull is needed
         // to close it, exactly like before.
         val dialpadResultsScrollState = rememberScrollState()
-        val scrollCollapseNestedScroll = remember(isKeypadVisible) {
-            object : NestedScrollConnection {
-                override fun onPreScroll(
-                    available: Offset,
-                    source: NestedScrollSource
-                ): Offset {
-                    if (kotlin.math.abs(available.y) > 2f && isKeypadVisible) {
-                        isKeypadVisible = false
-                    }
-                    return Offset.Zero
-                }
-            }
-        }
-        LaunchedEffect(dialpadResultsScrollState.isScrollInProgress) {
-            if (dialpadResultsScrollState.isScrollInProgress && isKeypadVisible) {
-                isKeypadVisible = false
-            }
-        }
         var canDismissAtTop by remember { mutableStateOf(true) }
         val swallowOverscroll = remember {
             object : NestedScrollConnection {
@@ -2065,7 +2043,6 @@ fun DialPadContent(
                         }
                     }
                 }
-                .nestedScroll(scrollCollapseNestedScroll)
                 .nestedScroll(swallowOverscroll)
                 .verticalScroll(dialpadResultsScrollState),
             verticalArrangement = Arrangement.Top
@@ -2473,11 +2450,7 @@ fun DialPadContent(
                                 )
                                 .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy))
                                 .combinedClickable(
-                                    onClick = {
-                                        if (!isKeypadVisible) {
-                                            isKeypadVisible = true
-                                        }
-                                    },
+                                    onClick = {},
                                     onLongClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         showOverflowMenu = true
@@ -2570,236 +2543,184 @@ fun DialPadContent(
                     }
                 }
 
-                AnimatedVisibility(
-                    visible = !isKeypadVisible,
-                    enter = expandVertically(tween(220)) + fadeIn(tween(220)),
-                    exit = shrinkVertically(tween(180)) + fadeOut(tween(180))
-                ) {
-                    Box(
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    val dialpadBackdrop = rememberLayerBackdrop()
+                    val lgDialpadEnabled = remember(settingsState) {
+                        prefs.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) &&
+                        prefs.getBoolean(PreferenceManager.KEY_LG_DIALPAD_CALL_BUTTON, true)
+                    }
+                    val blurDialpadEnabled = remember(settingsState) {
+                        prefs.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) &&
+                        prefs.getBoolean(PreferenceManager.KEY_BLUR_DIALPAD_CALL_BUTTON, true) &&
+                        !lgDialpadEnabled
+                    }
+
+                    val needDialpadBackdrop = (lgDialpadEnabled || blurDialpadEnabled) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+                    // Dialpad keys
+                    val keys = listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9"), listOf("*","0","#"))
+                    val subKeys = mapOf("1" to "   ","2" to "ABC","3" to "DEF","4" to "GHI","5" to "JKL","6" to "MNO","7" to "PQRS","8" to "TUV","9" to "WXYZ","*" to "paste","0" to "+")
+
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        contentAlignment = Alignment.Center
+                            .then(if (needDialpadBackdrop) Modifier.layerBackdrop(dialpadBackdrop) else Modifier),
+                        verticalArrangement = Arrangement.spacedBy(effectiveKeySpacingV)
                     ) {
-                        Surface(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                isKeypadVisible = true
-                            },
-                            shape = RoundedCornerShape(50.dp),
-                            color = if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.defaultMinSize(minHeight = 40.dp)
-                        ) {
+                        keys.forEach { row ->
                             Row(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(effectiveKeySpacingH, Alignment.CenterHorizontally),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Dialpad,
-                                    contentDescription = "Show Keypad",
-                                    tint = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Show Keypad",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onPrimaryContainer
-                                )
+                                row.forEach { key ->
+                                    DialPadKey(
+                                        number = key,
+                                        letters = subKeys[key] ?: "",
+                                        soundPool = soundPool,
+                                        context = context,
+                                        onClick = { digit ->
+                                            insertAtCursor(digit)
+                                        },
+                                        onLongClick = when (key) {
+                                            "0" -> ({ insertAtCursor("+") })
+                                            "*" -> ({
+                                                val clip = clipboard.getText()?.text ?: ""
+                                                val sanitized = clip.filter { it.isDigit() || it == '+' || it == '*' || it == '#' }
+                                                if (sanitized.isNotEmpty()) {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    insertAtCursor(sanitized)
+                                                }
+                                            })
+                                            "1", "2", "3", "4", "5", "6", "7", "8", "9" -> ({ handleSpeedDial(key) })
+                                            else -> null
+                                        },
+                                        overrideWidth = keyWidth,
+                                        overrideHeight = keyHeight,
+                                        scaleFactor = scaleFactor
+                                    )
+                                }
                             }
                         }
-                    }
-                }
 
-                AnimatedVisibility(
-                    visible = isKeypadVisible,
-                    enter = expandVertically(
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
-                    ) + fadeIn(tween(200)),
-                    exit = shrinkVertically(
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
-                    ) + fadeOut(tween(160))
-                ) {
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                val dialpadBackdrop = rememberLayerBackdrop()
-                val lgDialpadEnabled = remember(settingsState) {
-                    prefs.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) &&
-                    prefs.getBoolean(PreferenceManager.KEY_LG_DIALPAD_CALL_BUTTON, true)
-                }
-                val blurDialpadEnabled = remember(settingsState) {
-                    prefs.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) &&
-                    prefs.getBoolean(PreferenceManager.KEY_BLUR_DIALPAD_CALL_BUTTON, true) &&
-                    !lgDialpadEnabled
-                }
-
-                val needDialpadBackdrop = (lgDialpadEnabled || blurDialpadEnabled) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-
-                // Dialpad keys
-                val keys = listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9"), listOf("*","0","#"))
-                val subKeys = mapOf("1" to "   ","2" to "ABC","3" to "DEF","4" to "GHI","5" to "JKL","6" to "MNO","7" to "PQRS","8" to "TUV","9" to "WXYZ","*" to "paste","0" to "+")
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(if (needDialpadBackdrop) Modifier.layerBackdrop(dialpadBackdrop) else Modifier),
-                    verticalArrangement = Arrangement.spacedBy(effectiveKeySpacingV)
-                ) {
-                    keys.forEach { row ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(effectiveKeySpacingH, Alignment.CenterHorizontally),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            row.forEach { key ->
-                                DialPadKey(
-                                    number = key,
-                                    letters = subKeys[key] ?: "",
-                                    soundPool = soundPool,
-                                    context = context,
-                                    onClick = { digit ->
-                                        insertAtCursor(digit)
+                        if (showSimButtons) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(simRowSpacingH, Alignment.CenterHorizontally)
+                            ) {
+                                DialerActionExpressive(
+                                    onClick = {
+                                        showAddContactChoiceDialog = true
                                     },
-                                    onLongClick = when (key) {
-                                        "0" -> ({ insertAtCursor("+") })
-                                        "*" -> ({
-                                            val clip = clipboard.getText()?.text ?: ""
-                                            val sanitized = clip.filter { it.isDigit() || it == '+' || it == '*' || it == '#' }
-                                            if (sanitized.isNotEmpty()) {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                insertAtCursor(sanitized)
+                                    icon = Icons.Default.PersonAdd,
+                                    contentDescription = "Add Contact",
+                                    containerColor = if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.width(simBtnW).height(effectiveSimCallH),
+                                    isLarge = true
+                                )
+
+                                DialerActionExpressive(
+                                    onClick = {
+                                        if (number.isNotEmpty()) {
+                                            initiateCallWithSim(number, 0)
+                                        } else {
+                                            val latestCall = callLogsForSearch.firstOrNull { it.number.isNotBlank() }
+                                            if (latestCall != null) {
+                                                replaceNumber(latestCall.number)
                                             }
-                                        })
-                                        "1", "2", "3", "4", "5", "6", "7", "8", "9" -> ({ handleSpeedDial(key) })
-                                        else -> null
+                                        }
                                     },
-                                    overrideWidth = keyWidth,
-                                    overrideHeight = keyHeight,
-                                    scaleFactor = scaleFactor
+                                    onLongClick = if (number.isNotEmpty()) ({ showAppPicker = true }) else null,
+                                    icon = Icons.Default.SimCard,
+                                    simSlotNumber = "1",
+                                    contentDescription = "Call with SIM 1",
+                                    containerColor = sim1Color,
+                                    customColor = sim1Color,
+                                    contentColor = Color.White,
+                                    modifier = Modifier.width(simBtnW).height(effectiveSimCallH),
+                                    isLarge = true,
+                                    liquidGlassBackdrop = dialpadBackdrop,
+                                    liquidGlassEnabled = lgDialpadEnabled,
+                                    blurEnabled = blurDialpadEnabled,
+                                    isCallButton = true
                                 )
+
+                                DialerActionExpressive(
+                                    onClick = {
+                                        if (number.isNotEmpty()) {
+                                            initiateCallWithSim(number, 1)
+                                        } else {
+                                            val latestCall = callLogsForSearch.firstOrNull { it.number.isNotBlank() }
+                                            if (latestCall != null) {
+                                                replaceNumber(latestCall.number)
+                                            }
+                                        }
+                                    },
+                                    onLongClick = if (number.isNotEmpty()) ({ showAppPicker = true }) else null,
+                                    icon = Icons.Default.SimCard,
+                                    simSlotNumber = "2",
+                                    contentDescription = "Call with SIM 2",
+                                    containerColor = sim2Color,
+                                    customColor = sim2Color,
+                                    contentColor = Color.White,
+                                    modifier = Modifier.width(simBtnW).height(effectiveSimCallH),
+                                    isLarge = true,
+                                    liquidGlassBackdrop = dialpadBackdrop,
+                                    liquidGlassEnabled = lgDialpadEnabled,
+                                    blurEnabled = blurDialpadEnabled,
+                                    isCallButton = true
+                                )
+
+                                Spacer(modifier = Modifier.width(simBtnW))
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(effectiveKeySpacingH, Alignment.CenterHorizontally)
+                            ) {
+                                DialerActionExpressive(
+                                    onClick = {
+                                        showAddContactChoiceDialog = true
+                                    },
+                                    icon = Icons.Default.PersonAdd,
+                                    contentDescription = "Add Contact",
+                                    containerColor = if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.width(keyWidth).height(callH),
+                                    isLarge = true
+                                )
+
+                                DialerActionExpressive(
+                                    onClick = {
+                                        if (number.isNotEmpty()) {
+                                            initiateCall(number)
+                                        } else {
+                                            val latestCall = callLogsForSearch.firstOrNull { it.number.isNotBlank() }
+                                            if (latestCall != null) {
+                                                replaceNumber(latestCall.number)
+                                            }
+                                        }
+                                    },
+                                    onLongClick = if (number.isNotEmpty()) ({ showAppPicker = true }) else null,
+                                    icon = Icons.Default.Call,
+                                    contentDescription = "Call",
+                                    containerColor = Color(0xFF34A853),
+                                    contentColor = Color.White,
+                                    modifier = Modifier.width(keyWidth).height(callH),
+                                    isLarge = true,
+                                    liquidGlassBackdrop = dialpadBackdrop,
+                                    liquidGlassEnabled = lgDialpadEnabled,
+                                    blurEnabled = blurDialpadEnabled,
+                                    isCallButton = true
+                                )
+
+                                Spacer(modifier = Modifier.width(keyWidth))
                             }
                         }
                     }
-                }
-
-                if (showSimButtons) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(simRowSpacingH, Alignment.CenterHorizontally)
-                    ) {
-                        DialerActionExpressive(
-                            onClick = {
-                                showAddContactChoiceDialog = true
-                            },
-                            icon = Icons.Default.PersonAdd,
-                            contentDescription = "Add Contact",
-                            containerColor = if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.width(simBtnW).height(effectiveSimCallH),
-                            isLarge = true
-                        )
-
-                        DialerActionExpressive(
-                            onClick = {
-                                if (number.isNotEmpty()) {
-                                    initiateCallWithSim(number, 0)
-                                } else {
-                                    val latestCall = callLogsForSearch.firstOrNull { it.number.isNotBlank() }
-                                    if (latestCall != null) {
-                                        replaceNumber(latestCall.number)
-                                    }
-                                }
-                            },
-                            onLongClick = if (number.isNotEmpty()) ({ showAppPicker = true }) else null,
-                            icon = Icons.Default.SimCard,
-                            simSlotNumber = "1",
-                            contentDescription = "Call with SIM 1",
-                            containerColor = sim1Color,
-                            customColor = sim1Color,
-                            contentColor = Color.White,
-                            modifier = Modifier.width(simBtnW).height(effectiveSimCallH),
-                            isLarge = true,
-                            liquidGlassBackdrop = dialpadBackdrop,
-                            liquidGlassEnabled = lgDialpadEnabled,
-                            blurEnabled = blurDialpadEnabled,
-                            isCallButton = true
-                        )
-
-                        DialerActionExpressive(
-                            onClick = {
-                                if (number.isNotEmpty()) {
-                                    initiateCallWithSim(number, 1)
-                                } else {
-                                    val latestCall = callLogsForSearch.firstOrNull { it.number.isNotBlank() }
-                                    if (latestCall != null) {
-                                        replaceNumber(latestCall.number)
-                                    }
-                                }
-                            },
-                            onLongClick = if (number.isNotEmpty()) ({ showAppPicker = true }) else null,
-                            icon = Icons.Default.SimCard,
-                            simSlotNumber = "2",
-                            contentDescription = "Call with SIM 2",
-                            containerColor = sim2Color,
-                            customColor = sim2Color,
-                            contentColor = Color.White,
-                            modifier = Modifier.width(simBtnW).height(effectiveSimCallH),
-                            isLarge = true,
-                            liquidGlassBackdrop = dialpadBackdrop,
-                            liquidGlassEnabled = lgDialpadEnabled,
-                            blurEnabled = blurDialpadEnabled,
-                            isCallButton = true
-                        )
-
-                        Spacer(modifier = Modifier.width(simBtnW))
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(effectiveKeySpacingH, Alignment.CenterHorizontally)
-                    ) {
-                        DialerActionExpressive(
-                            onClick = {
-                                showAddContactChoiceDialog = true
-                            },
-                            icon = Icons.Default.PersonAdd,
-                            contentDescription = "Add Contact",
-                            containerColor = if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.width(keyWidth).height(callH),
-                            isLarge = true
-                        )
-
-                        DialerActionExpressive(
-                            onClick = {
-                                if (number.isNotEmpty()) {
-                                    initiateCall(number)
-                                } else {
-                                    val latestCall = callLogsForSearch.firstOrNull { it.number.isNotBlank() }
-                                    if (latestCall != null) {
-                                        replaceNumber(latestCall.number)
-                                    }
-                                }
-                            },
-                            onLongClick = if (number.isNotEmpty()) ({ showAppPicker = true }) else null,
-                            icon = Icons.Default.Call,
-                            contentDescription = "Call",
-                            containerColor = Color(0xFF34A853),
-                            contentColor = Color.White,
-                            modifier = Modifier.width(keyWidth).height(callH),
-                            isLarge = true,
-                            liquidGlassBackdrop = dialpadBackdrop,
-                            liquidGlassEnabled = lgDialpadEnabled,
-                            blurEnabled = blurDialpadEnabled,
-                            isCallButton = true
-                        )
-
-                        Spacer(modifier = Modifier.width(keyWidth))
-                    }
-                }
-                }
                 }
             }
         }
@@ -3638,7 +3559,7 @@ private fun BackspaceActionButton(
             icon = Icons.Default.Backspace,
             contentDescription = "Backspace",
             containerColor = if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onSurface,
+            contentColor = Color(0xFFE53935),
             modifier = Modifier.size(size)
         )
     }

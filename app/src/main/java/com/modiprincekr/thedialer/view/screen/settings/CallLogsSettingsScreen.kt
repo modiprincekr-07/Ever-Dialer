@@ -15,6 +15,8 @@ import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallMissed
 import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.CallReceived
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Dashboard
@@ -120,6 +122,7 @@ fun CallLogsSettingsScreen(
     var showDefaultCategoryDialog by remember { mutableStateOf(false) }
     var defaultCallCategory by remember { mutableStateOf(prefs.getDefaultCallCategory()) }
     var callUIShowToday    by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_CALL_UI_SHOW_TODAY, true)) }
+    var callUIShowIncoming by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_CALL_UI_SHOW_INCOMING, true)) }
     var callUIShowMissed   by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_CALL_UI_SHOW_MISSED, true)) }
     var callUIShowOutgoing by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_CALL_UI_SHOW_OUTGOING, true)) }
     var callUIShowCallTime by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_CALL_UI_SHOW_CALL_TIME, true)) }
@@ -128,7 +131,8 @@ fun CallLogsSettingsScreen(
 
     data class CallUIOption(val key: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
     val callUIOptions = listOf(
-        CallUIOption("today",     "Today",     Icons.AutoMirrored.Filled.CallReceived),
+        CallUIOption("today",     "Today",     Icons.Rounded.Call),
+        CallUIOption("incoming",  "Incoming",  Icons.Rounded.CallReceived),
         CallUIOption("missed",    "Missed",    Icons.AutoMirrored.Filled.CallMissed),
         CallUIOption("outgoing",  "Outgoing",  Icons.AutoMirrored.Filled.CallMade),
         CallUIOption("call_time", "Call Time", Icons.Default.Timer),
@@ -152,6 +156,7 @@ fun CallLogsSettingsScreen(
         callUIOrder.addAll(defaults)
         persistCallUIOrder()
         callUIShowToday    = true;  prefs.setBoolean(PreferenceManager.KEY_CALL_UI_SHOW_TODAY,    true)
+        callUIShowIncoming = true;  prefs.setBoolean(PreferenceManager.KEY_CALL_UI_SHOW_INCOMING, true)
         callUIShowMissed   = true;  prefs.setBoolean(PreferenceManager.KEY_CALL_UI_SHOW_MISSED,   true)
         callUIShowOutgoing = true;  prefs.setBoolean(PreferenceManager.KEY_CALL_UI_SHOW_OUTGOING, true)
         callUIShowCallTime = true;  prefs.setBoolean(PreferenceManager.KEY_CALL_UI_SHOW_CALL_TIME, true)
@@ -169,6 +174,7 @@ fun CallLogsSettingsScreen(
 
         fun callUIChecked(key: String): Boolean = when (key) {
             "today"     -> callUIShowToday
+            "incoming"  -> callUIShowIncoming
             "missed"    -> callUIShowMissed
             "outgoing"  -> callUIShowOutgoing
             "call_time" -> callUIShowCallTime
@@ -179,6 +185,7 @@ fun CallLogsSettingsScreen(
         fun setCallUIChecked(key: String, value: Boolean) {
             when (key) {
                 "today"     -> { callUIShowToday = value;    prefs.setBoolean(PreferenceManager.KEY_CALL_UI_SHOW_TODAY,    value) }
+                "incoming"  -> { callUIShowIncoming = value; prefs.setBoolean(PreferenceManager.KEY_CALL_UI_SHOW_INCOMING, value) }
                 "missed"    -> { callUIShowMissed = value;   prefs.setBoolean(PreferenceManager.KEY_CALL_UI_SHOW_MISSED,   value) }
                 "outgoing"  -> { callUIShowOutgoing = value; prefs.setBoolean(PreferenceManager.KEY_CALL_UI_SHOW_OUTGOING, value) }
                 "call_time" -> { callUIShowCallTime = value; prefs.setBoolean(PreferenceManager.KEY_CALL_UI_SHOW_CALL_TIME, value) }

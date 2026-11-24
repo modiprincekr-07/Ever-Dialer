@@ -1043,7 +1043,7 @@ class PreferenceManager(context: Context) {
             return merged.filter { it in fallback }
         }
 
-        const val DEFAULT_CALL_UI_ORDER = "today,missed,outgoing,call_time,contacts,groups"
+        const val DEFAULT_CALL_UI_ORDER = "today,incoming,missed,outgoing,call_time,contacts,groups"
         const val KEY_CALL_UI_ORDER = "call_ui_order"
 
         /** Parses a raw comma-separated call-ui element order preference string into an ordered list
@@ -1053,6 +1053,14 @@ class PreferenceManager(context: Context) {
             if (raw.isNullOrBlank()) return fallback
             val parsed = raw.split(",").map { it.trim() }.filter { it.isNotBlank() }
             val merged = parsed.toMutableList()
+            if (!merged.contains("incoming")) {
+                val todayIdx = merged.indexOf("today")
+                if (todayIdx != -1) {
+                    merged.add(todayIdx + 1, "incoming")
+                } else {
+                    merged.add(0, "incoming")
+                }
+            }
             fallback.forEach { key -> if (key !in merged) merged.add(key) }
             return merged.filter { it in fallback }
         }
@@ -1214,6 +1222,7 @@ class PreferenceManager(context: Context) {
         const val KEY_SCROLL_HAPTIC_STRENGTH = "scroll_haptic_strength" // vibration amplitude 1–255
         const val KEY_HAPTICS_STRENGTH      = "app_haptics_strength"
         const val KEY_CALL_UI_SHOW_TODAY    = "call_ui_show_today"
+        const val KEY_CALL_UI_SHOW_INCOMING = "call_ui_show_incoming"
         const val KEY_CALL_UI_SHOW_MISSED   = "call_ui_show_missed"
         const val KEY_CALL_UI_SHOW_OUTGOING = "call_ui_show_outgoing"
         const val KEY_CALL_UI_SHOW_CALL_TIME = "call_ui_show_call_time"

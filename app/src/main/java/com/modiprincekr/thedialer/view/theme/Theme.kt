@@ -316,17 +316,18 @@ private fun applySaturatedContainers(
                 onPrimary = vibrantOnPrimaryLight,
                 primaryContainer = if (isPureWhite) Color(0xFFF2F2F4) else Color.White,
                 onPrimaryContainer = if (isPureWhite) Color(0xFF1A1A1C) else crispDark,
-                background = dynamicBgLight,
-                surface = dynamicSurfaceLight,
+                background = if (isPureWhite) Color(0xFFFFFFFF) else dynamicBgLight,
+                surface = if (isPureWhite) Color(0xFFFFFFFF) else dynamicSurfaceLight,
                 onBackground = crispDark,
                 onSurface = crispDark,
                 onSurfaceVariant = visibleDarkGreyText,
                 outline = visibleLightOutline,
-                surfaceContainerLowest = Color.White,
-                surfaceContainerLow = Color.White,
-                surfaceContainer = if (isPureWhite) Color(0xFFF2F2F4) else Color(0xFFFBFBFB),
-                surfaceContainerHigh = if (isPureWhite) Color(0xFFF2F2F4) else Color(0xFFF2F2F2),
-                surfaceContainerHighest = if (isPureWhite) Color(0xFFEEEEEE) else Color(0xFFEBEBEB),
+                outlineVariant = if (isPureWhite) Color(0xFFE0E0E4) else scheme.outlineVariant,
+                surfaceContainerLowest = Color(0xFFFFFFFF),
+                surfaceContainerLow = if (isPureWhite) Color(0xFFF4F4F6) else Color.White,
+                surfaceContainer = if (isPureWhite) Color(0xFFEEEEF1) else Color(0xFFFBFBFB),
+                surfaceContainerHigh = if (isPureWhite) Color(0xFFE6E6EA) else Color(0xFFF2F2F2),
+                surfaceContainerHighest = if (isPureWhite) Color(0xFFDFDFE3) else Color(0xFFEBEBEB),
                 surfaceVariant = if (isPureWhite) Color(0xFFEEEEEE) else Color(0xFFEBEBEB)
             )
         }
@@ -403,17 +404,18 @@ private fun applySaturatedContainers(
                 onPrimary = vibrantOnPrimaryLight,
                 primaryContainer = Color(0xFFF2F2F4),
                 onPrimaryContainer = Color(0xFF1A1A1C),
-                background = Color.White,
-                surface = Color.White,
+                background = Color(0xFFFFFFFF),
+                surface = Color(0xFFFFFFFF),
                 onBackground = crispDark,
                 onSurface = crispDark,
                 onSurfaceVariant = visibleDarkGreyText,
                 outline = visibleLightOutline,
-                surfaceContainerLowest = Color.White,
-                surfaceContainerLow = Color.White,
-                surfaceContainer = Color(0xFFF2F2F4),
-                surfaceContainerHigh = Color(0xFFF2F2F4),
-                surfaceContainerHighest = Color(0xFFE8E8E8),
+                outlineVariant = Color(0xFFE0E0E4),
+                surfaceContainerLowest = Color(0xFFFFFFFF),
+                surfaceContainerLow = Color(0xFFF4F4F6),
+                surfaceContainer = Color(0xFFEEEEF1),
+                surfaceContainerHigh = Color(0xFFE6E6EA),
+                surfaceContainerHighest = Color(0xFFDFDFE3),
                 surfaceVariant = Color(0xFFF0F0F0)
             )
             else -> scheme.copy(
@@ -521,10 +523,14 @@ fun Rivo4Theme(
                 surfaceContainerLowest = Color.Black, surfaceVariant = Color(0xFF1A1A1A)
             )
             "white" -> colorScheme.copy(
-                background = Color.White, surface = Color.White,
-                surfaceContainer = Color(0xFFF2F2F4), surfaceContainerLow = Color.White,
-                surfaceContainerHigh = Color(0xFFF2F2F4), surfaceContainerHighest = Color(0xFFE8E8E8),
-                surfaceContainerLowest = Color.White, surfaceVariant = Color(0xFFF0F0F0),
+                background = Color(0xFFFFFFFF), surface = Color(0xFFFFFFFF),
+                surfaceContainerLowest = Color(0xFFFFFFFF),
+                surfaceContainerLow = Color(0xFFF4F4F6),
+                surfaceContainer = Color(0xFFEEEEF1),
+                surfaceContainerHigh = Color(0xFFE6E6EA),
+                surfaceContainerHighest = Color(0xFFDFDFE3),
+                outlineVariant = Color(0xFFE0E0E4),
+                surfaceVariant = Color(0xFFF0F0F0),
                 primaryContainer = Color(0xFFF2F2F4), onPrimaryContainer = Color(0xFF1A1A1C)
             )
             "auto_bw" -> if (darkTheme) NothingDarkMonochromeColorScheme else NothingLightMonochromeColorScheme
