@@ -118,6 +118,50 @@ fun HomeScreen(
 
     var showBulkDeleteConfirm by remember { mutableStateOf(false) }
 
+    val rivoPrefs = remember { context.getSharedPreferences("rivo_prefs", Context.MODE_PRIVATE) }
+    var pfpShapeKey by remember {
+        mutableStateOf(rivoPrefs.getString("contact_info_pfp_shape", "circle") ?: "circle")
+    }
+    var animatePfpShape by remember {
+        mutableStateOf(rivoPrefs.getBoolean("contact_info_pfp_shape_animate", true))
+    }
+
+    DisposableEffect(rivoPrefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { sp, key ->
+            if (key == "contact_info_pfp_shape") {
+                pfpShapeKey = sp.getString("contact_info_pfp_shape", "circle") ?: "circle"
+            } else if (key == "contact_info_pfp_shape_animate") {
+                animatePfpShape = sp.getBoolean("contact_info_pfp_shape_animate", true)
+            }
+        }
+        rivoPrefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose {
+            rivoPrefs.unregisterOnSharedPreferenceChangeListener(listener)
+        }
+    }
+
+    val isExpressivePfp = com.coolappstore.evercallrecorder.by.svhp.ui.common.RecorderPfpShapeRegistry.isExpressive(pfpShapeKey) && pfpShapeKey != "circle" && pfpShapeKey != "square"
+    val shouldAnimatePfp = animatePfpShape && isExpressivePfp
+
+    val pfpRotationAngle = if (shouldAnimatePfp) {
+        val transition = rememberInfiniteTransition(label = "recorderPfpRotation")
+        val rot by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 14000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "recorderPfpAngle"
+        )
+        rot
+    } else 0f
+
+    CompositionLocalProvider(
+        com.coolappstore.evercallrecorder.by.svhp.ui.common.LocalRecorderPfpRotationAngle provides pfpRotationAngle,
+        com.coolappstore.evercallrecorder.by.svhp.ui.common.LocalRecorderPfpShapeKey provides pfpShapeKey,
+        com.coolappstore.evercallrecorder.by.svhp.ui.common.LocalRecorderPfpAnimate provides shouldAnimatePfp
+    ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -287,6 +331,7 @@ fun HomeScreen(
                 }
             }
         }
+    }
     }
 
     if (showBulkDeleteConfirm) {
@@ -784,43 +829,72 @@ private fun RecordingRow(
                     )
 
                     // Avatar layer (always in tree, fades behind checkbox)
+                    val pfpShapeKey = com.coolappstore.evercallrecorder.by.svhp.ui.common.LocalRecorderPfpShapeKey.current
+                    val pfpRotationAngle = com.coolappstore.evercallrecorder.by.svhp.ui.common.LocalRecorderPfpRotationAngle.current
+                    val shouldAnimatePfp = com.coolappstore.evercallrecorder.by.svhp.ui.common.LocalRecorderPfpAnimate.current
+                    val effectiveShape = remember(pfpShapeKey) {
+                        when (pfpShapeKey) {
+                            "circle" -> CircleShape
+                            "square" -> RoundedCornerShape(12.dp)
+                            else -> com.coolappstore.evercallrecorder.by.svhp.ui.common.RecorderPfpShapeRegistry.getShape(pfpShapeKey)
+                        }
+                    }
+                    val shouldRotate = shouldAnimatePfp && pfpRotationAngle != 0f
+
                     Box(
                         modifier = Modifier
                             .size(44.dp)
-                            .graphicsLayer { alpha = avatarAlpha }
-                            .clip(CircleShape)
+                            .graphicsLayer {
+                                alpha = avatarAlpha
+                                if (shouldRotate) rotationZ = pfpRotationAngle
+                            }
+                            .clip(effectiveShape)
                             .background(accentColor.copy(alpha = 0.12f))
                             .then(if (onOpenContactInfo != null && !isSelectionMode) Modifier.clickable { onOpenContactInfo(item) } else Modifier),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (item.isMultiCall && !item.secondPhoneNumber.isNullOrBlank()) {
-                            val p1 = item.contactName?.ifBlank { null } ?: item.phoneNumber
-                            val p2 = item.secondContactName?.ifBlank { null } ?: item.secondPhoneNumber ?: ""
-                            DualRecordingAvatar(
-                                name1 = p1,
-                                number1 = item.phoneNumber,
-                                photo1 = photoBitmap,
-                                name2 = p2,
-                                number2 = item.secondPhoneNumber ?: "",
-                                photo2 = secondPhotoBitmap,
-                                size = 44.dp
-                            )
-                        } else {
-                            val isContact = !item.contactName.isNullOrBlank() &&
-                                item.contactName != item.phoneNumber &&
-                                !item.contactName.equals("Unknown", ignoreCase = true)
-                            if (photoBitmap != null) {
-                                Image(bitmap = photoBitmap!!, contentDescription = null, modifier = Modifier.fillMaxSize().clip(CircleShape), contentScale = ContentScale.Crop)
-                            } else if (isContact) {
-                                val initial = item.contactName?.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
-                                Text(initial, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = accentColor)
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Rounded.Person,
-                                    contentDescription = null,
-                                    tint = accentColor,
-                                    modifier = Modifier.size(24.dp)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(
+                                    if (shouldRotate) Modifier.graphicsLayer {
+                                        rotationZ = -pfpRotationAngle
+                                        scaleX = 1.18f
+                                        scaleY = 1.18f
+                                    } else Modifier
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (item.isMultiCall && !item.secondPhoneNumber.isNullOrBlank()) {
+                                val p1 = item.contactName?.ifBlank { null } ?: item.phoneNumber
+                                val p2 = item.secondContactName?.ifBlank { null } ?: item.secondPhoneNumber ?: ""
+                                DualRecordingAvatar(
+                                    name1 = p1,
+                                    number1 = item.phoneNumber,
+                                    photo1 = photoBitmap,
+                                    name2 = p2,
+                                    number2 = item.secondPhoneNumber ?: "",
+                                    photo2 = secondPhotoBitmap,
+                                    size = 44.dp,
+                                    shape = null
                                 )
+                            } else {
+                                val isContact = !item.contactName.isNullOrBlank() &&
+                                    item.contactName != item.phoneNumber &&
+                                    !item.contactName.equals("Unknown", ignoreCase = true)
+                                if (photoBitmap != null) {
+                                    Image(bitmap = photoBitmap!!, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                } else if (isContact) {
+                                    val initial = item.contactName?.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+                                    Text(initial, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = accentColor)
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Person,
+                                        contentDescription = null,
+                                        tint = accentColor,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
                             }
                         }
                     }

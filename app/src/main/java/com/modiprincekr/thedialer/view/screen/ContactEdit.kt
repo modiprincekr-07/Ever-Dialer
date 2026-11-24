@@ -36,6 +36,8 @@ import com.modiprincekr.thedialer.modal.data.ContactEvent
 import com.modiprincekr.thedialer.modal.data.ContactPhone
 import com.modiprincekr.thedialer.modal.data.ContactSaveTarget
 import com.modiprincekr.thedialer.modal.data.getPhoneTypeLabel
+import com.modiprincekr.thedialer.view.components.ExpressiveAvatar
+import com.modiprincekr.thedialer.view.components.PfpCropDialog
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.RivoExpressiveCard
 import com.modiprincekr.thedialer.view.components.RivoSectionHeader
@@ -225,9 +227,17 @@ fun ContactEditScreen(
         }
     }
 
+    var pendingCropImageUri by remember { mutableStateOf<Uri?>(null) }
+    var showCropDialog by remember { mutableStateOf(false) }
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri -> if (uri != null) photoUri = uri.toString() }
+        onResult = { uri ->
+            if (uri != null) {
+                pendingCropImageUri = uri
+                showCropDialog = true
+            }
+        }
     )
 
     var phoneTypePickerIndex by remember { mutableStateOf<Int?>(null) }
@@ -362,11 +372,11 @@ fun ContactEditScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Box(contentAlignment = Alignment.BottomEnd) {
-                        RivoAvatar(
+                        ExpressiveAvatar(
                             name = fullName.ifBlank { "Unknown" },
                             photoUri = photoUri,
-                            modifier = Modifier.size(120.dp),
-                            shape = CircleShape
+                            size = 120.dp,
+                            modifier = Modifier.size(120.dp)
                         )
                         
                         Row {
@@ -1173,6 +1183,22 @@ fun ContactEditScreen(
                 TextButton(onClick = { showCustomPhoneLabelDialog = false }) {
                     Text("Cancel")
                 }
+            }
+        )
+    }
+
+    if (showCropDialog && pendingCropImageUri != null) {
+        PfpCropDialog(
+            imageUri = pendingCropImageUri!!,
+            contactId = if (isNewContact) "0" else contactId,
+            onDismiss = {
+                showCropDialog = false
+                pendingCropImageUri = null
+            },
+            onCropSaved = { savedUri, _, _ ->
+                showCropDialog = false
+                pendingCropImageUri = null
+                photoUri = savedUri.toString()
             }
         )
     }

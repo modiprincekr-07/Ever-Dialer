@@ -585,7 +585,7 @@ fun ContactListItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (showAvatarsInContacts) {
-                    RivoAvatar(
+                    ExpressiveAvatar(
                         name = headline,
                         photoUri = contact.photoUri,
                         size = 48.dp,

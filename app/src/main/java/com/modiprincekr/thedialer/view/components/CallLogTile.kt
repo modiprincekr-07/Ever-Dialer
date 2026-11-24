@@ -604,6 +604,7 @@ fun CallLogTile(
             }
         }) else null
         val colorScheme = MaterialTheme.colorScheme
+        val isAutoBw = (prefs.getString(PreferenceManager.KEY_THEME_MODE, "auto") ?: "auto") == "auto_bw"
         val leftSwipeKey = config?.leftSwipeKey ?: prefs.getSwipeAction("call_logs", "left")
         val rightSwipeKey = config?.rightSwipeKey ?: prefs.getSwipeAction("call_logs", "right")
         val leftSwipeAction = config?.leftSwipeAction ?: remember(leftSwipeKey, colorScheme) { SwipeActionHelper.resolveActionItem(leftSwipeKey, colorScheme) }
@@ -898,7 +899,7 @@ fun CallLogTile(
                         "select" -> RivoDropdownMenuItem(
                             text     = "Select",
                             icon     = Icons.Default.CheckBox,
-                            iconTint = Color(0xFF9C27B0),
+                            iconTint = if (isAutoBw) colorScheme.primary else Color(0xFF9C27B0),
                             onClick  = {
                                 showMenu = false
                                 onSelectMode?.invoke(log)
@@ -1132,7 +1133,7 @@ fun CallLogTile(
                                 RivoDropdownMenuItem(
                                     text     = if (isFav) "Remove from Favourites" else "Add to Favourites",
                                     icon     = Icons.Default.Favorite,
-                                    iconTint = if (isFav) Color(0xFFF44336) else Color(0xFFE91E63),
+                                    iconTint = if (isAutoBw) colorScheme.primary else if (isFav) Color(0xFFF44336) else Color(0xFFE91E63),
                                     isDestructive = isFav,
                                     onClick  = {
                                         showMenu = false

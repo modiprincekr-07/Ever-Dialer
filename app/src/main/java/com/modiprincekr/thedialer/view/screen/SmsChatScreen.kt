@@ -69,6 +69,7 @@ import android.app.TimePickerDialog
 import com.modiprincekr.thedialer.controller.util.ScheduledSmsManager
 import com.modiprincekr.thedialer.modal.data.ScheduledSmsEntry
 import com.modiprincekr.thedialer.modal.data.SmsMessage
+import com.modiprincekr.thedialer.view.components.ExpressiveAvatar
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenu
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenuItem
@@ -653,7 +654,7 @@ fun SmsChatScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                RivoAvatar(
+                                ExpressiveAvatar(
                                     name = contactName ?: address,
                                     photoUri = resolvedPhotoUri,
                                     autoColorAvatars = autoColor,

@@ -1004,45 +1004,33 @@ fun RivoListItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (customAvatar != null) {
-                Box(
+                ExpressiveAvatar(
+                    name = avatarName ?: "",
+                    size = 48.dp,
+                    onClick = if (onAvatarClick != null) ({
+                        recordAvatarClick()
+                        onAvatarClick()
+                    }) else null,
                     modifier = Modifier
                         .size(48.dp)
-                        .onGloballyPositioned { coords -> avatarCoords = coords }
-                        .then(
-                            if (onAvatarClick != null)
-                                Modifier
-                                     .clip(CircleShape)
-                                     .combinedClickable(onClick = {
-                                         recordAvatarClick()
-                                         onAvatarClick()
-                                     })
-                            else Modifier
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    customAvatar()
-                }
+                        .onGloballyPositioned { coords -> avatarCoords = coords },
+                    content = { customAvatar() }
+                )
                 Spacer(modifier = Modifier.width(16.dp))
             } else if (avatarName != null || photoUri != null) {
-                RivoAvatar(
+                ExpressiveAvatar(
                     name = avatarName ?: "",
                     photoUri = photoUri,
                     forcePersonIcon = avatarForcePersonIcon,
                     obeySolidIcons = avatarObeySolidIcons,
                     size = 48.dp,
+                    onClick = if (onAvatarClick != null) ({
+                        recordAvatarClick()
+                        onAvatarClick()
+                    }) else null,
                     modifier = Modifier
                         .size(48.dp)
                         .onGloballyPositioned { coords -> avatarCoords = coords }
-                        .then(
-                            if (onAvatarClick != null)
-                                Modifier
-                                     .clip(CircleShape)
-                                     .combinedClickable(onClick = {
-                                         recordAvatarClick()
-                                         onAvatarClick()
-                                     })
-                            else Modifier
-                        )
                 )
                 Spacer(modifier = Modifier.width(16.dp))
             } else if (leadingIcon != null) {

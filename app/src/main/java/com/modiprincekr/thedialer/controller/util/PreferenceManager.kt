@@ -1009,6 +1009,12 @@ class PreferenceManager(context: Context) {
     fun getAutoDeleteBackupsCountValue(): Int = getInt(KEY_AUTO_DELETE_BACKUPS_COUNT_VALUE, 5)
     fun setAutoDeleteBackupsCountValue(value: Int) = setInt(KEY_AUTO_DELETE_BACKUPS_COUNT_VALUE, value)
 
+    fun getSelectedPfpShape(): String = getString(KEY_CONTACT_INFO_PFP_SHAPE, "circle") ?: "circle"
+    fun setSelectedPfpShape(shape: String) = setString(KEY_CONTACT_INFO_PFP_SHAPE, shape)
+
+    fun isAnimatePfpShapeRotation(): Boolean = getBoolean(KEY_CONTACT_INFO_PFP_SHAPE_ANIMATE, true)
+    fun setAnimatePfpShapeRotation(animate: Boolean) = setBoolean(KEY_CONTACT_INFO_PFP_SHAPE_ANIMATE, animate)
+
     companion object {
         const val KEY_APP_LANGUAGE = "app_language"
         const val LANGUAGE_SYSTEM = "system"

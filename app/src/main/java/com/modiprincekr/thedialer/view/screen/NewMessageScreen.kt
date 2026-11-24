@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.modiprincekr.thedialer.controller.ContactsViewModel
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.modal.data.Contact
+import com.modiprincekr.thedialer.view.components.ExpressiveAvatar
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.SettingsPillTopAppBar
 import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
@@ -251,7 +252,7 @@ fun NewMessageScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(14.dp)
                             ) {
-                                RivoAvatar(
+                                ExpressiveAvatar(
                                     name = contact.name,
                                     photoUri = contact.photoUri,
                                     autoColorAvatars = autoColor,

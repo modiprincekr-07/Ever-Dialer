@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -43,12 +44,14 @@ fun DualRecordingAvatar(
     number2: String,
     photo2: ImageBitmap?,
     modifier: Modifier = Modifier,
+    shape: Shape? = CircleShape,
     size: Dp = 44.dp
 ) {
+    val clipModifier = if (shape != null) Modifier.clip(shape) else Modifier
     Box(
         modifier = modifier
             .size(size)
-            .clip(CircleShape)
+            .then(clipModifier)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
         contentAlignment = Alignment.Center
     ) {

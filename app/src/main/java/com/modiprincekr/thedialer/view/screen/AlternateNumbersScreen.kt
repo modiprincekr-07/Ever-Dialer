@@ -36,6 +36,7 @@ import com.modiprincekr.thedialer.controller.util.AlternateNumberRepository
 import com.modiprincekr.thedialer.controller.util.makeCall
 import com.modiprincekr.thedialer.controller.util.openWhatsAppChat
 import com.modiprincekr.thedialer.modal.data.AlternateNumber
+import com.modiprincekr.thedialer.view.components.ExpressiveAvatar
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
 import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
@@ -359,7 +360,7 @@ private fun AlternateNumberCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RivoAvatar(
+                ExpressiveAvatar(
                     name = item.name,
                     size = 46.dp
                 )

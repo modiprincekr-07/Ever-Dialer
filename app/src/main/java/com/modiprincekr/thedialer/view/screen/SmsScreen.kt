@@ -71,6 +71,7 @@ import com.modiprincekr.thedialer.controller.FloatingSmsService
 import com.modiprincekr.thedialer.controller.util.SwipeActionHelper
 import com.modiprincekr.thedialer.modal.data.Contact
 import com.modiprincekr.thedialer.modal.data.SmsConversation
+import com.modiprincekr.thedialer.view.components.ExpressiveAvatar
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenu
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenuItem
@@ -944,7 +945,7 @@ fun SmsScreen(
                                             ) {
                                                 if (showAvatar) {
                                                     Box(modifier = Modifier.onGloballyPositioned { starredAvatarCoords = it }) {
-                                                        RivoAvatar(
+                                                        ExpressiveAvatar(
                                                             name = item.contactName ?: item.message.address,
                                                             photoUri = item.photoUri,
                                                             autoColorAvatars = autoColor,
@@ -1858,18 +1859,17 @@ private fun ConversationItemRow(
                 Box(
                     modifier = Modifier
                         .onGloballyPositioned { avatarCoords = it }
-                        .clip(CircleShape)
-                        .clickable {
-                            recordAvatarClick()
-                            onAvatarClick()
-                        }
                 ) {
-                    RivoAvatar(
+                    ExpressiveAvatar(
                         name = conversation.contactName ?: conversation.address,
                         photoUri = conversation.photoUri,
                         autoColorAvatars = autoColor,
                         obeySolidIcons = false,
-                        size = 48.dp
+                        size = 48.dp,
+                        onClick = {
+                            recordAvatarClick()
+                            onAvatarClick()
+                        }
                     )
                 }
                 Spacer(Modifier.width(14.dp))

@@ -80,6 +80,14 @@ import com.modiprincekr.thedialer.view.components.Android14WelcomeDialog
 import com.modiprincekr.thedialer.view.components.TelegramJoinDialog
 import com.modiprincekr.thedialer.view.components.FullScreenIntentDialog
 import com.modiprincekr.thedialer.view.components.BottomBar
+import com.modiprincekr.thedialer.view.components.LocalPfpRotationAngle
+import com.modiprincekr.thedialer.view.theme.expressive.PfpShapeRegistry
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import com.modiprincekr.thedialer.view.components.enterNotesTab
 import com.modiprincekr.thedialer.liquidglass.LocalLiquidGlassBackdrop
 import com.modiprincekr.thedialer.liquidglass.backdrops.rememberLayerBackdrop
@@ -254,6 +262,29 @@ class MainActivity : FragmentActivity() {
 
                 // ── Biometric app-lock ──────────────────────────────────────
                 val settingsVer by prefs.settingsChanged.collectAsState()
+
+                val activePfpShape = remember(settingsVer) { prefs.getSelectedPfpShape() }
+                val animatePfpShape = remember(settingsVer) { prefs.isAnimatePfpShapeRotation() }
+                val isExpressivePfp = remember(activePfpShape) {
+                    activePfpShape != "circle" && activePfpShape != "square" && PfpShapeRegistry.isExpressive(activePfpShape)
+                }
+                val shouldAnimatePfp = animatePfpShape && isExpressivePfp
+
+                val globalPfpRotationAngle = if (shouldAnimatePfp) {
+                    val transition = rememberInfiniteTransition(label = "globalPfpRotation")
+                    val rot by transition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 360f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 14000, easing = LinearEasing),
+                            repeatMode = RepeatMode.Restart
+                        ),
+                        label = "globalPfpAngle"
+                    )
+                    rot
+                } else 0f
+
+                CompositionLocalProvider(LocalPfpRotationAngle provides globalPfpRotationAngle) {
                 val biometricType = remember(settingsVer) {
                     prefs.getString(PreferenceManager.KEY_BIOMETRICS_TYPE, "") ?: ""
                 }
@@ -923,6 +954,7 @@ class MainActivity : FragmentActivity() {
                         handleIntent(it, navController)
                         pendingIntent = null
                     }
+                }
                 }
             }
         }

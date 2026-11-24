@@ -115,6 +115,20 @@ fun RivoAvatar(
     shape: Shape = CircleShape,
     size: androidx.compose.ui.unit.Dp? = null
 ) {
+    if (shape == CircleShape) {
+        ExpressiveAvatar(
+            name = name,
+            photoUri = photoUri,
+            modifier = modifier,
+            size = size ?: 48.dp,
+            icon = icon,
+            iconContainerColor = iconContainerColor,
+            forcePersonIcon = forcePersonIcon,
+            autoColorAvatars = autoColorAvatars,
+            obeySolidIcons = obeySolidIcons
+        )
+        return
+    }
     val localConfig = LocalAvatarDisplayConfig.current
 
     val showPicture: Boolean

@@ -260,11 +260,15 @@ fun SwipeActionsScreen(
     navigator: DestinationsNavigator
 ) {
     val scrollState = rememberScrollState()
+    val prefs = koinInject<PreferenceManager>()
+    val themeMode = remember { prefs.getString(PreferenceManager.KEY_THEME_MODE, "auto") ?: "auto" }
+    val isAutoBw = themeMode == "auto_bw"
 
     val colorScheme = MaterialTheme.colorScheme
-    val swipeSections = remember(colorScheme) {
+    val favColor = if (isAutoBw) colorScheme.primary else Color(0xFFE91E63)
+    val swipeSections = remember(colorScheme, isAutoBw) {
         listOf(
-            SwipeSectionInfo("favourites", "Favourites", Icons.Default.Favorite, Color(0xFFE91E63), FAVOURITES_SWIPE_OPTIONS),
+            SwipeSectionInfo("favourites", "Favourites", Icons.Default.Favorite, favColor, FAVOURITES_SWIPE_OPTIONS),
             SwipeSectionInfo("call_logs", "Call Logs", Icons.Outlined.History, colorScheme.primary, CALL_LOGS_SWIPE_OPTIONS),
             SwipeSectionInfo("contacts", "Contacts", Icons.Outlined.Person, colorScheme.secondary, CONTACTS_SWIPE_OPTIONS),
             SwipeSectionInfo("recordings", "Call Recordings", Icons.Outlined.Mic, colorScheme.tertiary, RECORDINGS_SWIPE_OPTIONS),

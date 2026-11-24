@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextOverflow
@@ -439,14 +440,18 @@ fun DialPadScreen(
         dragHandle = null
     ) {
         val prefs = koinInject<PreferenceManager>()
+        val themeMode = remember(prefs.settingsChanged.collectAsState().value) {
+            prefs.getString(PreferenceManager.KEY_THEME_MODE, "auto") ?: "auto"
+        }
+        val isWhiteMode = themeMode == "white"
         com.modiprincekr.thedialer.view.theme.ProvideScaledDensity(prefs = prefs) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .offset(y = slideDistance * closeProgress.value),
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 4.dp
+                color = if (isWhiteMode) Color.White else MaterialTheme.colorScheme.surface,
+                tonalElevation = if (isWhiteMode) 0.dp else 4.dp
             ) {
                 val predictiveBackEnabled = remember(prefs.settingsChanged.collectAsState().value) {
                     prefs.getBoolean(PreferenceManager.KEY_PREDICTIVE_BACK_GESTURE, true)
@@ -616,6 +621,9 @@ fun DialPadContent(
     val contactsVM: ContactsViewModel = koinActivityViewModel()
     val prefs = koinInject<PreferenceManager>()
     val settingsState by prefs.settingsChanged.collectAsState()
+    val themeMode = remember(settingsState) { prefs.getString(PreferenceManager.KEY_THEME_MODE, "auto") ?: "auto" }
+    val isWhiteMode = themeMode == "white"
+    var isKeypadVisible by remember { mutableStateOf(true) }
     // Settings → App Settings → Call Settings → "Direct Call on Tap". When off, tapping a
     // search-result row (saved contact or non-contact) should open Contact Info instead of
     // placing a call directly — same behaviour Recents/Favorites already apply.
@@ -648,11 +656,13 @@ fun DialPadContent(
     // matter where the edit originates from (dialpad keys, backspace, paste, clipboard banner,
     // clearing on secret-code detection, etc.)
     fun insertAtCursor(text: String) {
+        isKeypadVisible = true
         val at = cursorPosition.coerceIn(0, number.length)
         number = number.substring(0, at) + text + number.substring(at)
         cursorPosition = at + text.length
     }
     fun backspaceAtCursor() {
+        isKeypadVisible = true
         val at = cursorPosition.coerceIn(0, number.length)
         if (at > 0) {
             number = number.removeRange(at - 1, at)
@@ -660,6 +670,7 @@ fun DialPadContent(
         }
     }
     fun replaceNumber(text: String) {
+        isKeypadVisible = true
         number = text
         cursorPosition = text.length
     }
@@ -1440,7 +1451,7 @@ fun DialPadContent(
                         .clip(RoundedCornerShape(16.dp))
                         .background(
                             if (number.isNotEmpty())
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
                             else Color.Transparent
                         )
                         .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy))
@@ -1737,7 +1748,7 @@ fun DialPadContent(
                         verticalArrangement = Arrangement.SpaceEvenly
                     ) {
                         val keys = listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9"), listOf("*","0","#"))
-                        val subKeys = mapOf("1" to "   ","2" to "ABC","3" to "DEF","4" to "GHI","5" to "JKL","6" to "MNO","7" to "PQRS","8" to "TUV","9" to "WXYZ","0" to "+")
+                        val subKeys = mapOf("1" to "   ","2" to "ABC","3" to "DEF","4" to "GHI","5" to "JKL","6" to "MNO","7" to "PQRS","8" to "TUV","9" to "WXYZ","*" to "paste","0" to "+")
 
                         // Rows 1–4: Dialpad Keys
                         keys.forEach { row ->
@@ -1757,6 +1768,14 @@ fun DialPadContent(
                                         },
                                         onLongClick = when (key) {
                                             "0" -> ({ insertAtCursor("+") })
+                                            "*" -> ({
+                                                val clip = clipboard.getText()?.text ?: ""
+                                                val sanitized = clip.filter { it.isDigit() || it == '+' || it == '*' || it == '#' }
+                                                if (sanitized.isNotEmpty()) {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    insertAtCursor(sanitized)
+                                                }
+                                            })
                                             "1", "2", "3", "4", "5", "6", "7", "8", "9" -> ({ handleSpeedDial(key) })
                                             else -> null
                                         },
@@ -1786,7 +1805,8 @@ fun DialPadContent(
                                     },
                                     icon = Icons.Default.PersonAdd,
                                     contentDescription = "Add Contact",
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    containerColor = if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.size(width = keyWidth, height = keyHeight),
                                     isLarge = true
                                 )
@@ -2000,6 +2020,24 @@ fun DialPadContent(
         // gesture's overscroll to reach the sheet again — so a second, deliberate pull is needed
         // to close it, exactly like before.
         val dialpadResultsScrollState = rememberScrollState()
+        val scrollCollapseNestedScroll = remember(isKeypadVisible) {
+            object : NestedScrollConnection {
+                override fun onPreScroll(
+                    available: Offset,
+                    source: NestedScrollSource
+                ): Offset {
+                    if (kotlin.math.abs(available.y) > 2f && isKeypadVisible) {
+                        isKeypadVisible = false
+                    }
+                    return Offset.Zero
+                }
+            }
+        }
+        LaunchedEffect(dialpadResultsScrollState.isScrollInProgress) {
+            if (dialpadResultsScrollState.isScrollInProgress && isKeypadVisible) {
+                isKeypadVisible = false
+            }
+        }
         var canDismissAtTop by remember { mutableStateOf(true) }
         val swallowOverscroll = remember {
             object : NestedScrollConnection {
@@ -2027,6 +2065,7 @@ fun DialPadContent(
                         }
                     }
                 }
+                .nestedScroll(scrollCollapseNestedScroll)
                 .nestedScroll(swallowOverscroll)
                 .verticalScroll(dialpadResultsScrollState),
             verticalArrangement = Arrangement.Top
@@ -2400,7 +2439,7 @@ fun DialPadContent(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(32.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow
+            color = if (isWhiteMode) Color.White else MaterialTheme.colorScheme.surfaceContainerLow
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = (9 * scaleFactor).coerceIn(8f, 13f).dp),
@@ -2429,12 +2468,16 @@ fun DialPadContent(
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(
                                     if (number.isNotEmpty())
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                        if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
                                     else Color.Transparent
                                 )
                                 .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy))
                                 .combinedClickable(
-                                    onClick = {},
+                                    onClick = {
+                                        if (!isKeypadVisible) {
+                                            isKeypadVisible = true
+                                        }
+                                    },
                                     onLongClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         showOverflowMenu = true
@@ -2527,7 +2570,57 @@ fun DialPadContent(
                     }
                 }
 
+                AnimatedVisibility(
+                    visible = !isKeypadVisible,
+                    enter = expandVertically(tween(220)) + fadeIn(tween(220)),
+                    exit = shrinkVertically(tween(180)) + fadeOut(tween(180))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isKeypadVisible = true
+                            },
+                            shape = RoundedCornerShape(50.dp),
+                            color = if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.defaultMinSize(minHeight = 40.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Dialpad,
+                                    contentDescription = "Show Keypad",
+                                    tint = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Show Keypad",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                    }
+                }
 
+                AnimatedVisibility(
+                    visible = isKeypadVisible,
+                    enter = expandVertically(
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
+                    ) + fadeIn(tween(200)),
+                    exit = shrinkVertically(
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy)
+                    ) + fadeOut(tween(160))
+                ) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                 val dialpadBackdrop = rememberLayerBackdrop()
                 val lgDialpadEnabled = remember(settingsState) {
@@ -2544,7 +2637,7 @@ fun DialPadContent(
 
                 // Dialpad keys
                 val keys = listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9"), listOf("*","0","#"))
-                val subKeys = mapOf("1" to "   ","2" to "ABC","3" to "DEF","4" to "GHI","5" to "JKL","6" to "MNO","7" to "PQRS","8" to "TUV","9" to "WXYZ","0" to "+")
+                val subKeys = mapOf("1" to "   ","2" to "ABC","3" to "DEF","4" to "GHI","5" to "JKL","6" to "MNO","7" to "PQRS","8" to "TUV","9" to "WXYZ","*" to "paste","0" to "+")
 
                 Column(
                     modifier = Modifier
@@ -2569,6 +2662,14 @@ fun DialPadContent(
                                     },
                                     onLongClick = when (key) {
                                         "0" -> ({ insertAtCursor("+") })
+                                        "*" -> ({
+                                            val clip = clipboard.getText()?.text ?: ""
+                                            val sanitized = clip.filter { it.isDigit() || it == '+' || it == '*' || it == '#' }
+                                            if (sanitized.isNotEmpty()) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                insertAtCursor(sanitized)
+                                            }
+                                        })
                                         "1", "2", "3", "4", "5", "6", "7", "8", "9" -> ({ handleSpeedDial(key) })
                                         else -> null
                                     },
@@ -2593,7 +2694,8 @@ fun DialPadContent(
                             },
                             icon = Icons.Default.PersonAdd,
                             contentDescription = "Add Contact",
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            containerColor = if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.width(simBtnW).height(effectiveSimCallH),
                             isLarge = true
                         )
@@ -2664,7 +2766,8 @@ fun DialPadContent(
                             },
                             icon = Icons.Default.PersonAdd,
                             contentDescription = "Add Contact",
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            containerColor = if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.width(keyWidth).height(callH),
                             isLarge = true
                         )
@@ -2695,6 +2798,7 @@ fun DialPadContent(
 
                         Spacer(modifier = Modifier.width(keyWidth))
                     }
+                }
                 }
                 }
             }
@@ -2990,6 +3094,8 @@ fun DialPadKey(
     val settingsState by prefs.settingsChanged.collectAsState()
     val isSaturatedActive = remember(settingsState, isDark) { prefs.isSaturatedForTheme(isDark) }
     val isSaturatedContainer = remember(settingsState) { prefs.getSaturatedTarget() == PreferenceManager.SATURATED_TARGET_CONTAINER }
+    val themeMode = remember(settingsState) { prefs.getString(PreferenceManager.KEY_THEME_MODE, "auto") ?: "auto" }
+    val isWhiteMode = themeMode == "white"
 
     val keyWidth = overrideWidth ?: if (compact) 82.dp else 100.dp
     val keyHeight = overrideHeight ?: if (compact) 52.dp else 68.dp
@@ -3000,6 +3106,7 @@ fun DialPadKey(
     val buttonHeight = if (isCircleButtons) minOf(keyWidth, keyHeight) else keyHeight
     val isStarKey = number == "*"
     val isPlusSubKey = letters.trim() == "+"
+    val isPasteSubKey = letters.trim().equals("paste", ignoreCase = true)
     val hasLetters = letters.isNotBlank()
 
     val cornerRadius by animateDpAsState(
@@ -3021,32 +3128,42 @@ fun DialPadKey(
         label = "DialKeyScale"
     )
 
-    val restingBgColor = if (isSaturatedActive && isSaturatedContainer) {
+    val restingBgColor = if (isWhiteMode) {
+        Color(0xFFF2F2F4)
+    } else if (isSaturatedActive && isSaturatedContainer) {
         androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary, 0.35f)
     } else {
         MaterialTheme.colorScheme.primaryContainer
     }
 
-    val targetBgColor = if (isVisuallyPressed) MaterialTheme.colorScheme.primary else restingBgColor
+    val targetBgColor = if (isVisuallyPressed) {
+        if (isWhiteMode) Color(0xFFE2E2E5) else MaterialTheme.colorScheme.primary
+    } else restingBgColor
     val bgColor by animateColorAsState(targetBgColor, spring(stiffness = Spring.StiffnessMedium), "DialKeyColor")
 
     val isPrimaryBright = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.primary.toArgb()) > 0.45
     val pressedTextColor = if (isPrimaryBright) Color(0xFF1C1B1F) else Color.White
 
-    val restingMainTextColor = if (isSaturatedActive) {
-        MaterialTheme.colorScheme.onPrimaryContainer
+    val restingMainTextColor = if (isWhiteMode) {
+        Color(0xFF1A1A1C)
     } else {
         MaterialTheme.colorScheme.onPrimaryContainer
     }
-    val targetMainTextColor = if (isVisuallyPressed) pressedTextColor else restingMainTextColor
+    val targetMainTextColor = if (isVisuallyPressed) {
+        if (isWhiteMode) Color(0xFF1A1A1C) else pressedTextColor
+    } else restingMainTextColor
     val mainTextColor by animateColorAsState(targetMainTextColor, spring(stiffness = Spring.StiffnessMedium), "DialKeyTextColor")
 
-    val restingSubTextColor = if (isSaturatedActive) {
+    val restingSubTextColor = if (isWhiteMode) {
+        Color(0xFF1A1A1C).copy(alpha = 0.70f)
+    } else if (isSaturatedActive) {
         MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.80f)
     } else {
         MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
     }
-    val targetSubTextColor = if (isVisuallyPressed) pressedTextColor.copy(alpha = 0.85f) else restingSubTextColor
+    val targetSubTextColor = if (isVisuallyPressed) {
+        if (isWhiteMode) Color(0xFF1A1A1C).copy(alpha = 0.85f) else pressedTextColor.copy(alpha = 0.85f)
+    } else restingSubTextColor
     val subTextColor by animateColorAsState(targetSubTextColor, spring(stiffness = Spring.StiffnessMedium), "DialKeySubTextColor")
 
     val density = LocalDensity.current
@@ -3070,6 +3187,8 @@ fun DialPadKey(
     }
     val baseSubSize = if (isPlusSubKey) {
         if (compact) 10.5f else 11.5f
+    } else if (isPasteSubKey) {
+        if (compact) 8.5f else 9.5f
     } else {
         if (compact) 9f else 9.5f
     }
@@ -3173,8 +3292,8 @@ fun DialPadKey(
                             platformStyle = PlatformTextStyle(includeFontPadding = false)
                         ),
                         color = subTextColor,
-                        letterSpacing = if (isPlusSubKey) 0.sp else 0.4.sp,
-                        fontWeight = if (isPlusSubKey) FontWeight.Bold else FontWeight.Normal,
+                        letterSpacing = if (isPlusSubKey || isPasteSubKey) 0.sp else 0.4.sp,
+                        fontWeight = if (isPlusSubKey) FontWeight.Bold else if (isPasteSubKey) FontWeight.Medium else FontWeight.Normal,
                         maxLines = 1,
                         softWrap = false
                     )
@@ -3499,6 +3618,11 @@ private fun BackspaceActionButton(
     onClear: () -> Unit,
     size: Dp = 64.dp
 ) {
+    val prefs = koinInject<PreferenceManager>()
+    val themeMode = remember(prefs.settingsChanged.collectAsState().value) {
+        prefs.getString(PreferenceManager.KEY_THEME_MODE, "auto") ?: "auto"
+    }
+    val isWhiteMode = themeMode == "white"
     val hasContent = number.isNotEmpty()
     val alpha by animateFloatAsState(if (hasContent) 1f else 0f, animationSpec = tween(120), label = "BackspaceAlpha")
     val scale by animateFloatAsState(if (hasContent) 1f else 0.7f, animationSpec = tween(120), label = "BackspaceScale")
@@ -3513,7 +3637,8 @@ private fun BackspaceActionButton(
             onClick = { if (hasContent) onBackspace() },
             icon = Icons.Default.Backspace,
             contentDescription = "Backspace",
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            containerColor = if (isWhiteMode) Color(0xFFF2F2F4) else MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = if (isWhiteMode) Color(0xFF1A1A1C) else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(size)
         )
     }

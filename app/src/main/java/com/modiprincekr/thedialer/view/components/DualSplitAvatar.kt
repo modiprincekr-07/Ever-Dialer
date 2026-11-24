@@ -39,6 +39,49 @@ fun DualSplitAvatar(
     shape: Shape = CircleShape,
     size: Dp = 48.dp
 ) {
+    if (shape == CircleShape) {
+        ExpressiveAvatar(
+            name = name1 ?: name2 ?: "",
+            size = size,
+            modifier = modifier
+        ) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                // Left Half - Person 1
+                SplitHalf(
+                    name = name1,
+                    number = number1,
+                    photoUri = photoUri1,
+                    size = size,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clipToBounds()
+                )
+
+                // Middle Seam / Divider
+                Box(
+                    modifier = Modifier
+                        .width(1.5.dp)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
+                )
+
+                // Right Half - Person 2
+                SplitHalf(
+                    name = name2,
+                    number = number2,
+                    photoUri = photoUri2,
+                    size = size,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clipToBounds()
+                )
+            }
+        }
+        return
+    }
+
     Box(
         modifier = modifier
             .size(size)

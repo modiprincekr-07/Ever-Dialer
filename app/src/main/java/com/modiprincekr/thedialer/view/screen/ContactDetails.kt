@@ -40,6 +40,7 @@ import com.modiprincekr.thedialer.modal.data.ContactAccountInfo
 import com.modiprincekr.thedialer.modal.data.ContactPhone
 import com.modiprincekr.thedialer.view.theme.expressive.PfpShapeRegistry
 import com.modiprincekr.thedialer.view.theme.expressive.RotatingPfpShapeContainer
+import com.modiprincekr.thedialer.view.components.PfpCropDialog
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -413,34 +414,15 @@ fun ContactDetailsScreen(
         contactMediaPath = ContactMediaManager.getContactMedia(context, contact?.id ?: contactSimKey, phoneNumber)
     }
 
+    var pendingCropImageUri by remember { mutableStateOf<Uri?>(null) }
+    var showCropDialog by remember { mutableStateOf(false) }
+
     val pfpPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null && contact != null) {
-            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                try {
-                    val pfpDir = File(context.filesDir, "contact_pfp")
-                    if (!pfpDir.exists()) pfpDir.mkdirs()
-                    val pfpFile = File(pfpDir, "${contact.id}_${System.currentTimeMillis()}.jpg")
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        FileOutputStream(pfpFile).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    val cachedUri = Uri.fromFile(pfpFile).toString()
-                    contactsViewModel.saveContact(
-                        contact = contact.copy(photoUri = cachedUri),
-                        originalContact = contact
-                    )
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        android.widget.Toast.makeText(context, "Contact photo updated", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        android.widget.Toast.makeText(context, e.message ?: "Failed to update photo", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
+            pendingCropImageUri = uri
+            showCropDialog = true
         }
     }
 
@@ -1229,6 +1211,37 @@ fun ContactDetailsScreen(
                     }
                     TextButton(onClick = { showPfpOptionsDialog = false }) {
                         Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
+
+    if (showCropDialog && pendingCropImageUri != null && contact != null) {
+        PfpCropDialog(
+            imageUri = pendingCropImageUri!!,
+            contactId = contact.id,
+            initialShapeKey = pfpShapeSetting,
+            onDismiss = {
+                showCropDialog = false
+                pendingCropImageUri = null
+            },
+            onCropSaved = { savedUri, _, _ ->
+                showCropDialog = false
+                pendingCropImageUri = null
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        contactsViewModel.saveContact(
+                            contact = contact.copy(photoUri = savedUri.toString()),
+                            originalContact = contact
+                        )
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            android.widget.Toast.makeText(context, "Contact photo updated", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            android.widget.Toast.makeText(context, e.message ?: "Failed to update photo", android.widget.Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }

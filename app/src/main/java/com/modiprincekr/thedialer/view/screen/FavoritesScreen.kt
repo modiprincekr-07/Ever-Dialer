@@ -60,6 +60,7 @@ import com.modiprincekr.thedialer.view.components.ContactSortButton
 import com.modiprincekr.thedialer.view.components.ContactSortOption
 import com.modiprincekr.thedialer.view.components.SimSlotBadge
 import com.modiprincekr.thedialer.view.components.sortContacts
+import com.modiprincekr.thedialer.view.components.ExpressiveAvatar
 import com.modiprincekr.thedialer.view.components.RivoAvatar
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenu
 import com.modiprincekr.thedialer.view.components.RivoDropdownMenuItem
@@ -829,11 +830,11 @@ private fun FavoriteContactCard(
                             .size(48.dp)
                             .onGloballyPositioned { avatarCoords = it }
                     ) {
-                        RivoAvatar(
+                        ExpressiveAvatar(
                             name = contact.name,
                             photoUri = contact.photoUri,
-                            modifier = Modifier.fillMaxSize(),
-                            shape = CircleShape
+                            size = 48.dp,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
 
