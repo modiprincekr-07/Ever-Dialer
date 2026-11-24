@@ -444,10 +444,13 @@ fun DialPadScreen(
             prefs.getString(PreferenceManager.KEY_THEME_MODE, "auto") ?: "auto"
         }
         val isWhiteMode = themeMode == "white"
+        val sheetScreenHeight = dialpadConfiguration.screenHeightDp.dp
         com.modiprincekr.thedialer.view.theme.ProvideScaledDensity(prefs = prefs) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = sheetScreenHeight)
+                    .fillMaxHeight()
                     .offset(y = slideDistance * closeProgress.value),
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                 color = if (isWhiteMode) Color.White else MaterialTheme.colorScheme.surface,
@@ -505,7 +508,7 @@ fun DialPadScreen(
                     }
                 }
 
-                Column(modifier = Modifier.statusBarsPadding().navigationBarsPadding()) {
+                Column(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1466,8 +1469,9 @@ fun DialPadContent(
                 val leftScrollState = rememberScrollState()
                 Column(
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(1f, fill = false)
                         .fillMaxWidth()
+                        .heightIn(max = configuration.screenHeightDp.dp)
                         .verticalScroll(leftScrollState),
                     verticalArrangement = Arrangement.Top,
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -1765,11 +1769,13 @@ fun DialPadContent(
                                         onLongClick = when (key) {
                                             "0" -> ({ insertAtCursor("+") })
                                             "*" -> ({
-                                                val clip = clipboard.getText()?.text ?: ""
-                                                val sanitized = clip.filter { it.isDigit() || it == '+' || it == '*' || it == '#' }
-                                                if (sanitized.isNotEmpty()) {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                    insertAtCursor(sanitized)
+                                                runCatching {
+                                                    val clip = clipboard.getText()?.text ?: ""
+                                                    val sanitized = clip.filter { it.isDigit() || it == '+' || it == '*' || it == '#' }
+                                                    if (sanitized.isNotEmpty()) {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        insertAtCursor(sanitized)
+                                                    }
                                                 }
                                             })
                                             "1", "2", "3", "4", "5", "6", "7", "8", "9" -> ({ handleSpeedDial(key) })
@@ -1907,14 +1913,21 @@ fun DialPadContent(
         // Prevent keyboard from auto-opening on composition
         LaunchedEffect(Unit) { focusManager.clearFocus() }
 
+        val screenHeightDp = configuration.screenHeightDp.dp
+        val screenWidthDp = configuration.screenWidthDp.dp
+
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val screenHeight = maxHeight
-        val screenWidth = maxWidth
+        val boundedMaxH = if (maxHeight.value.isFinite() && maxHeight > 0.dp) maxHeight else screenHeightDp
+        val boundedMaxW = if (maxWidth.value.isFinite() && maxWidth > 0.dp) maxWidth else screenWidthDp
+        val screenHeight = boundedMaxH
+        val screenWidth = boundedMaxW
 
         // Layout: search bar fixed at top, scrollable middle (results/pills/clipboard),
         // dialpad card fixed at bottom. Nothing moves when results appear.
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .heightIn(max = boundedMaxH),
             verticalArrangement = Arrangement.Top
         ) {
 
@@ -2033,6 +2046,7 @@ fun DialPadContent(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .heightIn(max = screenHeight)
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
                         while (true) {
@@ -2353,7 +2367,7 @@ fun DialPadContent(
         BoxWithConstraints(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)
         ) {
-            val availableWidth = maxWidth.value
+            val availableWidth = if (maxWidth.value.isFinite() && maxWidth > 0.dp) maxWidth.value else screenWidth.value
             val availableRowWidth = (availableWidth - 12f).coerceAtLeast(160f)
             val isCircleButtons = remember(settingsState) {
                 prefs.getBoolean(PreferenceManager.KEY_DIALPAD_CIRCLE_BUTTONS, false)
@@ -2482,8 +2496,10 @@ fun DialPadContent(
                                     }
                                 )
                             }
-                            val pasteText = clipboard.getText()?.text
-                                ?.filter { it.isDigit() || it == '+' || it == '*' || it == '#' } ?: ""
+                            val pasteText = runCatching {
+                                clipboard.getText()?.text
+                                    ?.filter { it.isDigit() || it == '+' || it == '*' || it == '#' } ?: ""
+                            }.getOrDefault("")
                             if (pasteText.isNotEmpty()) {
                                 RivoDropdownMenuItem(
                                     text     = "Paste",
@@ -2585,11 +2601,13 @@ fun DialPadContent(
                                         onLongClick = when (key) {
                                             "0" -> ({ insertAtCursor("+") })
                                             "*" -> ({
-                                                val clip = clipboard.getText()?.text ?: ""
-                                                val sanitized = clip.filter { it.isDigit() || it == '+' || it == '*' || it == '#' }
-                                                if (sanitized.isNotEmpty()) {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                    insertAtCursor(sanitized)
+                                                runCatching {
+                                                    val clip = clipboard.getText()?.text ?: ""
+                                                    val sanitized = clip.filter { it.isDigit() || it == '+' || it == '*' || it == '#' }
+                                                    if (sanitized.isNotEmpty()) {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        insertAtCursor(sanitized)
+                                                    }
                                                 }
                                             })
                                             "1", "2", "3", "4", "5", "6", "7", "8", "9" -> ({ handleSpeedDial(key) })
