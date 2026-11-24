@@ -22,7 +22,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
@@ -330,23 +335,53 @@ fun AboutAppScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                         )
                     }
 
-                    RivoExpressiveCard {
+                    var socialExpanded by remember { mutableStateOf(false) }
+
+                    RivoExpressiveCard(
+                        modifier = Modifier.settingsSearchHighlight("co_developer_prince", highlightedKey) { highlightedKey = null }
+                    ) {
                         RivoListItem(
-                            headline = "Prince Kumar Modi (@modiprincekr)",
-                            supporting = "Co-Developer & UI/UX Architect • GitHub",
+                            headline = "@modiprincekr",
+                            supporting = "Co-Developer • UI/UX Architect",
                             leadingIcon = Icons.Outlined.Code,
                             iconContainerColor = ColorDeepPurp,
-                            trailingIcon = Icons.AutoMirrored.Filled.ArrowForward,
-                            modifier = Modifier.settingsSearchHighlight("co_developer_prince", highlightedKey) { highlightedKey = null },
-                            onClick = {
-                                runCatching {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/modiprincekr-07/Ever-Dialer")).apply {
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    context.startActivity(intent)
-                                }
-                            }
+                            trailingIcon = if (socialExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                            trailingIconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick = { socialExpanded = !socialExpanded }
                         )
+
+                        AnimatedVisibility(
+                            visible = socialExpanded,
+                            enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
+                            exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(250))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                SocialPlatformPill(
+                                    label = "Instagram",
+                                    icon = Icons.Rounded.CameraAlt,
+                                    url = "https://instagram.com/modiprincekr",
+                                    modifier = Modifier.weight(1f)
+                                )
+                                SocialPlatformPill(
+                                    label = "Telegram",
+                                    icon = Icons.AutoMirrored.Rounded.Send,
+                                    url = "https://t.me/modiprincekr",
+                                    modifier = Modifier.weight(1f)
+                                )
+                                SocialPlatformPill(
+                                    label = "GitHub",
+                                    icon = Icons.Rounded.Code,
+                                    url = "https://github.com/modiprincekr-07",
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
                     }
 
                     RivoExpressiveCard {
@@ -1504,6 +1539,53 @@ private fun ContributionCategory(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SocialPlatformPill(
+    label: String,
+    icon: ImageVector,
+    url: String,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    Surface(
+        onClick = {
+            runCatching {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            }
+        },
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier.height(38.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(Modifier.width(5.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Clip
+            )
         }
     }
 }
