@@ -54,23 +54,23 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Snappy, responsive animation curves and durations (180ms - 220ms) with FastOutSlowInEasing.
+ * Smooth, expressive animation curves and durations tuned to 0.8x (~340ms) with FastOutSlowInEasing.
  */
 val SettingsSmoothEase = FastOutSlowInEasing
 val SettingsSmoothEaseIn = FastOutSlowInEasing
 val SettingsSmoothEaseOut = FastOutSlowInEasing
 
-const val SETTINGS_ANIM_DURATION_ENTER = 210
-const val SETTINGS_ANIM_DURATION_EXIT = 190
+const val SETTINGS_ANIM_DURATION_ENTER = 340
+const val SETTINGS_ANIM_DURATION_EXIT = 340
 
-const val CHAT_ANIM_DURATION_ENTER = 210
-const val CHAT_ANIM_DURATION_EXIT = 190
+const val CHAT_ANIM_DURATION_ENTER = 340
+const val CHAT_ANIM_DURATION_EXIT = 340
 val ChatSmoothEase = FastOutSlowInEasing
 val ChatSmoothEaseOut = FastOutSlowInEasing
 val ChatSmoothEaseIn = FastOutSlowInEasing
 
-const val CONTACT_DETAILS_ANIM_DURATION_ENTER = 210
-const val CONTACT_DETAILS_ANIM_DURATION_EXIT = 190
+const val CONTACT_DETAILS_ANIM_DURATION_ENTER = 340
+const val CONTACT_DETAILS_ANIM_DURATION_EXIT = 340
 val ContactDetailsSmoothEase = FastOutSlowInEasing
 val ContactDetailsSmoothEaseExit = FastOutSlowInEasing
 
@@ -96,8 +96,8 @@ fun isContactOrChatRoute(route: String?): Boolean {
  * Windows Phone Metro-style turnstile page transition specifications.
  */
 val MetroSlideInEasing = FastOutSlowInEasing
-const val SETTINGS_WP_ANIM_DURATION_ENTER = 210
-const val SETTINGS_WP_ANIM_DURATION_EXIT = 190
+const val SETTINGS_WP_ANIM_DURATION_ENTER = 340
+const val SETTINGS_WP_ANIM_DURATION_EXIT = 340
 
 fun isWindowsPhoneAnimation(): Boolean {
     return try {
@@ -111,9 +111,9 @@ fun isWindowsPhoneAnimation(): Boolean {
 val PetalM3EmphasizedEasing = FastOutSlowInEasing
 val PetalPopSlideEasing = FastOutSlowInEasing
 val PetalPopExitSlideEasing = FastOutSlowInEasing
-const val CARDS_ANIM_DURATION = 210
-const val CARDS_PUSH_DURATION = 220
-const val CARDS_POP_DURATION = 190
+const val CARDS_ANIM_DURATION = 340
+const val CARDS_PUSH_DURATION = 340
+const val CARDS_POP_DURATION = 340
 
 fun isCardsAnimation(): Boolean {
     return try {

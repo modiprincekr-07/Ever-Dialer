@@ -1491,9 +1491,10 @@ class PreferenceManager(context: Context) {
         const val KEY_INCOMING_FONT_SIZE_SCALE  = "incoming_font_size_scale" // Float, default 1.0f (0.7f..1.5f)
         const val KEY_INCOMING_ELEMENTS_THEME   = "incoming_elements_theme"  // "auto" | "light" | "dark"
         const val KEY_INCOMING_AUTO_REFRESH_WALLPAPER = "incoming_auto_refresh_wallpaper"
-        const val KEY_INCOMING_ANSWER_STYLE    = "incoming_answer_style"   // "google_modern" | "google_classic"
+        const val KEY_INCOMING_ANSWER_STYLE    = "incoming_answer_style"   // "google_modern" | "google_classic" | "full_screen_calling_card"
         const val ANSWER_STYLE_MODERN           = "google_modern"
         const val ANSWER_STYLE_CLASSIC          = "google_classic"
+        const val ANSWER_STYLE_CALLING_CARD     = "full_screen_calling_card"
 
         const val KEY_ONGOING_BG_TYPE           = "ongoing_bg_type"          // "none" | "wallpaper" | "picture" | "video"
         const val KEY_ONGOING_BG_PATH           = "ongoing_bg_path"
@@ -1542,7 +1543,8 @@ class PreferenceManager(context: Context) {
 
         // Contact Info PFP Customization (Size & Shape)
         const val KEY_CONTACT_INFO_PFP_SIZE                 = "contact_info_pfp_size"            // Float 0.1f..1.0f, default 0.60f (60%)
-        const val KEY_CONTACT_INFO_PFP_SHAPE                = "contact_info_pfp_shape"           // "circle" | "square", default "circle"
+        const val KEY_CONTACT_INFO_PFP_SHAPE                = "contact_info_pfp_shape"           // "circle" | "square" | expressive shape key, default "circle"
+        const val KEY_CONTACT_INFO_PFP_SHAPE_ANIMATE        = "contact_info_pfp_shape_animate"   // Boolean, default true
 
         // Volume DND — toggle system DND via volume button sequence using Accessibility
         const val KEY_VOLUME_DND_ENABLED           = "volume_dnd_enabled"

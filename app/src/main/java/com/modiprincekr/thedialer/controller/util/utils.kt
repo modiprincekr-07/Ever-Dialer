@@ -312,6 +312,28 @@ fun getSimSlotForCall(context: Context, call: Call?): Int {
 }
 
 /**
+ * Resolves the display or carrier name for a 0-based SIM slot index (0 = SIM 1, 1 = SIM 2).
+ */
+fun getSimCarrierName(context: Context, simSlot: Int): String {
+    return try {
+        val sm = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE)
+                as? android.telephony.SubscriptionManager
+        val hasPhoneState = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+        if (hasPhoneState && sm != null) {
+            val list = try { sm.activeSubscriptionInfoList } catch (_: Throwable) { null }
+            val sub = if (simSlot in 0..1) list?.firstOrNull { it.simSlotIndex == simSlot } else list?.firstOrNull()
+            sub?.carrierName?.toString()?.takeIf { it.isNotBlank() }
+                ?: sub?.displayName?.toString()?.takeIf { it.isNotBlank() }
+                ?: if (simSlot == 1) "SIM 2" else "SIM 1"
+        } else {
+            if (simSlot == 1) "SIM 2" else "SIM 1"
+        }
+    } catch (_: Throwable) {
+        if (simSlot == 1) "SIM 2" else "SIM 1"
+    }
+}
+
+/**
  * Resolves a CallLog Calls.PHONE_ACCOUNT_ID string to its 0-based SIM slot index (0 = SIM 1, 1 = SIM 2).
  */
 fun getSimSlotForPhoneAccountId(context: Context, phoneAccountId: String?): Int {

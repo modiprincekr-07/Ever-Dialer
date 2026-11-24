@@ -38,6 +38,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import com.modiprincekr.thedialer.modal.data.getPhoneTypeLabel
 import com.modiprincekr.thedialer.modal.data.ContactAccountInfo
 import com.modiprincekr.thedialer.modal.data.ContactPhone
+import com.modiprincekr.thedialer.view.theme.expressive.PfpShapeRegistry
+import com.modiprincekr.thedialer.view.theme.expressive.RotatingPfpShapeContainer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -238,8 +240,17 @@ fun ContactDetailsScreen(
     val pfpShapeSetting = remember(settingsVer) {
         prefs.getString(PreferenceManager.KEY_CONTACT_INFO_PFP_SHAPE, "circle") ?: "circle"
     }
+    val animatePfpShape = remember(settingsVer) {
+        prefs.getBoolean(PreferenceManager.KEY_CONTACT_INFO_PFP_SHAPE_ANIMATE, true)
+    }
     val pfpShape = remember(pfpShapeSetting, pfpSizeFraction) {
-        if (pfpShapeSetting == "square") RoundedCornerShape((28 * (pfpSizeFraction / 0.60f).coerceIn(0.5f, 1.5f)).dp) else CircleShape
+        if (pfpShapeSetting == "square") {
+            RoundedCornerShape((28 * (pfpSizeFraction / 0.60f).coerceIn(0.5f, 1.5f)).dp)
+        } else if (pfpShapeSetting == "circle") {
+            CircleShape
+        } else {
+            PfpShapeRegistry.getShape(pfpShapeSetting)
+        }
     }
     val pfpSizeDp = (400 * pfpSizeFraction).dp
     val showContactInfoSettings = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_CONTACT_INFO_SHOW_CONTACT_INFO_SETTINGS, true) }
@@ -1412,28 +1423,34 @@ fun ContactDetailsScreen(
                         Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(modifier = Modifier.size(400.dp), contentAlignment = Alignment.Center) {
                                 Box(modifier = Modifier.size((pfpSizeDp * 1.35f).coerceAtMost(420.dp)).background(brush = Brush.radialGradient(colors = listOf(avatarGlowColor.copy(alpha = 0.45f), Color.Transparent))).blur(60.dp))
-                                RivoAvatar(
-                                    name = displayName,
-                                    photoUri = contact?.photoUri,
-                                    forcePersonIcon = true,
+                                RotatingPfpShapeContainer(
+                                    shapeKey = pfpShapeSetting,
+                                    shape = pfpShape,
+                                    animateRotation = animatePfpShape,
                                     modifier = Modifier
                                         .size(pfpSizeDp)
-                                        .clip(pfpShape)
                                         .onGloballyPositioned { coordinates ->
-                                            val root = coordinates.findRootCoordinates()
-                                            val rootSize = root.size
-                                            if (rootSize.width > 0 && rootSize.height > 0) {
-                                                val pos = coordinates.positionInRoot()
-                                                val cx = (pos.x + coordinates.size.width / 2f) / rootSize.width.toFloat()
-                                                val cy = (pos.y + coordinates.size.height / 2f) / rootSize.height.toFloat()
-                                                pfpTransformOrigin = TransformOrigin(cx.coerceIn(0f, 1f), cy.coerceIn(0f, 1f))
-                                            }
+                                             val root = coordinates.findRootCoordinates()
+                                             val rootSize = root.size
+                                             if (rootSize.width > 0 && rootSize.height > 0) {
+                                                 val pos = coordinates.positionInRoot()
+                                                 val cx = (pos.x + coordinates.size.width / 2f) / rootSize.width.toFloat()
+                                                 val cy = (pos.y + coordinates.size.height / 2f) / rootSize.height.toFloat()
+                                                 pfpTransformOrigin = TransformOrigin(cx.coerceIn(0f, 1f), cy.coerceIn(0f, 1f))
+                                             }
                                         }
                                         .clickable {
-                                            showPfpPreview = true
-                                        },
-                                    shape = pfpShape
-                                )
+                                             showPfpPreview = true
+                                        }
+                                ) {
+                                    RivoAvatar(
+                                        name = displayName,
+                                        photoUri = contact?.photoUri,
+                                        forcePersonIcon = true,
+                                        modifier = Modifier.fillMaxSize(),
+                                        shape = androidx.compose.ui.graphics.RectangleShape
+                                    )
+                                }
                                 Surface(
                                     onClick = { showBackgroundPfpChoiceDialog = true },
                                     shape = CircleShape,

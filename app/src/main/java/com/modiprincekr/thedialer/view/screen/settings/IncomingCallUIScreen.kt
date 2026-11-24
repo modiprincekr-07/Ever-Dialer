@@ -151,7 +151,11 @@ fun IncomingCallUIScreen(navigator: DestinationsNavigator, highlightKey: String?
                             prefs.getString(PreferenceManager.KEY_INCOMING_ANSWER_STYLE, PreferenceManager.ANSWER_STYLE_MODERN)
                                 ?: PreferenceManager.ANSWER_STYLE_MODERN
                         }
-                        val answerStyleLabel = if (currentAnswerStyle == PreferenceManager.ANSWER_STYLE_CLASSIC) "Google classic" else "Google modern style"
+                        val answerStyleLabel = when (currentAnswerStyle) {
+                            PreferenceManager.ANSWER_STYLE_CLASSIC -> "Google classic"
+                            PreferenceManager.ANSWER_STYLE_CALLING_CARD -> "Full Screen Calling Card"
+                            else -> "Google modern style"
+                        }
 
                         RivoListItem(
                             headline = "Answer style",

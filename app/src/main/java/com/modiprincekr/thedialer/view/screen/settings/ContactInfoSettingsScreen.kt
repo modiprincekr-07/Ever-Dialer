@@ -1,5 +1,6 @@
 package com.modiprincekr.thedialer.view.screen.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -15,6 +16,8 @@ import androidx.compose.material.icons.outlined.FilterNone
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +39,8 @@ import com.modiprincekr.thedialer.view.components.SettingsPillTopAppBar
 import com.modiprincekr.thedialer.view.components.rivoHeadingColor
 import com.modiprincekr.thedialer.view.components.settingsSearchHighlight
 import com.modiprincekr.thedialer.view.theme.SettingsTransitionStyle
+import com.modiprincekr.thedialer.view.theme.expressive.PfpShapeRegistry
+import com.modiprincekr.thedialer.view.theme.expressive.RotatingPfpShapeContainer
 import com.modiprincekr.thedialer.view.theme.settingsMotionBlur
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
@@ -86,6 +91,9 @@ fun ContactInfoSettingsScreen(
     }
     var contactInfoPfpShape by remember {
         mutableStateOf(prefs.getString(PreferenceManager.KEY_CONTACT_INFO_PFP_SHAPE, "circle") ?: "circle")
+    }
+    var animateShapeRotation by remember {
+        mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_CONTACT_INFO_PFP_SHAPE_ANIMATE, true))
     }
     var showPfpShapeDialog by remember { mutableStateOf(false) }
 
@@ -296,50 +304,110 @@ fun ContactInfoSettingsScreen(
             onDismissRequest = { showPfpShapeDialog = false },
             title = { Text("Choose PFP Shape", fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(
-                        Pair("circle", "Circle (Default)"),
-                        Pair("square", "Square")
-                    ).forEach { (shapeKey, shapeLabel) ->
-                        val isSelected = contactInfoPfpShape == shapeKey
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent,
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                            ),
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Animate Shape Rotation Toggle
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    contactInfoPfpShape = shapeKey
-                                    prefs.setString(PreferenceManager.KEY_CONTACT_INFO_PFP_SHAPE, shapeKey)
-                                    showPfpShapeDialog = false
+                                    animateShapeRotation = !animateShapeRotation
+                                    prefs.setBoolean(PreferenceManager.KEY_CONTACT_INFO_PFP_SHAPE_ANIMATE, animateShapeRotation)
                                 }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Icon(
-                                        if (shapeKey == "square") Icons.Outlined.CropSquare else Icons.Outlined.AccountCircle,
-                                        contentDescription = null,
-                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        shapeLabel,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                    )
+                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                Text(
+                                    "Animate Shape Rotation",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    "Smooth 360° rotating mask while contact photo stays upright",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = animateShapeRotation,
+                                onCheckedChange = {
+                                    animateShapeRotation = it
+                                    prefs.setBoolean(PreferenceManager.KEY_CONTACT_INFO_PFP_SHAPE_ANIMATE, it)
                                 }
-                                if (isSelected) {
-                                    Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            )
+                        }
+                    }
+
+                    // 32 Shapes Scrollable Grid
+                    Box(modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
+                        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                            columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(PfpShapeRegistry.allShapes.size) { index ->
+                                val item = PfpShapeRegistry.allShapes[index]
+                                val isSelected = contactInfoPfpShape == item.key
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        if (isSelected) 2.dp else 1.dp,
+                                        if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            contactInfoPfpShape = item.key
+                                            prefs.setString(PreferenceManager.KEY_CONTACT_INFO_PFP_SHAPE, item.key)
+                                            showPfpShapeDialog = false
+                                        }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        RotatingPfpShapeContainer(
+                                            shapeKey = item.key,
+                                            shape = item.shape,
+                                            animateRotation = animateShapeRotation && isSelected,
+                                            modifier = Modifier.size(42.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.70f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Person,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(22.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Text(
+                                            text = item.label,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -478,11 +546,23 @@ fun ContactInfoSettingsScreen(
                         // PFP Shape Chooser
                         RivoListItem(
                             headline = "PFP Shape",
-                            supporting = if (contactInfoPfpShape == "square") "Square" else "Circle (Default)",
+                            supporting = PfpShapeRegistry.getShapeItem(contactInfoPfpShape).label,
                             leadingIcon = if (contactInfoPfpShape == "square") Icons.Outlined.CropSquare else Icons.Outlined.AccountCircle,
                             iconContainerColor = Color(0xFF673AB7),
                             trailingIcon = Icons.Default.ChevronRight,
                             onClick = { showPfpShapeDialog = true }
+                        )
+                        CardDivider()
+                        RivoSwitchListItem(
+                            headline = "Animate Shape Rotation",
+                            supporting = "Continuously rotate outer shape while photo remains upright",
+                            leadingIcon = Icons.Default.RotateRight,
+                            iconContainerColor = Color(0xFF3F51B5),
+                            checked = animateShapeRotation,
+                            onCheckedChange = {
+                                animateShapeRotation = it
+                                prefs.setBoolean(PreferenceManager.KEY_CONTACT_INFO_PFP_SHAPE_ANIMATE, it)
+                            }
                         )
                     }
                 }

@@ -38,6 +38,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.CallEnd
+import androidx.compose.ui.text.font.FontFamily
+import com.modiprincekr.thedialer.view.theme.expressive.PfpShapeRegistry
+import com.modiprincekr.thedialer.view.theme.expressive.RotatingPfpShapeContainer
+import com.modiprincekr.thedialer.controller.util.getSimCarrierName
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.automirrored.filled.PhoneCallback
 import androidx.compose.material.icons.automirrored.filled.PhoneForwarded
@@ -71,6 +77,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -82,6 +90,7 @@ import com.modiprincekr.thedialer.controller.util.makeCall
 import com.modiprincekr.thedialer.controller.util.PreferenceManager
 import com.modiprincekr.thedialer.controller.util.getSimSlotForAccountHandle
 import com.modiprincekr.thedialer.controller.util.getSimSlotForCall
+import com.modiprincekr.thedialer.controller.util.getSimCarrierName
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.PowerManager
@@ -920,16 +929,27 @@ private fun CallAvatar(
     isMultiCall: Boolean = false,
     overlayContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
-    val isExpressive = isMaterialExpressive()
-    val isCircle = config.pfpShape != "square"
-    val avatarShape = if (isExpressive) {
-        val avatarShapeList = PetalMaterialShapes.avatarShapes
-        val key = contactName.ifBlank { phoneNumber }.ifBlank { "unknown" }
-        val idx = (kotlin.math.abs(key.hashCode())) % avatarShapeList.size
-        avatarShapeList[idx].toShape()
-    } else if (isCircle) CircleShape else RoundedCornerShape(if (config.pfpSize >= 0.95f) 0.dp else 14.dp)
-
     val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { com.modiprincekr.thedialer.controller.util.PreferenceManager(context) }
+    val animateShapeRotation = remember { prefs.getBoolean(PreferenceManager.KEY_CONTACT_INFO_PFP_SHAPE_ANIMATE, true) }
+    val contactInfoShape = remember { prefs.getString(PreferenceManager.KEY_CONTACT_INFO_PFP_SHAPE, "circle") ?: "circle" }
+    val effectiveShapeKey = if (config.pfpShape != "circle" && config.pfpShape.isNotBlank()) config.pfpShape else contactInfoShape
+    val isRegisteredExpressive = PfpShapeRegistry.isExpressive(effectiveShapeKey)
+    val isExpressive = isMaterialExpressive() || isRegisteredExpressive
+    val isCircle = effectiveShapeKey != "square" && !isRegisteredExpressive
+    val avatarShape = when {
+        isRegisteredExpressive -> PfpShapeRegistry.getShape(effectiveShapeKey)
+        isExpressive && effectiveShapeKey == "circle" -> {
+            val avatarShapeList = PetalMaterialShapes.avatarShapes
+            val key = contactName.ifBlank { phoneNumber }.ifBlank { "unknown" }
+            val idx = (kotlin.math.abs(key.hashCode())) % avatarShapeList.size
+            avatarShapeList[idx].toShape()
+        }
+        isCircle -> CircleShape
+        else -> RoundedCornerShape(if (config.pfpSize >= 0.95f) 0.dp else 14.dp)
+    }
+    val isNonCircular = isRegisteredExpressive || (isExpressive && avatarShape != CircleShape && effectiveShapeKey != "square")
+
     val firstDisplayName = remember(contactName, isMultiCall) {
         if (isMultiCall && contactName.contains(" & ")) contactName.substringBefore(" & ").trim() else contactName
     }
@@ -951,23 +971,28 @@ private fun CallAvatar(
         config.pfpShowForNoPfp && config.hasCustomPfp && config.pfpFile != null
     }
 
-    Box(
-        modifier = modifier
-            .size(avatarSize)
-            .clip(avatarShape)
-            .then(
-                if (hasCustomBg) Modifier.background(controlBtnColor)
-                else Modifier.background(
-                    Brush.radialGradient(
-                        listOf(
-                            callerAvatarBg,
-                            callerAvatarBg.copy(alpha = 0.85f)
+    RotatingPfpShapeContainer(
+        shapeKey = effectiveShapeKey,
+        shape = avatarShape,
+        animateRotation = animateShapeRotation && isNonCircular,
+        modifier = modifier.size(avatarSize)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (hasCustomBg) Modifier.background(controlBtnColor)
+                    else Modifier.background(
+                        Brush.radialGradient(
+                            listOf(
+                                callerAvatarBg,
+                                callerAvatarBg.copy(alpha = 0.85f)
+                            )
                         )
                     )
-                )
-            ),
-        contentAlignment = Alignment.Center
-    ) {
+                ),
+            contentAlignment = Alignment.Center
+        ) {
         if (isMultiCall && (!secondPhoneNumber.isNullOrBlank() || !secondContactName.isNullOrBlank())) {
             Row(modifier = Modifier.fillMaxSize()) {
                 // Left Half - Person 1
@@ -1136,6 +1161,504 @@ private fun CallAvatar(
         if (overlayContent != null) {
             overlayContent()
         }
+    }
+    }
+}
+
+/**
+ * High-resolution background rendering for Full Screen Calling Card.
+ * Loads the highest available resolution image without thumbnail downsampling:
+ * checks ContactMediaManager / contact_pfp/ first, and for system contacts uses
+ * openContactPhotoInputStream(contentResolver, contactUri, true) (preferHighres = true)
+ * decoded via Coil at full dimensions (Size.ORIGINAL, ContentScale.Crop).
+ * Adds a subtle bottom-to-middle dark gradient scrim for text legibility.
+ */
+@Composable
+private fun FullScreenCallingCardBackground(
+    contactId: String?,
+    phoneNumber: String,
+    photoUri: String?,
+    modifier: Modifier = Modifier
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var highResModel by remember(contactId, phoneNumber, photoUri) { mutableStateOf<Any?>(null) }
+
+    LaunchedEffect(contactId, phoneNumber, photoUri) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            // 1. Check ContactMediaManager / contact_pfp/ full-res file first
+            val mediaPath = com.modiprincekr.thedialer.controller.util.ContactMediaManager.getContactMedia(context, contactId, phoneNumber)
+            if (!mediaPath.isNullOrBlank() && java.io.File(mediaPath).exists()) {
+                highResModel = java.io.File(mediaPath)
+                return@withContext
+            }
+
+            val pfpDir = java.io.File(context.filesDir, "contact_pfp")
+            if (pfpDir.exists() && !contactId.isNullOrBlank()) {
+                val sanitized = contactId.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                val localFile = pfpDir.listFiles { _, name ->
+                    name.startsWith("${sanitized}_") || name.startsWith("${contactId}_")
+                }?.maxByOrNull { it.lastModified() }
+                if (localFile != null && localFile.exists()) {
+                    highResModel = localFile
+                    return@withContext
+                }
+            }
+
+            if (!photoUri.isNullOrBlank() && (photoUri.startsWith("file://") || photoUri.startsWith("/"))) {
+                val path = if (photoUri.startsWith("file://")) photoUri.removePrefix("file://") else photoUri
+                val f = java.io.File(path)
+                if (f.exists()) {
+                    highResModel = f
+                    return@withContext
+                }
+            }
+
+            // 2. For system contacts, try high-res stream via openContactPhotoInputStream(cr, contactUri, true)
+            var resolvedBytes: ByteArray? = null
+            if (!contactId.isNullOrBlank()) {
+                val idLong = contactId.toLongOrNull()
+                val baseContactUri = if (idLong != null) {
+                    android.content.ContentUris.withAppendedId(android.provider.ContactsContract.Contacts.CONTENT_URI, idLong)
+                } else {
+                    android.net.Uri.withAppendedPath(android.provider.ContactsContract.Contacts.CONTENT_URI, contactId)
+                }
+
+                try {
+                    android.provider.ContactsContract.Contacts.openContactPhotoInputStream(
+                        context.contentResolver,
+                        baseContactUri,
+                        true
+                    )?.use { stream ->
+                        resolvedBytes = stream.readBytes()
+                    }
+                } catch (_: Exception) {}
+            }
+
+            if (resolvedBytes == null && !photoUri.isNullOrBlank()) {
+                try {
+                    val parsedUri = android.net.Uri.parse(photoUri)
+                    android.provider.ContactsContract.Contacts.openContactPhotoInputStream(
+                        context.contentResolver,
+                        parsedUri,
+                        true
+                    )?.use { stream ->
+                        resolvedBytes = stream.readBytes()
+                    }
+                } catch (_: Exception) {}
+            }
+
+            if (resolvedBytes != null && resolvedBytes!!.isNotEmpty()) {
+                highResModel = resolvedBytes
+            } else if (!photoUri.isNullOrBlank()) {
+                highResModel = photoUri
+            }
+        }
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        if (highResModel != null) {
+            coil.compose.AsyncImage(
+                model = coil.request.ImageRequest.Builder(context)
+                    .data(highResModel)
+                    .size(coil.size.Size.ORIGINAL)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                Color(0xFF283245),
+                                Color(0xFF141924),
+                                Color(0xFF0A0D14)
+                            )
+                        )
+                    )
+            )
+        }
+
+        // Subtle bottom-to-middle dark gradient scrim so white text and glass pills remain legible on bright photos
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.20f),
+                            Color.Black.copy(alpha = 0.65f),
+                            Color.Black.copy(alpha = 0.90f)
+                        ),
+                        startY = 200f
+                    )
+                )
+        )
+    }
+}
+
+/**
+ * Dual horizontal swipe tracks for Full Screen Calling Card:
+ * - Upper-left track: White circular Answer button (Icons.Rounded.Call, green tint) with 3 progressive green dots
+ * - Lower-right track: Red circular Decline button (Icons.Rounded.CallEnd, white icon) with 3 progressive red dots
+ */
+@Composable
+private fun FullScreenCallingCardSwipeControls(
+    onAnswer: () -> Unit,
+    onDecline: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val coroutineScope = rememberCoroutineScope()
+    val density = LocalDensity.current
+
+    val trackWidthDp = 240.dp
+    val trackHeightDp = 64.dp
+    val buttonSizeDp = 56.dp
+    val buttonPaddingDp = 4.dp
+
+    val maxAnswerDragPx = with(density) { (trackWidthDp - buttonSizeDp - buttonPaddingDp * 2).toPx() }
+    val maxDeclineDragPx = with(density) { (trackWidthDp - buttonSizeDp - buttonPaddingDp * 2).toPx() }
+
+    val answerOffsetX = remember { Animatable(0f) }
+    val declineOffsetX = remember { Animatable(0f) }
+
+    val dotTransition = rememberInfiniteTransition(label = "callingCardDots")
+    val dotStep by dotTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "dotStep"
+    )
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Upper-left track: White circular Answer button with 3 progressive green indicator dots to its right
+        Box(
+            modifier = Modifier
+                .width(trackWidthDp)
+                .height(trackHeightDp)
+                .align(Alignment.Start)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.18f))
+                .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                .then(
+                    Modifier.pointerInput(maxAnswerDragPx) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                coroutineScope.launch {
+                                    if (answerOffsetX.value >= maxAnswerDragPx * 0.65f) {
+                                        answerOffsetX.animateTo(maxAnswerDragPx, tween(150))
+                                        onAnswer()
+                                    } else {
+                                        answerOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                coroutineScope.launch { answerOffsetX.animateTo(0f) }
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                val target = (answerOffsetX.value + dragAmount).coerceIn(0f, maxAnswerDragPx)
+                                coroutineScope.launch { answerOffsetX.snapTo(target) }
+                            }
+                        )
+                    }
+                ),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            // 3 Progressive green indicator dots to the right
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = buttonSizeDp + 16.dp, end = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val dotColor = Color(0xFF4CAF50)
+                for (i in 0..2) {
+                    val active = (dotStep.toInt() == i)
+                    Box(
+                        modifier = Modifier
+                            .size(if (active) 10.dp else 8.dp)
+                            .clip(CircleShape)
+                            .background(dotColor.copy(alpha = if (active) 1f else 0.45f))
+                    )
+                }
+            }
+
+            // Draggable White circular Answer button
+            Surface(
+                shape = CircleShape,
+                color = Color.White,
+                shadowElevation = 6.dp,
+                modifier = Modifier
+                    .padding(start = buttonPaddingDp)
+                    .offset { androidx.compose.ui.unit.IntOffset(answerOffsetX.value.toInt(), 0) }
+                    .size(buttonSizeDp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.Call,
+                        contentDescription = "Swipe right to answer",
+                        tint = Color(0xFF2E7D32),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+        }
+
+        // Lower-right track: Red circular Decline button with 3 progressive red indicator dots to its left
+        Box(
+            modifier = Modifier
+                .width(trackWidthDp)
+                .height(trackHeightDp)
+                .align(Alignment.End)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.18f))
+                .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                .then(
+                    Modifier.pointerInput(maxDeclineDragPx) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                coroutineScope.launch {
+                                    if (declineOffsetX.value <= -maxDeclineDragPx * 0.65f) {
+                                        declineOffsetX.animateTo(-maxDeclineDragPx, tween(150))
+                                        onDecline()
+                                    } else {
+                                        declineOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                coroutineScope.launch { declineOffsetX.animateTo(0f) }
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                val target = (declineOffsetX.value + dragAmount).coerceIn(-maxDeclineDragPx, 0f)
+                                coroutineScope.launch { declineOffsetX.snapTo(target) }
+                            }
+                        )
+                    }
+                ),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            // 3 Progressive red indicator dots to the left
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = buttonSizeDp + 16.dp, start = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+            ) {
+                val dotColor = Color(0xFFE53935)
+                for (i in 2 downTo 0) {
+                    val active = (dotStep.toInt() == (2 - i))
+                    Box(
+                        modifier = Modifier
+                            .size(if (active) 10.dp else 8.dp)
+                            .clip(CircleShape)
+                            .background(dotColor.copy(alpha = if (active) 1f else 0.45f))
+                    )
+                }
+            }
+
+            // Draggable Red circular Decline button
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFFD32F2F),
+                shadowElevation = 6.dp,
+                modifier = Modifier
+                    .padding(end = buttonPaddingDp)
+                    .offset { androidx.compose.ui.unit.IntOffset(declineOffsetX.value.toInt(), 0) }
+                    .size(buttonSizeDp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.CallEnd,
+                        contentDescription = "Swipe left to decline",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Exact Full Screen Calling Card Layout matching One UI / Google Calling Card:
+ * - Left-aligned caller info block in lower-middle area:
+ *   - Caller Name (large serif display, ~36sp)
+ *   - Phone Number (white, ~16sp, semi-bold)
+ *   - Ringing... <SIM Carrier Name> (white 85% alpha, ~14sp)
+ * - Action Pills: Message and Mute frosted glassmorphic pills
+ * - Dual horizontal swipe tracks at bottom section
+ */
+@Composable
+private fun FullScreenCallingCardOverlay(
+    contactName: String,
+    phoneNumber: String,
+    carrierName: String,
+    isMuted: Boolean,
+    onMuteToggle: () -> Unit,
+    onMessage: () -> Unit,
+    onAnswer: () -> Unit,
+    onDecline: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Spacer(modifier = Modifier.weight(1f))
+
+        // ── Caller Info Block (Left-aligned in lower-middle area) ──
+        Column(
+            horizontalAlignment = Alignment.Start,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 18.dp)
+        ) {
+            Text(
+                text = contactName.ifEmpty { "Unknown" },
+                style = MaterialTheme.typography.displaySmall.copy(
+                    fontFamily = FontFamily.Serif,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 36.sp,
+                    shadow = androidx.compose.ui.graphics.Shadow(
+                        color = Color.Black.copy(alpha = 0.85f),
+                        blurRadius = 12f,
+                        offset = androidx.compose.ui.geometry.Offset(0f, 2f)
+                    )
+                ),
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            if (phoneNumber.isNotBlank()) {
+                Text(
+                    text = phoneNumber,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        shadow = androidx.compose.ui.graphics.Shadow(
+                            color = Color.Black.copy(alpha = 0.85f),
+                            blurRadius = 8f,
+                            offset = androidx.compose.ui.geometry.Offset(0f, 1f)
+                        )
+                    ),
+                    color = Color.White,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            Text(
+                text = "Ringing... $carrierName",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 14.sp,
+                    shadow = androidx.compose.ui.graphics.Shadow(
+                        color = Color.Black.copy(alpha = 0.85f),
+                        blurRadius = 8f,
+                        offset = androidx.compose.ui.geometry.Offset(0f, 1f)
+                    )
+                ),
+                color = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.padding(top = 4.dp)
+            )
+
+            Spacer(Modifier.height(14.dp))
+
+            // ── Action Pills (Below caller info, left-aligned row) ──
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Message Pill
+                Surface(
+                    onClick = onMessage,
+                    shape = RoundedCornerShape(50),
+                    color = Color.White.copy(alpha = 0.22f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.32f)),
+                    modifier = Modifier.height(38.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Default.ChatBubble,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Message",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                    }
+                }
+
+                // Mute Pill
+                Surface(
+                    onClick = onMuteToggle,
+                    shape = RoundedCornerShape(50),
+                    color = if (isMuted) Color.White.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.22f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        Color.White.copy(alpha = if (isMuted) 0.70f else 0.32f)
+                    ),
+                    modifier = Modifier.height(38.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = if (isMuted) "Unmute" else "Mute",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Dual Horizontal Swipe Controls (Bottom section) ──
+        FullScreenCallingCardSwipeControls(
+            onAnswer = onAnswer,
+            onDecline = onDecline
+        )
     }
 }
 
@@ -1811,6 +2334,8 @@ fun ExpressiveCallScreen(
     val incomingAnswerStyle = remember(settingsVersion) {
         prefs?.getString(PreferenceManager.KEY_INCOMING_ANSWER_STYLE, PreferenceManager.ANSWER_STYLE_MODERN) ?: PreferenceManager.ANSWER_STYLE_MODERN
     }
+    val isCallingCardStyle = isIncomingMode && incomingAnswerStyle == PreferenceManager.ANSWER_STYLE_CALLING_CARD
+    val carrierName = remember(simSlot) { getSimCarrierName(context, simSlot) }
 
     val isIncomingElementsDark = when (incomingBgConfig.elementsTheme) {
         "light" -> false
@@ -2120,7 +2645,32 @@ fun ExpressiveCallScreen(
                      (incomingBgConfig.bgFile != null && ongoingBgConfig.bgFile != null &&
                       incomingBgConfig.bgFile.length() == ongoingBgConfig.bgFile.length() && incomingBgConfig.bgFile.length() > 0))) || isBothVideo
 
-            if (isSameBg) {
+            val isCallingCardIncoming = incomingAnswerStyle == PreferenceManager.ANSWER_STYLE_CALLING_CARD && wasRinging && !skipIncomingScreen
+
+            if (isCallingCardIncoming) {
+                if (answerProgress < 1f) {
+                    FullScreenCallingCardBackground(
+                        contactId = resolvedContactId ?: contactId,
+                        phoneNumber = phoneNumber,
+                        photoUri = photoUri,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { alpha = 1f - answerProgress }
+                    )
+                }
+                if (answerProgress > 0f) {
+                    CallBackgroundLayer(
+                        config = ongoingBgConfig,
+                        photoUri = photoUri,
+                        isDark = isDark,
+                        driftX = driftX,
+                        driftY = driftY,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { alpha = answerProgress }
+                    )
+                }
+            } else if (isSameBg) {
                 CallBackgroundLayer(
                     config = currentBgConfig,
                     photoUri = photoUri,
@@ -2166,6 +2716,152 @@ fun ExpressiveCallScreen(
                 val lsNavBarHeight = with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() }
                 val frozenLsTop = remember { lsStatusBarHeight }
                 val frozenLsBottom = remember { lsNavBarHeight }
+                if (isCallingCardStyle) {
+                    Row(
+                        modifier = Modifier.fillMaxSize()
+                            .padding(top = frozenLsTop, bottom = frozenLsBottom)
+                            .scale(acceptScale).alpha(acceptAlpha)
+                    ) {
+                        // Left panel: Caller Info & Glass Pills
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .padding(horizontal = 32.dp, vertical = 24.dp),
+                            horizontalAlignment = Alignment.Start,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = contactName.ifEmpty { phoneNumber },
+                                color = Color.White,
+                                fontSize = 32.sp,
+                                fontFamily = FontFamily.Serif,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (phoneNumber.isNotBlank() && phoneNumber != contactName) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = phoneNumber,
+                                    color = Color.White,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Ringing... $carrierName",
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Normal
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    onClick = onMessageButtonClick,
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.White.copy(alpha = 0.22f),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ChatBubble,
+                                            contentDescription = "Message",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "Message",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+                                Surface(
+                                    onClick = {
+                                        val newMute = !isMuted
+                                        try { CallService.setMuted(newMute) } catch (_: Exception) {}
+                                        try {
+                                            val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                                            am?.isMicrophoneMute = newMute
+                                        } catch (_: Exception) {}
+                                        if (callState == Call.STATE_RINGING) {
+                                            com.modiprincekr.thedialer.controller.util.silenceRingingCall(context)
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(50),
+                                    color = if (isMuted) Color.White.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.22f),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = if (isMuted) 0.70f else 0.32f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                                            contentDescription = "Mute",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = if (isMuted) "Unmute" else "Mute",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        // Right panel: Horizontal swipe tracks
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            FullScreenCallingCardSwipeControls(
+                                onAnswer = {
+                                    if (!isPocketBlocked()) {
+                                        if (callBiometricUnlocked) {
+                                            try { call.answer(VideoProfile.STATE_AUDIO_ONLY) } catch (_: Exception) {}
+                                            handleOngoingUiAfterAnswer(context, prefs)
+                                        } else {
+                                            pendingAction = {
+                                                try { call.answer(VideoProfile.STATE_AUDIO_ONLY) } catch (_: Exception) {}
+                                                handleOngoingUiAfterAnswer(context, prefs)
+                                            }
+                                            showCallBiometricUnlock = true
+                                        }
+                                    }
+                                },
+                                onDecline = {
+                                    if (!isPocketBlocked()) {
+                                        if (callBiometricUnlocked) {
+                                            try { call.disconnect() } catch (_: Exception) {}
+                                        } else {
+                                            pendingAction = { try { call.disconnect() } catch (_: Exception) {} }
+                                            showCallBiometricUnlock = true
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp)
+                            )
+                        }
+                    }
+                } else {
                 Row(
                     modifier = Modifier.fillMaxSize()
                         .padding(top = frozenLsTop, bottom = frozenLsBottom)
@@ -2423,6 +3119,7 @@ fun ExpressiveCallScreen(
                         }
                     }
                 }
+                }
             } else {
                 // ── PORTRAIT: original layout ────────────────────────────────
                 // Snapshot inset sizes once — never reread them — so window-flag
@@ -2442,6 +3139,51 @@ fun ExpressiveCallScreen(
                         .scale(acceptScale)
                         .alpha(acceptAlpha)
                 ) {
+                    if (isCallingCardStyle) {
+                        FullScreenCallingCardOverlay(
+                            contactName = contactName.ifEmpty { phoneNumber },
+                            phoneNumber = phoneNumber,
+                            carrierName = carrierName,
+                            isMuted = isMuted,
+                            onMuteToggle = {
+                                val newMute = !isMuted
+                                try { CallService.setMuted(newMute) } catch (_: Exception) {}
+                                try {
+                                    val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                                    am?.isMicrophoneMute = newMute
+                                } catch (_: Exception) {}
+                                if (callState == Call.STATE_RINGING) {
+                                    com.modiprincekr.thedialer.controller.util.silenceRingingCall(context)
+                                }
+                            },
+                            onMessage = onMessageButtonClick,
+                            onAnswer = {
+                                if (!isPocketBlocked()) {
+                                    if (callBiometricUnlocked) {
+                                        try { call.answer(VideoProfile.STATE_AUDIO_ONLY) } catch (_: Exception) {}
+                                        handleOngoingUiAfterAnswer(context, prefs)
+                                    } else {
+                                        pendingAction = {
+                                            try { call.answer(VideoProfile.STATE_AUDIO_ONLY) } catch (_: Exception) {}
+                                            handleOngoingUiAfterAnswer(context, prefs)
+                                        }
+                                        showCallBiometricUnlock = true
+                                    }
+                                }
+                            },
+                            onDecline = {
+                                if (!isPocketBlocked()) {
+                                    if (callBiometricUnlocked) {
+                                        try { call.disconnect() } catch (_: Exception) {}
+                                    } else {
+                                        pendingAction = { try { call.disconnect() } catch (_: Exception) {} }
+                                        showCallBiometricUnlock = true
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
                     // ── Top: caller info — absolutely top-anchored, never affected by bottom content ──
                     val isIncomingRinging = isIncomingMode
                     Column(
@@ -2796,6 +3538,7 @@ fun ExpressiveCallScreen(
                                 )
                             }
                         }
+                    }
                     }
 
                     // Floating Notes Box centered on screen, adapts to keyboard
