@@ -2,7 +2,12 @@ package com.modiprincekr.thedialer.view.screen.settings
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -11,6 +16,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,13 +27,19 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Dialpad
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.OpenInBrowser
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.*
@@ -102,6 +114,7 @@ fun AboutAppScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
     var showDonateDialog by remember { mutableStateOf(false) }
     var showBmacDialog by remember { mutableStateOf(false) }
     var showGithubSponsorDialog by remember { mutableStateOf(false) }
+    var whatsNewExpanded by remember { mutableStateOf(false) }
 
     var visible by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
@@ -317,13 +330,24 @@ fun AboutAppScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                         )
                     }
 
-                    // Huge modern Donate container with animated Mount Fuji vector elements in the background
-                    DonateContainer(
-                        modifier = Modifier.settingsSearchHighlight("donate", highlightedKey) { highlightedKey = null },
-                        onDonateClick = { showDonateDialog = true },
-                        onBuyMeACoffeeClick = { showBmacDialog = true },
-                        onGitHubSponsorClick = { showGithubSponsorDialog = true }
-                    )
+                    RivoExpressiveCard {
+                        RivoListItem(
+                            headline = "Prince Kumar Modi (@modiprincekr)",
+                            supporting = "Co-Developer & UI/UX Architect • GitHub",
+                            leadingIcon = Icons.Outlined.Code,
+                            iconContainerColor = ColorDeepPurp,
+                            trailingIcon = Icons.AutoMirrored.Filled.ArrowForward,
+                            modifier = Modifier.settingsSearchHighlight("co_developer_prince", highlightedKey) { highlightedKey = null },
+                            onClick = {
+                                runCatching {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/modiprincekr-07/Ever-Dialer")).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(intent)
+                                }
+                            }
+                        )
+                    }
 
                     RivoExpressiveCard {
                         RivoListItem(
@@ -336,6 +360,110 @@ fun AboutAppScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
                             onClick = { openLink(context, GITHUB_URL) }
                         )
                     }
+
+                    RivoExpressiveCard(
+                        modifier = Modifier.settingsSearchHighlight("whats_new_contributions", highlightedKey) { highlightedKey = null }
+                    ) {
+                        RivoListItem(
+                            headline = "What's New & Key Contributions",
+                            supporting = if (whatsNewExpanded) "Tap to collapse" else "Major features & architectural enhancements",
+                            leadingIcon = Icons.Outlined.AutoAwesome,
+                            iconContainerColor = ColorOrange,
+                            trailingIcon = if (whatsNewExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            trailingIconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick = { whatsNewExpanded = !whatsNewExpanded }
+                        )
+
+                        AnimatedVisibility(
+                            visible = whatsNewExpanded,
+                            enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
+                            exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(250))
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 16.dp, end = 16.dp, bottom = 12.dp, top = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                )
+
+                                ContributionCategory(
+                                    title = "Calling & In-Call Experience",
+                                    icon = Icons.Outlined.Call,
+                                    iconColor = ColorGreen,
+                                    items = listOf(
+                                        "Full Screen Calling Card answer style with glassmorphic cards and intuitive swipe gestures",
+                                        "One-tap direct WhatsApp Video Call handoff during active cellular calls",
+                                        "Manual SIM call recording toggle & AyuGram Telegram client support",
+                                        "Floating call bubble fluid vertical swipe-up gesture to return to call",
+                                        "Persistent auto-redial engine with countdown timer and tone feedback"
+                                    )
+                                )
+
+                                ContributionCategory(
+                                    title = "Privacy & Security Suite",
+                                    icon = Icons.Outlined.Security,
+                                    iconColor = ColorDeepPurp,
+                                    items = listOf(
+                                        "Isolated Alternate Numbers manager with in-app storage, backup/restore & Alt Caller ID badges",
+                                        "Auth Lock screen with Smart Biometric Fallback (PIN, Pattern, or Password)",
+                                        "Custom tactile Pattern Lock canvas with real-time haptic nodes & error animations",
+                                        "PIN and Password credential entry screens with instant visibility toggles",
+                                        "Biometric Call gating to protect incoming call answering and declining"
+                                    )
+                                )
+
+                                ContributionCategory(
+                                    title = "Expressive UI & Media",
+                                    icon = Icons.Outlined.Palette,
+                                    iconColor = ColorOrange,
+                                    items = listOf(
+                                        "32 PFP shapes: 30 Material 3 Expressive rotating frames with upright counter-rotated photos",
+                                        "Interactive shape-aware PFP Crop Studio with multi-touch pan, zoom, rotate & live preview",
+                                        "30-second looping MP4/MKV video backgrounds via ExoPlayer & animated GIF backgrounds",
+                                        "Call Recorder expressive polygon shape synchronization"
+                                    )
+                                )
+
+                                ContributionCategory(
+                                    title = "Dialpad, Recents & SMS",
+                                    icon = Icons.Outlined.Dialpad,
+                                    iconColor = ColorBlue,
+                                    items = listOf(
+                                        "Local WhatsApp & WA Business call logs tracking with disclosure dialog & category pill",
+                                        "Today & Incoming call count summary cards in Recents",
+                                        "T9 predictive search and speed dial keypad integration",
+                                        "* and # USSD codes & brand secret diagnostic menus database (Samsung, Xiaomi, Pixel, OnePlus)",
+                                        "* long-press safe clipboard paste with symbol support & auto scroll-hide dialpad",
+                                        "Smart SMS Payments & Recharge tabs with reorderable filter pills dialog"
+                                    )
+                                )
+
+                                ContributionCategory(
+                                    title = "Theming & Stability",
+                                    icon = Icons.Outlined.Speed,
+                                    iconColor = ColorTeal,
+                                    items = listOf(
+                                        "Pure Nothing-style B/W monochrome theme with ultra-deep blacks & crisp whites",
+                                        "Restored high-contrast White mode card surfaces and borders",
+                                        "Flagship 0.8x animation transition speed with smooth motion blur effects",
+                                        "120fps synchronized root avatar rotation ticker with zero list lag",
+                                        "Android 17 RenderThread stack overflow fix & dialpad unbounded height crash resolution"
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    // Huge modern Donate container with animated Mount Fuji vector elements in the background
+                    DonateContainer(
+                        modifier = Modifier.settingsSearchHighlight("donate", highlightedKey) { highlightedKey = null },
+                        onDonateClick = { showDonateDialog = true },
+                        onBuyMeACoffeeClick = { showBmacDialog = true },
+                        onGitHubSponsorClick = { showGithubSponsorDialog = true }
+                    )
                 }
             }
 
@@ -1297,6 +1425,84 @@ private fun AboutStatCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContributionCategory(
+    title: String,
+    icon: ImageVector,
+    iconColor: Color,
+    items: List<String>
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = iconColor.copy(alpha = 0.15f),
+                    modifier = Modifier.size(26.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = iconColor,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items.forEach { item ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 6.dp)
+                                .size(5.dp)
+                                .background(
+                                    color = iconColor.copy(alpha = 0.8f),
+                                    shape = CircleShape
+                                )
+                        )
+                        Text(
+                            text = item,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
             }
         }
     }
