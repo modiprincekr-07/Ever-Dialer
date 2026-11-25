@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
@@ -24,10 +26,13 @@ import androidx.compose.material.icons.automirrored.filled.CallMissed
 import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CallReceived
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.filled.*
 import android.content.Intent
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -38,6 +43,11 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
@@ -680,6 +690,121 @@ private fun todayStartMillis(): Long {
     return cal.timeInMillis
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FavouritesSection(
+    favorites: List<com.modiprincekr.thedialer.modal.data.Contact>,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    onContactClick: (com.modiprincekr.thedialer.modal.data.Contact) -> Unit,
+    onContactLongClick: (com.modiprincekr.thedialer.modal.data.Contact) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (favorites.isEmpty()) return
+
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (isExpanded) 0f else 180f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "favsChevronRotation"
+    )
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
+                .clickable(onClick = onToggleExpand)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = com.modiprincekr.thedialer.controller.util.tr("Favourites"),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Icon(
+                    imageVector = if (isExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = if (isExpanded) "Collapse Favourites" else "Expand Favourites",
+                    modifier = Modifier
+                        .size(18.dp)
+                        .rotate(if (isExpanded) chevronRotation else chevronRotation - 180f),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                items(favorites, key = { it.id }) { contact ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .width(68.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .combinedClickable(
+                                onClick = { onContactClick(contact) },
+                                onLongClick = { onContactLongClick(contact) }
+                            )
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier.size(56.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ExpressiveAvatar(
+                                name = contact.name,
+                                photoUri = contact.photoUri,
+                                size = 56.dp,
+                                modifier = Modifier.size(56.dp)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(22.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)
+                                    .border(1.5.dp, MaterialTheme.colorScheme.background, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Call,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = contact.name,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun CallLogFullContent(
     navController: NavController,
@@ -743,6 +868,43 @@ fun CallLogFullContent(
 
         val favoriteContactIds = remember(contacts) { contacts.filter { it.isFavorite }.map { it.id }.toSet() }
         val favoritePhoneNumbers = remember(contacts) { contacts.filter { it.isFavorite }.flatMap { it.phoneNumbers }.toSet() }
+
+        val favoriteContacts = remember(contacts, hiddenIds) {
+            contacts.filter { it.isFavorite && (hiddenIds.isEmpty() || it.id !in hiddenIds) }
+        }
+        val savedFavoritesOrder = remember(settingsVersion) {
+            prefs.getString(PreferenceManager.KEY_FAVORITES_ORDER, null)
+                ?.split(",")?.filter { it.isNotEmpty() } ?: emptyList()
+        }
+        val orderedFavorites = remember(favoriteContacts, savedFavoritesOrder) {
+            if (savedFavoritesOrder.isEmpty()) {
+                favoriteContacts
+            } else {
+                val favMap = favoriteContacts.associateBy { it.id }
+                val ordered = savedFavoritesOrder.mapNotNull { favMap[it] }.toMutableList()
+                val remaining = favoriteContacts.filter { it.id !in savedFavoritesOrder }
+                ordered.addAll(remaining)
+                ordered
+            }
+        }
+        var isExpanded by rememberSaveable { mutableStateOf(true) }
+
+        val onFavoriteContactClick: (com.modiprincekr.thedialer.modal.data.Contact) -> Unit = { contact ->
+            val phoneNumber = contact.phoneNumbers.firstOrNull()
+            if (!phoneNumber.isNullOrBlank()) {
+                placeCallHonoringContactSim(context, prefs, contact.id, phoneNumber) {
+                    pendingNumber = phoneNumber
+                    showSimPicker = true
+                }
+            } else {
+                navigator.navigate(ContactDetailsScreenDestination(contactId = contact.id))
+            }
+        }
+
+        val onFavoriteContactLongClick: (com.modiprincekr.thedialer.modal.data.Contact) -> Unit = { contact ->
+            val phoneNumber = contact.phoneNumbers.firstOrNull() ?: ""
+            navigator.navigate(ContactDetailsScreenDestination(contactId = contact.id, phoneNumber = phoneNumber))
+        }
 
         val filteredLogs = remember(logs, selectedCategoryId, hiddenIds, favoriteContactIds, favoritePhoneNumbers, customCategories) {
             val base = if (hiddenIds.isEmpty()) logs else logs.filter { it.contactId == null || it.contactId !in hiddenIds }
@@ -1102,6 +1264,16 @@ fun CallLogFullContent(
                         }
                     }
 
+                    if (orderedFavorites.isNotEmpty()) {
+                        FavouritesSection(
+                            favorites = orderedFavorites,
+                            isExpanded = isExpanded,
+                            onToggleExpand = { isExpanded = !isExpanded },
+                            onContactClick = onFavoriteContactClick,
+                            onContactLongClick = onFavoriteContactLongClick
+                        )
+                    }
+
                     // ── Filter pills ──────────────────────────────────────────────
                     val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
                     val isSaturatedActive = remember(settingsVersion, isDark) { prefs.isSaturatedForTheme(isDark) }
@@ -1295,6 +1467,17 @@ fun CallLogFullContent(
                                             StatCardItem(cardKey, (idx * 60).toLong())
                                         }
                                     }
+                                }
+                            }
+                            if (orderedFavorites.isNotEmpty()) {
+                                item(key = "favourites_section", contentType = "favouritesSection") {
+                                    FavouritesSection(
+                                        favorites = orderedFavorites,
+                                        isExpanded = isExpanded,
+                                        onToggleExpand = { isExpanded = !isExpanded },
+                                        onContactClick = onFavoriteContactClick,
+                                        onContactLongClick = onFavoriteContactLongClick
+                                    )
                                 }
                             }
                             item(key = "filter_pills", contentType = "filterPills") {
