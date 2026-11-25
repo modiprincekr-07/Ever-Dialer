@@ -620,7 +620,7 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
                         bottomStart = if (p < 0.96f) 28.dp else 0.dp,
                         bottomEnd = if (p < 0.96f) 28.dp else 0.dp
                     ),
-                    color = MaterialTheme.colorScheme.surface,
+                    color = if (androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) >= 0.5) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.surface,
                     tonalElevation = 4.dp
                 ) {
                     Column(
