@@ -375,8 +375,8 @@ fun DialPadScreen(
             val controller = WindowCompat.getInsetsController(window, window.decorView)
             controller.isAppearanceLightStatusBars = true
             controller.isAppearanceLightNavigationBars = true
-            window.statusBarColor = android.graphics.Color.TRANSPARENT
-            window.navigationBarColor = android.graphics.Color.TRANSPARENT
+            window.statusBarColor = android.graphics.Color.WHITE
+            window.navigationBarColor = android.graphics.Color.WHITE
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 window.isStatusBarContrastEnforced = false
                 window.isNavigationBarContrastEnforced = false
@@ -388,6 +388,8 @@ fun DialPadScreen(
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
                 controller.isAppearanceLightStatusBars = !isDarkTheme
                 controller.isAppearanceLightNavigationBars = !isDarkTheme
+                window.statusBarColor = android.graphics.Color.TRANSPARENT
+                window.navigationBarColor = android.graphics.Color.TRANSPARENT
             }
         }
     }
@@ -485,8 +487,8 @@ fun DialPadScreen(
                 val controller = WindowCompat.getInsetsController(targetWindow, targetWindow.decorView)
                 controller.isAppearanceLightStatusBars = true
                 controller.isAppearanceLightNavigationBars = true
-                targetWindow.statusBarColor = android.graphics.Color.TRANSPARENT
-                targetWindow.navigationBarColor = android.graphics.Color.TRANSPARENT
+                targetWindow.statusBarColor = android.graphics.Color.WHITE
+                targetWindow.navigationBarColor = android.graphics.Color.WHITE
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     targetWindow.isStatusBarContrastEnforced = false
                     targetWindow.isNavigationBarContrastEnforced = false
@@ -805,21 +807,24 @@ fun DialPadContent(
     val searchFilterState = remember(settingsVerForFilter) { prefs.getSearchFilterState() }
     val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
     DisposableEffect(isDark, view) {
-        if (!isDark) {
-            val window = (view.context as? Activity)?.window
-            if (window != null) {
-                val controller = WindowCompat.getInsetsController(window, window.decorView)
-                controller.isAppearanceLightStatusBars = true
-                controller.isAppearanceLightNavigationBars = true
-                window.statusBarColor = android.graphics.Color.TRANSPARENT
-                window.navigationBarColor = android.graphics.Color.TRANSPARENT
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    window.isStatusBarContrastEnforced = false
-                    window.isNavigationBarContrastEnforced = false
-                }
+        val window = (view.context as? Activity)?.window
+        if (!isDark && window != null) {
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            controller.isAppearanceLightStatusBars = true
+            controller.isAppearanceLightNavigationBars = true
+            window.statusBarColor = android.graphics.Color.WHITE
+            window.navigationBarColor = android.graphics.Color.WHITE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                window.isStatusBarContrastEnforced = false
+                window.isNavigationBarContrastEnforced = false
             }
         }
-        onDispose {}
+        onDispose {
+            if (!isDark && window != null) {
+                window.statusBarColor = android.graphics.Color.TRANSPARENT
+                window.navigationBarColor = android.graphics.Color.TRANSPARENT
+            }
+        }
     }
     val isSaturatedActive = remember(settingsVerForFilter, isDark) { prefs.isSaturatedForTheme(isDark) }
     val isBackgroundTarget = remember(settingsVerForFilter) { prefs.getSaturatedTarget() == PreferenceManager.SATURATED_TARGET_BACKGROUND }
@@ -2902,6 +2907,22 @@ fun DialPadContent(
         Spacer(modifier = Modifier.height(4.dp))
         } // end outer Column
 
+        val liquidGlass = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) }
+        val lgRecentsFab = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_LG_RECENTS_FAB, true) }
+        val blurEffects = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) }
+        val blurRecentsFab = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_BLUR_RECENTS_FAB, true) }
+        val lgRecentsConfig = remember(settingsState) { prefs.getLiquidGlassConfig(PreferenceManager.KEY_LG_RECENTS_FAB) }
+        val blurRecentsConfig = remember(settingsState) { prefs.getBlurConfig(PreferenceManager.KEY_BLUR_RECENTS_FAB) }
+        val isDynamic = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_DYNAMIC_COLORS, true) }
+        val usePrimary = isSaturatedActive || !isDynamic
+        val fabBg = if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
+        val fabFg = if (isSaturatedActive && isDark) Color.Black else if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
+        val fabShape = RoundedCornerShape(17.dp)
+        val useLiquidGlass = liquidGlass && lgRecentsFab && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+        val useBlur = blurEffects && blurRecentsFab && !useLiquidGlass && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+        val globalBackdrop = LocalLiquidGlassBackdrop.current
+        val fabDensity = LocalDensity.current.density
+
         // ── Floating Reopen Dialpad FAB ──
         AnimatedVisibility(
             visible = !isDialpadExpanded && showDialpad,
@@ -2911,24 +2932,108 @@ fun DialPadContent(
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
         ) {
-            FloatingActionButton(
-                onClick = {
-                    isDialpadExpanded = true
-                },
-                shape = CircleShape,
-                containerColor = Color(0xFF34A853),
-                contentColor = Color.White,
-                elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 6.dp,
-                    pressedElevation = 10.dp
-                ),
-                modifier = Modifier.size(56.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Dialpad,
-                    contentDescription = "Open Dialpad",
-                    modifier = Modifier.size(26.dp)
-                )
+            val onReopenDialpad: () -> Unit = {
+                try {
+                    com.modiprincekr.thedialer.view.components.performAppHaptic(
+                        context,
+                        prefs.getString(PreferenceManager.KEY_APP_HAPTICS_STRENGTH, "light") ?: "light",
+                        prefs.getFloat(PreferenceManager.KEY_HAPTICS_CUSTOM_INTENSITY, 0.5f)
+                    )
+                } catch (_: Throwable) {}
+                isDialpadExpanded = true
+            }
+
+            if (useLiquidGlass && globalBackdrop != null) {
+                FloatingActionButton(
+                    onClick = onReopenDialpad,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.35f),
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    shape = fabShape,
+                    elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
+                    modifier = Modifier.size(56.dp).drawBackdrop(
+                        backdrop = globalBackdrop,
+                        shape = { fabShape },
+                        effects = {
+                            colorControls(brightness = lgRecentsConfig.brightness, saturation = lgRecentsConfig.saturation)
+                            if (lgRecentsConfig.blurRadiusDp > 0f) blur(lgRecentsConfig.blurRadiusDp * fabDensity)
+                            lens(
+                                refractionHeight = lgRecentsConfig.refractionHeightDp * fabDensity,
+                                refractionAmount = lgRecentsConfig.refractionAmountDp * fabDensity,
+                                chromaticAberration = lgRecentsConfig.chromaticAberration,
+                                depthEffect = lgRecentsConfig.depthEffect
+                            )
+                        },
+                        highlight = { Highlight.Default }
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Dialpad,
+                        contentDescription = "Open Dialpad",
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            } else if (useLiquidGlass) {
+                FloatingActionButton(
+                    onClick = onReopenDialpad,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    shape = fabShape,
+                    elevation = FloatingActionButtonDefaults.elevation(2.dp, 4.dp),
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Dialpad,
+                        contentDescription = "Open Dialpad",
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            } else if (useBlur && globalBackdrop != null) {
+                Box(
+                    modifier = Modifier.size(56.dp).drawBackdrop(
+                        backdrop = globalBackdrop,
+                        shape = { fabShape },
+                        effects = {
+                            colorControls(saturation = blurRecentsConfig.saturation)
+                            blur(blurRecentsConfig.blurRadiusDp * fabDensity)
+                        },
+                        highlight = { Highlight.Default }
+                    )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(fabBg.copy(alpha = 0.35f), fabShape)
+                    )
+                    FloatingActionButton(
+                        onClick = onReopenDialpad,
+                        containerColor = Color.Transparent,
+                        contentColor = fabFg,
+                        shape = fabShape,
+                        elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Dialpad,
+                            contentDescription = "Open Dialpad",
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
+            } else {
+                FloatingActionButton(
+                    onClick = onReopenDialpad,
+                    containerColor = fabBg,
+                    contentColor = fabFg,
+                    shape = fabShape,
+                    elevation = FloatingActionButtonDefaults.elevation(6.dp, 10.dp),
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Dialpad,
+                        contentDescription = "Open Dialpad",
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
             }
         }
         } // end BoxWithConstraints (screen)

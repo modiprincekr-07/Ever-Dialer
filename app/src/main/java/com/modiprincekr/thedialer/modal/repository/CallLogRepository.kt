@@ -66,7 +66,10 @@ class CallLogRepository(
         val date: Long,
         val duration: Long,
         val simSlot: Int,
-        val callIds: List<Long> = if (id > 0) listOf(id) else emptyList()
+        val callIds: List<Long> = if (id > 0) listOf(id) else emptyList(),
+        val isWhatsApp: Boolean = false,
+        val isVideo: Boolean = false,
+        val sourcePackage: String? = null
     )
 
     // The suffix length used to bucket saved numbers for fast lookup. Must match
@@ -208,7 +211,7 @@ class CallLogRepository(
             val altMatch = if (match == null && raw.number.isNotBlank()) {
                 com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.findByNumber(context, raw.number)
             } else null
-            val resolvedMatchName = match?.name?.takeIf { it.isNotBlank() } ?: altMatch?.name
+            val resolvedMatchName = match?.name?.takeIf { it.isNotBlank() } ?: altMatch?.name ?: raw.cachedName
             val displayName = resolvedMatchName ?: raw.number
             val isCallerIdName = false
 
@@ -252,6 +255,9 @@ class CallLogRepository(
                         simSlot = raw.simSlot,
                         callIds = raw.callIds,
                         dates = listOf(raw.date),
+                        isWhatsApp = raw.isWhatsApp,
+                        isVideo = raw.isVideo,
+                        sourcePackage = raw.sourcePackage,
                         isAlternate = altMatch != null,
                         alternateName = altMatch?.name,
                         alternateTag = altMatch?.categoryTag
@@ -265,7 +271,17 @@ class CallLogRepository(
         val showWhatsAppCalls = prefs.getBoolean(PreferenceManager.KEY_SHOW_WHATSAPP_CALLS, false)
         val allLogs = if (showWhatsAppCalls) {
             val whatsAppLogs = com.modiprincekr.thedialer.controller.util.WhatsAppCallRepository.getCallLogEntries(context)
-            (combinedMultiCalls + whatsAppLogs).sortedByDescending { it.date }
+            val combined = (combinedMultiCalls + whatsAppLogs).sortedByDescending { it.date }
+            val deduped = mutableListOf<CallLogEntry>()
+            for (entry in combined) {
+                val isDup = deduped.any { existing ->
+                    existing.isWhatsApp && entry.isWhatsApp &&
+                    kotlin.math.abs(existing.date - entry.date) < 8000L &&
+                    (existing.name.equals(entry.name, ignoreCase = true) || existing.number == entry.number)
+                }
+                if (!isDup) deduped.add(entry)
+            }
+            deduped
         } else {
             combinedMultiCalls
         }
@@ -375,6 +391,8 @@ class CallLogRepository(
             val dateIdx = cursor.getColumnIndex(CallLog.Calls.DATE)
             val durationIdx = cursor.getColumnIndex(CallLog.Calls.DURATION)
             val phoneAccountIdIdx = cursor.getColumnIndex(CallLog.Calls.PHONE_ACCOUNT_ID)
+            val featuresIdx = try { cursor.getColumnIndex(CallLog.Calls.FEATURES) } catch (_: Throwable) { -1 }
+            val componentIdx = try { cursor.getColumnIndex("phone_account_component_name") } catch (_: Throwable) { -1 }
 
             while (cursor.moveToNext()) {
                 if (limit != null && rows.size >= limit) {
@@ -409,17 +427,37 @@ class CallLogRepository(
                     }
                 }
 
+                val componentName = if (componentIdx >= 0) cursor.getString(componentIdx) else null
+                val isWhatsApp = (phoneAccountId?.contains("whatsapp", ignoreCase = true) == true) ||
+                    (componentName?.contains("whatsapp", ignoreCase = true) == true) ||
+                    number.contains("@s.whatsapp.net") || number.contains("@g.us")
+                val isVideo = if (featuresIdx >= 0) (cursor.getInt(featuresIdx) and CallLog.Calls.FEATURES_VIDEO != 0) else false
+                val sourcePkg = if (componentName?.contains("w4b", ignoreCase = true) == true || phoneAccountId?.contains("w4b", ignoreCase = true) == true) {
+                    "com.whatsapp.w4b"
+                } else if (isWhatsApp) {
+                    "com.whatsapp"
+                } else null
+
+                val cleanNumber = when {
+                    number.contains("@s.whatsapp.net") -> number.substringBefore("@")
+                    number.contains("@g.us") -> cursor.getString(cachedNameIdx)?.takeIf { it.isNotBlank() } ?: number
+                    else -> number
+                }
+
                 rows.add(
                     RawCall(
                         id = id,
-                        number = number,
-                        digits = number.filter { it.isDigit() },
+                        number = cleanNumber,
+                        digits = cleanNumber.filter { it.isDigit() },
                         cachedName = cursor.getString(cachedNameIdx)?.takeIf { it.isNotBlank() },
                         type = effectiveType,
                         date = date,
                         duration = duration,
                         simSlot = simSlot,
-                        callIds = if (id > 0) listOf(id) else emptyList()
+                        callIds = if (id > 0) listOf(id) else emptyList(),
+                        isWhatsApp = isWhatsApp,
+                        isVideo = isVideo,
+                        sourcePackage = sourcePkg
                     )
                 )
             }

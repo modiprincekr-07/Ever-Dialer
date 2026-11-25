@@ -226,21 +226,24 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
     val isLight = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) >= 0.5
     val currentView = LocalView.current
     DisposableEffect(isDialpadOpen, isLight) {
-        if (isDialpadOpen && isLight) {
-            val window = (currentView.context as? Activity)?.window
-            if (window != null) {
-                val controller = WindowCompat.getInsetsController(window, window.decorView)
-                controller.isAppearanceLightStatusBars = true
-                controller.isAppearanceLightNavigationBars = true
-                window.statusBarColor = android.graphics.Color.TRANSPARENT
-                window.navigationBarColor = android.graphics.Color.TRANSPARENT
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    window.isStatusBarContrastEnforced = false
-                    window.isNavigationBarContrastEnforced = false
-                }
+        val window = (currentView.context as? Activity)?.window
+        if (isDialpadOpen && isLight && window != null) {
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            controller.isAppearanceLightStatusBars = true
+            controller.isAppearanceLightNavigationBars = true
+            window.statusBarColor = android.graphics.Color.WHITE
+            window.navigationBarColor = android.graphics.Color.WHITE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                window.isStatusBarContrastEnforced = false
+                window.isNavigationBarContrastEnforced = false
             }
         }
-        onDispose {}
+        onDispose {
+            if (isLight && window != null) {
+                window.statusBarColor = android.graphics.Color.TRANSPARENT
+                window.navigationBarColor = android.graphics.Color.TRANSPARENT
+            }
+        }
     }
     val dialpadExpandScale by animateFloatAsState(
         targetValue = if (isDialpadOpen) 2.6f else 1f,
@@ -1016,6 +1019,16 @@ fun CallLogFullContent(
             }
             map
         }
+        val contactsByName = remember(contacts) {
+            val map = HashMap<String, com.modiprincekr.thedialer.modal.data.Contact>(contacts.size)
+            for (c in contacts) {
+                val trimmed = c.name.trim().lowercase()
+                if (trimmed.isNotEmpty()) {
+                    map.putIfAbsent(trimmed, c)
+                }
+            }
+            map
+        }
 
         val avatarConfig = com.modiprincekr.thedialer.view.components.rememberAvatarDisplayConfig(prefs, settingsVersion)
         val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
@@ -1677,7 +1690,10 @@ fun CallLogFullContent(
                                                     contactsById[lg.contactId]
                                                 } else if (lg.number.isNotBlank()) {
                                                     val digits = com.modiprincekr.thedialer.controller.util.normalizeNumberDigits(lg.number)
-                                                    contactsByDigits[digits] ?: if (digits.length >= 7) contactsByDigits[digits.takeLast(7)] else null
+                                                    val byDigit = contactsByDigits[digits] ?: if (digits.length >= 7) contactsByDigits[digits.takeLast(7)] else null
+                                                    byDigit ?: if (lg.isWhatsApp) contactsByName[(lg.name ?: lg.number).trim().lowercase()] else null
+                                                } else if (lg.isWhatsApp) {
+                                                    contactsByName[(lg.name ?: lg.number).trim().lowercase()]
                                                 } else null
                                                 CallLogTile(
                                                     log = lg,
@@ -1702,10 +1718,15 @@ fun CallLogFullContent(
                                                             onSelectedLogsChange(if (selectedLogs.contains(key)) selectedLogs - key else selectedLogs + key)
                                                         } else if (directCall) {
                                                             if (log.isWhatsApp) {
+                                                                val targetNumber = when {
+                                                                    log.number.isNotBlank() && log.number.any { it.isDigit() } && !log.number.contains("@") -> log.number
+                                                                    matchedContact?.phoneNumbers?.firstOrNull() != null -> matchedContact.phoneNumbers.first()
+                                                                    else -> log.number
+                                                                }
                                                                 if (log.isVideo) {
-                                                                    com.modiprincekr.thedialer.controller.util.launchDirectWhatsAppVideoCall(context, log.number)
+                                                                    com.modiprincekr.thedialer.controller.util.launchDirectWhatsAppVideoCall(context, targetNumber)
                                                                 } else {
-                                                                    com.modiprincekr.thedialer.controller.util.startWhatsAppVoiceCall(context, log.number)
+                                                                    com.modiprincekr.thedialer.controller.util.startWhatsAppVoiceCall(context, targetNumber)
                                                                 }
                                                             } else {
                                                                 val recentSlot = if (log.simSlot in 0..1) log.simSlot else null
@@ -1722,10 +1743,15 @@ fun CallLogFullContent(
                                                     },
                                                     onButtonClick = { log ->
                                                         if (log.isWhatsApp) {
+                                                            val targetNumber = when {
+                                                                log.number.isNotBlank() && log.number.any { it.isDigit() } && !log.number.contains("@") -> log.number
+                                                                matchedContact?.phoneNumbers?.firstOrNull() != null -> matchedContact.phoneNumbers.first()
+                                                                else -> log.number
+                                                            }
                                                             if (log.isVideo) {
-                                                                com.modiprincekr.thedialer.controller.util.launchDirectWhatsAppVideoCall(context, log.number)
+                                                                com.modiprincekr.thedialer.controller.util.launchDirectWhatsAppVideoCall(context, targetNumber)
                                                             } else {
-                                                                com.modiprincekr.thedialer.controller.util.startWhatsAppVoiceCall(context, log.number)
+                                                                com.modiprincekr.thedialer.controller.util.startWhatsAppVoiceCall(context, targetNumber)
                                                             }
                                                         } else {
                                                             val recentSlot = if (log.simSlot in 0..1) log.simSlot else null

@@ -392,9 +392,56 @@ fun CallLogTile(
 ) {
     val context   = LocalContext.current
     val contactsVM: ContactsViewModel = koinActivityViewModel()
-    val resolvedContactName = matchedContact?.name?.takeIf { it.isNotBlank() }
-        ?: log.name?.takeIf { it.isNotBlank() && it != log.number && !log.isCallerIdName }
-    val isContact = resolvedContactName != null
+    val allContacts by contactsVM.allContacts.collectAsState()
+
+    val candidateName = (log.name ?: log.number).takeIf { it.isNotBlank() && it != "Unknown" }
+    val isWhatsAppGroup = log.isWhatsApp && candidateName != null && (candidateName.contains("&") || candidateName.contains(","))
+    val waGroupParts = remember(isWhatsAppGroup, candidateName) {
+        if (isWhatsAppGroup && candidateName != null) {
+            candidateName.split(Regex("[&,]")).map { it.trim() }.filter { it.isNotEmpty() }
+        } else emptyList()
+    }
+    val p1Name = waGroupParts.getOrNull(0) ?: ""
+    val p2Name = waGroupParts.getOrNull(1) ?: ""
+    val c1 = remember(allContacts, p1Name) {
+        if (p1Name.isBlank()) null
+        else {
+            val d = p1Name.filter { it.isDigit() }
+            val norm = if (d.length >= 7) d.takeLast(10) else null
+            allContacts.firstOrNull { c ->
+                (norm != null && c.phoneNumbers.any { it.filter { ch -> ch.isDigit() }.takeLast(10) == norm }) ||
+                c.name.trim().equals(p1Name, ignoreCase = true)
+            }
+        }
+    }
+    val c2 = remember(allContacts, p2Name) {
+        if (p2Name.isBlank()) null
+        else {
+            val d = p2Name.filter { it.isDigit() }
+            val norm = if (d.length >= 7) d.takeLast(10) else null
+            allContacts.firstOrNull { c ->
+                (norm != null && c.phoneNumbers.any { it.filter { ch -> ch.isDigit() }.takeLast(10) == norm }) ||
+                c.name.trim().equals(p2Name, ignoreCase = true)
+            }
+        }
+    }
+
+    val waSingleContact = remember(allContacts, candidateName, log.number, matchedContact, isWhatsAppGroup) {
+        if (matchedContact != null) matchedContact
+        else if (log.isWhatsApp && !isWhatsAppGroup && !candidateName.isNullOrBlank()) {
+            val digits = log.number.filter { it.isDigit() }
+            val norm = if (digits.length >= 7) digits.takeLast(10) else null
+            allContacts.firstOrNull { c ->
+                (norm != null && c.phoneNumbers.any { it.filter { ch -> ch.isDigit() }.takeLast(10) == norm }) ||
+                c.name.trim().equals(candidateName, ignoreCase = true)
+            }
+        } else null
+    }
+
+    val effectiveContact = matchedContact ?: waSingleContact
+    val resolvedContactName = effectiveContact?.name?.takeIf { it.isNotBlank() }
+        ?: (if (log.isWhatsApp && !candidateName.isNullOrBlank()) candidateName else log.name?.takeIf { it.isNotBlank() && it != log.number && !log.isCallerIdName })
+    val isContact = effectiveContact != null || (log.isWhatsApp && !candidateName.isNullOrBlank())
     val isCallerId = !isContact && log.isCallerIdName && !log.name.isNullOrBlank() && log.name != log.number
     var showMenu  by remember { mutableStateOf(false) }
     var showAddContactChoiceDialog by remember { mutableStateOf(false) }
@@ -494,6 +541,7 @@ fun CallLogTile(
             if (name2.isNotBlank()) "$name1 & $name2" else name1
         }
         isHiddenContact -> log.number
+        log.isWhatsApp && !candidateName.isNullOrBlank() -> candidateName
         isContact -> resolvedContactName ?: log.number
         !altName.isNullOrBlank() -> altName
         isCallerId -> log.name ?: log.number
@@ -503,6 +551,7 @@ fun CallLogTile(
     val avatarSourceName = when {
         log.isMergedCall -> "Conference"
         log.isMultiCall -> "Group"
+        isWhatsAppGroup -> "Group"
         isHiddenContact -> log.number
         isContact -> resolvedContactName ?: log.number
         !altName.isNullOrBlank() -> altName
@@ -510,7 +559,7 @@ fun CallLogTile(
         else -> nationalNumberDigits(log.number).ifEmpty { "Unknown" }
     }
 
-    val resolvedPhotoUri = matchedContact?.photoUri ?: log.photoUri
+    val resolvedPhotoUri = effectiveContact?.photoUri ?: log.photoUri
 
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         AnimatedVisibility(
@@ -745,29 +794,53 @@ fun CallLogTile(
                         val num2 = log.secondNumber ?: ""
                         if (num2.isNotBlank()) "1 active, 1 on hold • $num1 & $num2" else "1 active, 1 on hold"
                     }
+                    log.isWhatsApp -> {
+                        val realNumber = when {
+                            log.number.isNotBlank() && log.number.any { it.isDigit() } && !log.number.contains("@") && !log.number.equals(displayName, ignoreCase = true) -> log.number
+                            effectiveContact != null && effectiveContact.phoneNumbers.isNotEmpty() -> effectiveContact.phoneNumbers.first()
+                            else -> null
+                        }
+                        when {
+                            realNumber != null -> if (log.isVideo) "Video Call • $realNumber" else realNumber
+                            log.isVideo -> "Video Call"
+                            else -> "Voice Call"
+                        }
+                    }
                     showNumberOnSupportingLine -> log.number
                     else -> null
                 },
-                avatarName  = if (showAvatars && (!log.isMultiCall || log.secondNumber.isNullOrBlank())) avatarSourceName else null,
-                avatarForcePersonIcon = !isContact && !log.isMultiCall && !isAlt,
-                photoUri    = if (showAvatars && !log.isMultiCall) resolvedPhotoUri else null,
-                customAvatar = if (showAvatars && log.isMultiCall && !log.secondNumber.isNullOrBlank()) {
+                avatarName  = if (showAvatars && !isWhatsAppGroup && (!log.isMultiCall || log.secondNumber.isNullOrBlank())) avatarSourceName else null,
+                avatarForcePersonIcon = !isContact && !log.isMultiCall && !isAlt && !log.isWhatsApp,
+                photoUri    = if (showAvatars && !isWhatsAppGroup && !log.isMultiCall) resolvedPhotoUri else null,
+                customAvatar = if (showAvatars && ((log.isMultiCall && !log.secondNumber.isNullOrBlank()) || (isWhatsAppGroup && waGroupParts.size >= 2))) {
                     {
-                        val p1 = (if (isContact) resolvedContactName else log.name)?.ifBlank { null } ?: log.number
-                        val p2 = log.secondName?.ifBlank { null } ?: log.secondNumber ?: ""
-                        DualSplitAvatar(
-                            name1 = p1,
-                            number1 = log.number,
-                            photoUri1 = resolvedPhotoUri,
-                            name2 = p2,
-                            number2 = log.secondNumber ?: "",
-                            photoUri2 = log.secondPhotoUri,
-                            size = 48.dp
-                        )
+                        if (isWhatsAppGroup && waGroupParts.size >= 2) {
+                            DualSplitAvatar(
+                                name1 = c1?.name ?: p1Name,
+                                number1 = c1?.phoneNumbers?.firstOrNull() ?: p1Name,
+                                photoUri1 = c1?.photoUri,
+                                name2 = c2?.name ?: p2Name,
+                                number2 = c2?.phoneNumbers?.firstOrNull() ?: p2Name,
+                                photoUri2 = c2?.photoUri,
+                                size = 48.dp
+                            )
+                        } else {
+                            val p1 = (if (isContact) resolvedContactName else log.name)?.ifBlank { null } ?: log.number
+                            val p2 = log.secondName?.ifBlank { null } ?: log.secondNumber ?: ""
+                            DualSplitAvatar(
+                                name1 = p1,
+                                number1 = log.number,
+                                photoUri1 = resolvedPhotoUri,
+                                name2 = p2,
+                                number2 = log.secondNumber ?: "",
+                                photoUri2 = log.secondPhotoUri,
+                                size = 48.dp
+                            )
+                        }
                     }
                 } else null,
                 avatarObeySolidIcons = false,
-                headlineStartContent = if (log.isWhatsApp && !showNumberOnSupportingLine) whatsAppBadge else if (!showNumberOnSupportingLine) simBadge else null,
+                headlineStartContent = if (!log.isWhatsApp && !showNumberOnSupportingLine) simBadge else null,
                 headlineEndContent = if (altBadge != null || totalCallsBadge != null) ({
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         altBadge?.invoke()
