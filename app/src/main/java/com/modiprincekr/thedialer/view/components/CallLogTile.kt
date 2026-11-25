@@ -245,8 +245,8 @@ fun CallLogTileSimple(
     } else {
         remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_CALL_TIME_FORMAT_24H, false) }
     }
-    val isMissed = log.type == CallLog.Calls.MISSED_TYPE
-    val isBlocked = log.type == CallLog.Calls.BLOCKED_TYPE
+    val isMissed = log.type == CallLog.Calls.MISSED_TYPE || log.type == 5 || log.types.any { it == CallLog.Calls.MISSED_TYPE || it == 5 }
+    val isBlocked = log.type == CallLog.Calls.BLOCKED_TYPE || log.types.any { it == CallLog.Calls.BLOCKED_TYPE }
 
     val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
     val isSaturatedActive = remember(settingsVer, isDark) { prefs.isSaturatedForTheme(isDark) }
@@ -269,10 +269,10 @@ fun CallLogTileSimple(
 
     val icon = when {
         log.isWhatsApp && log.isVideo           -> Icons.Default.Videocam
-        log.type == CallLog.Calls.INCOMING_TYPE -> Icons.AutoMirrored.Filled.CallReceived
-        log.type == CallLog.Calls.OUTGOING_TYPE -> Icons.AutoMirrored.Filled.CallMade
-        log.type == CallLog.Calls.MISSED_TYPE   -> Icons.AutoMirrored.Filled.CallMissed
-        log.type == CallLog.Calls.BLOCKED_TYPE  -> Icons.Default.Block
+        log.type == CallLog.Calls.INCOMING_TYPE || log.type == 7 || log.types.any { it == CallLog.Calls.INCOMING_TYPE || it == 7 } -> Icons.AutoMirrored.Filled.CallReceived
+        log.type == CallLog.Calls.OUTGOING_TYPE || log.types.any { it == CallLog.Calls.OUTGOING_TYPE } -> Icons.AutoMirrored.Filled.CallMade
+        log.type == CallLog.Calls.MISSED_TYPE || log.type == 5 || log.types.any { it == CallLog.Calls.MISSED_TYPE || it == 5 }   -> Icons.AutoMirrored.Filled.CallMissed
+        log.type == CallLog.Calls.BLOCKED_TYPE || log.types.any { it == CallLog.Calls.BLOCKED_TYPE }  -> Icons.Default.Block
         else                                    -> Icons.Default.Call
     }
     val showMissedCallDuration = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_SHOW_MISSED_CALL_DURATION, false) }
@@ -283,9 +283,10 @@ fun CallLogTileSimple(
     val baseHeadline = when {
         log.isWhatsApp && log.isVideo           -> if (log.sourcePackage == "com.whatsapp.w4b") "WA Business Video" else "WhatsApp Video"
         log.isWhatsApp                          -> if (log.sourcePackage == "com.whatsapp.w4b") "WA Business Voice" else "WhatsApp Voice"
-        log.type == CallLog.Calls.INCOMING_TYPE -> "Incoming"
+        log.type == CallLog.Calls.INCOMING_TYPE || log.type == 7 -> "Incoming"
         log.type == CallLog.Calls.OUTGOING_TYPE -> "Outgoing"
         log.type == CallLog.Calls.MISSED_TYPE   -> "Missed"
+        log.type == 5                           -> "Rejected"
         log.type == CallLog.Calls.BLOCKED_TYPE  -> "Blocked"
         else                                    -> "Call"
     }
@@ -403,8 +404,8 @@ fun CallLogTile(
     val prefs = koinInject<PreferenceManager>()
     val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
     val isSaturatedActive = config?.isSaturatedActive ?: remember(isDark) { prefs.isSaturatedForTheme(isDark) }
-    val isMissed = log.type == CallLog.Calls.MISSED_TYPE
-    val isBlocked = log.type == CallLog.Calls.BLOCKED_TYPE
+    val isMissed = log.type == CallLog.Calls.MISSED_TYPE || log.type == 5 || log.types.any { it == CallLog.Calls.MISSED_TYPE || it == 5 }
+    val isBlocked = log.type == CallLog.Calls.BLOCKED_TYPE || log.types.any { it == CallLog.Calls.BLOCKED_TYPE }
 
     val trailingContainerColor = if (isMissed || isBlocked) {
         if (isSaturatedActive) MaterialTheme.colorScheme.error
@@ -805,11 +806,11 @@ fun CallLogTile(
                 trailingIcon = when {
                     log.isMergedCall -> Icons.Default.CallMerge
                     log.isMultiCall -> Icons.Default.PhonePaused
-                    log.type == CallLog.Calls.MISSED_TYPE   -> Icons.AutoMirrored.Filled.CallMissed
-                    log.type == CallLog.Calls.BLOCKED_TYPE  -> Icons.Default.Block
+                    log.type == CallLog.Calls.MISSED_TYPE || log.type == 5 || log.types.any { it == CallLog.Calls.MISSED_TYPE || it == 5 }   -> Icons.AutoMirrored.Filled.CallMissed
+                    log.type == CallLog.Calls.BLOCKED_TYPE || log.types.any { it == CallLog.Calls.BLOCKED_TYPE }  -> Icons.Default.Block
                     log.isWhatsApp && log.isVideo           -> Icons.Default.Videocam
-                    log.type == CallLog.Calls.INCOMING_TYPE -> Icons.AutoMirrored.Filled.CallReceived
-                    log.type == CallLog.Calls.OUTGOING_TYPE -> Icons.AutoMirrored.Filled.CallMade
+                    log.type == CallLog.Calls.INCOMING_TYPE || log.type == 7 || log.types.any { it == CallLog.Calls.INCOMING_TYPE || it == 7 } -> Icons.AutoMirrored.Filled.CallReceived
+                    log.type == CallLog.Calls.OUTGOING_TYPE || log.types.any { it == CallLog.Calls.OUTGOING_TYPE } -> Icons.AutoMirrored.Filled.CallMade
                     else                        -> Icons.Default.Call
                 },
                 trailingIconTint = trailingTint,

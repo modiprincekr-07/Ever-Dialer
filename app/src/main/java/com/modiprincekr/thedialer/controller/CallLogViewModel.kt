@@ -249,23 +249,7 @@ class CallLogViewModel(
     }
 
     fun refreshIfStale() {
-        val isNewLogic = prefs.getBoolean(PreferenceManager.KEY_NEW_CALL_LOGS_LOGIC, false)
-        if (!isNewLogic) {
-            refreshLogs()
-            return
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            val current = _allCallLogs.value
-            if (current.isEmpty()) {
-                fetchLogsInternal()
-                return@launch
-            }
-            val latestDate = callLogRepo.getLatestCallDate()
-            val cachedFirstDate = current.firstOrNull()?.date
-            if (latestDate != null && latestDate != cachedFirstDate) {
-                fetchLogsInternal()
-            }
-        }
+        refreshLogs()
     }
 
     fun deleteCallLog(entry: CallLogEntry) {
@@ -357,32 +341,10 @@ class CallLogViewModel(
                 val result = callLogRepo.getCallLogs(limit = limit)
                 val prevCached = cachedLogs
                 cachedLogs = result
-                if (isNewLogic) {
-                    val changed = result.size != prevCached.size ||
-                        result.zip(prevCached).any { (a, b) ->
-                            a.number != b.number || a.date != b.date || a.type != b.type ||
-                                a.name != b.name || a.photoUri != b.photoUri || a.count != b.count ||
-                                a.callIds != b.callIds
-                        }
-                    if (changed || _allCallLogs.value.isEmpty()) {
-                        CallLogsCache.write(getApplication(), result)
-                        withContext(Dispatchers.Main) {
-                            _allCallLogs.value = result
-                        }
-                    }
-                    withContext(Dispatchers.Main) {
-                        _isFullHistoryLoaded.value = true
-                    }
-                } else {
-                    if (prevCached.isEmpty() || prevCached != result) {
-                        CallLogsCache.write(getApplication(), result)
-                    }
-                    withContext(Dispatchers.Main) {
-                        _isFullHistoryLoaded.value = true
-                        if (_allCallLogs.value != result) {
-                            _allCallLogs.value = result
-                        }
-                    }
+                CallLogsCache.write(getApplication(), result)
+                withContext(Dispatchers.Main) {
+                    _isFullHistoryLoaded.value = true
+                    _allCallLogs.value = result
                 }
             } while (pendingRefresh)
 

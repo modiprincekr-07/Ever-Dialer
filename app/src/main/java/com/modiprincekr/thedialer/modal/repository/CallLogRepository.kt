@@ -214,10 +214,10 @@ class CallLogRepository(
 
             val lastEntry = callLogs.lastOrNull()
             // Only merge consecutive rows into one grouped entry when they're the same number
-            // AND fall on the same calendar day. Without the day check, e.g. 2 calls to a
-            // contact yesterday immediately followed (in the query, since there's nothing else
-            // in between for that number) by 1 call to the same contact today would all collapse
-            // into a single "3 calls" entry stamped with today's date.
+            // AND fall on the same calendar day AND have the exact same call type.
+            // Without the call type check, a Missed call (e.g. 7:17 AM) followed by an
+            // Outgoing call (e.g. 10:12 AM) would wrongly merge into a single "Outgoing" entry,
+            // hiding the missed call from the All and Missed tabs, stat cards, and contact history.
             //
             // Bug fix: a withheld/private/blocked caller has a blank NUMBER in the provider, which
             // readRawCallLogRows() displays as the literal string "Unknown" - but two calls from
@@ -227,8 +227,11 @@ class CallLogRepository(
             // there's no real number to tell them apart, never merge blank-number rows - always
             // show each as its own entry.
             val canMerge = raw.digits.isNotEmpty() &&
-                lastEntry != null && lastEntry.number == raw.number && isSameCalendarDay(lastEntry.date, raw.date)
-            if (canMerge && lastEntry != null) {
+                lastEntry != null &&
+                lastEntry.number == raw.number &&
+                isSameCalendarDay(lastEntry.date, raw.date) &&
+                lastEntry.type == raw.type
+            if (canMerge) {
                 callLogs[callLogs.size - 1] = lastEntry.copy(
                     types = lastEntry.types + raw.type,
                     callIds = lastEntry.callIds + raw.callIds,
@@ -390,21 +393,18 @@ class CallLogRepository(
                 val effectiveType: Int
                 if (isNewLogic) {
                     effectiveType = type
-                    if (type == CallLog.Calls.MISSED_TYPE && duration <= 0L) {
+                    if ((type == CallLog.Calls.MISSED_TYPE || type == 5 /* REJECTED */) && duration <= 0L) {
                         duration = com.modiprincekr.thedialer.controller.util.MissedCallDurationStore.getDuration(context, number, date)
                     }
                 } else {
-                    val targetNum = number.replace(" ", "").replace("-", "").trim()
-                    val isBlockedNumber = targetNum.isNotEmpty() && blockedNormalized.any { blocked ->
-                        targetNum.endsWith(blocked) || blocked.endsWith(targetNum)
-                    }
+                    val isBlockedNumber = com.modiprincekr.thedialer.controller.util.BlockedNumbersManager.isBlocked(context, prefs, number)
                     effectiveType = if (type == CallLog.Calls.BLOCKED_TYPE || ((type == CallLog.Calls.MISSED_TYPE || type == 5 /* REJECTED */) && isBlockedNumber)) {
                         CallLog.Calls.BLOCKED_TYPE
                     } else {
                         type
                     }
 
-                    if ((effectiveType == CallLog.Calls.MISSED_TYPE || effectiveType == CallLog.Calls.BLOCKED_TYPE) && duration <= 0L) {
+                    if ((effectiveType == CallLog.Calls.MISSED_TYPE || effectiveType == 5 /* REJECTED */ || effectiveType == CallLog.Calls.BLOCKED_TYPE) && duration <= 0L) {
                         duration = com.modiprincekr.thedialer.controller.util.MissedCallDurationStore.getDuration(context, number, date)
                     }
                 }

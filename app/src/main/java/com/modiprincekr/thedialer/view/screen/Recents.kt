@@ -241,21 +241,11 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
     val contactsViewModel: ContactsViewModel = koinActivityViewModel()
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
-    var initialPermissionChecked by remember { mutableStateOf(false) }
     LaunchedEffect(permState.status) {
-        if (!initialPermissionChecked) {
-            initialPermissionChecked = true
-            return@LaunchedEffect
-        }
         if (permState.status == PermissionStatus.Granted) {
-            val isNewCallLogs = prefs.getBoolean(PreferenceManager.KEY_NEW_CALL_LOGS_LOGIC, false)
-            val isNewContacts = prefs.getBoolean(PreferenceManager.KEY_NEW_CONTACTS_LOGIC, false)
-            if (isNewCallLogs) {
-                callLogViewModel.refreshIfStale()
-            } else {
-                callLogViewModel.refreshLogs()
-            }
+            callLogViewModel.refreshLogs()
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+                val isNewContacts = prefs.getBoolean(PreferenceManager.KEY_NEW_CONTACTS_LOGIC, false)
                 if (isNewContacts) {
                     if (contactsViewModel.allContacts.value.isEmpty()) {
                         contactsViewModel.fetchContacts()
@@ -270,14 +260,9 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                val isNewCallLogs = prefs.getBoolean(PreferenceManager.KEY_NEW_CALL_LOGS_LOGIC, false)
-                val isNewContacts = prefs.getBoolean(PreferenceManager.KEY_NEW_CONTACTS_LOGIC, false)
-                if (isNewCallLogs) {
-                    callLogViewModel.refreshIfStale()
-                } else {
-                    callLogViewModel.refreshLogs()
-                }
+                callLogViewModel.refreshLogs()
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+                    val isNewContacts = prefs.getBoolean(PreferenceManager.KEY_NEW_CONTACTS_LOGIC, false)
                     if (isNewContacts) {
                         if (contactsViewModel.allContacts.value.isEmpty()) {
                             contactsViewModel.fetchContacts()
@@ -777,9 +762,9 @@ fun CallLogFullContent(
                         }
                     }
                     "unknown" -> base.filter { it.contactId.isNullOrBlank() || it.name.isNullOrEmpty() || it.name == it.number || it.isCallerIdName }
-                    "missed" -> base.filter { it.type == CallLog.Calls.MISSED_TYPE }
-                    "incoming" -> base.filter { it.type == CallLog.Calls.INCOMING_TYPE }
-                    "outgoing" -> base.filter { it.type == CallLog.Calls.OUTGOING_TYPE }
+                    "missed" -> base.filter { it.type == CallLog.Calls.MISSED_TYPE || it.type == 5 /* REJECTED */ || it.types.any { t -> t == CallLog.Calls.MISSED_TYPE || t == 5 } }
+                    "incoming" -> base.filter { it.type == CallLog.Calls.INCOMING_TYPE || it.type == 7 /* ANSWERED_EXTERNALLY */ || it.types.any { t -> t == CallLog.Calls.INCOMING_TYPE || t == 7 } }
+                    "outgoing" -> base.filter { it.type == CallLog.Calls.OUTGOING_TYPE || it.types.any { t -> t == CallLog.Calls.OUTGOING_TYPE } }
                     "whatsapp" -> base.filter { it.isWhatsApp }
                     "alternate" -> base.filter { it.isAlternate || com.modiprincekr.thedialer.controller.util.AlternateNumberRepository.findByNumber(context, it.number) != null }
                     else -> base
@@ -801,9 +786,12 @@ fun CallLogFullContent(
             if (groupCallsByLatest) {
                 val groupedByNumber = LinkedHashMap<String, MutableList<CallLogEntry>>()
                 for (entry in filteredLogs) {
-                    val key = entry.contactId?.takeIf { it.isNotBlank() }
+                    val isMissed = entry.type == CallLog.Calls.MISSED_TYPE || entry.type == 5 || entry.types.any { it == CallLog.Calls.MISSED_TYPE || it == 5 }
+                    val typeGroup = if (isMissed) "missed" else "normal"
+                    val baseKey = entry.contactId?.takeIf { it.isNotBlank() }
                         ?: entry.number.filter { it.isDigit() }.ifEmpty { null }
                         ?: "unknown_${entry.date}_${entry.number}"
+                    val key = "${baseKey}_$typeGroup"
                     groupedByNumber.getOrPut(key) { mutableListOf() }.add(entry)
                 }
                 val mergedList = groupedByNumber.values.map { list ->
@@ -977,16 +965,40 @@ fun CallLogFullContent(
         } else {
             // Use start-of-day (midnight) for "today" so all four stat cards
             // consistently reflect the current calendar day.
-            val todayStart = remember { todayStartMillis() }
-            val todayLogs  = remember(logs) { logs.filter { it.date >= todayStart } }
+            val todayStart = remember(logs) { todayStartMillis() }
+            val todayLogs  = remember(logs, todayStart) { logs.filter { it.date >= todayStart } }
             val missedResetTime = remember(settingsVersion) {
                 prefs.getLong(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_MISSED_CALL_RESET_TIME, 0L)
             }
 
-            val totalToday        = remember(todayLogs) { todayLogs.size }
-            val incomingToday     = remember(todayLogs) { todayLogs.count { it.type == CallLog.Calls.INCOMING_TYPE } }
-            val missedToday       = remember(todayLogs, missedResetTime) { todayLogs.count { it.type == CallLog.Calls.MISSED_TYPE && it.date > missedResetTime } }
-            val outgoingToday     = remember(todayLogs) { todayLogs.count { it.type == CallLog.Calls.OUTGOING_TYPE } }
+            val totalToday = remember(todayLogs) { todayLogs.sumOf { it.count } }
+            val incomingToday = remember(todayLogs) {
+                todayLogs.sumOf { entry ->
+                    if (entry.types.isNotEmpty()) {
+                        entry.types.count { it == CallLog.Calls.INCOMING_TYPE || it == 7 /* ANSWERED_EXTERNALLY */ }
+                    } else {
+                        if (entry.type == CallLog.Calls.INCOMING_TYPE || entry.type == 7) 1 else 0
+                    }
+                }
+            }
+            val missedToday = remember(todayLogs, missedResetTime) {
+                todayLogs.sumOf { entry ->
+                    if (entry.types.isNotEmpty()) {
+                        entry.types.count { t -> (t == CallLog.Calls.MISSED_TYPE || t == 5 /* REJECTED */) && entry.date > missedResetTime }
+                    } else {
+                        if ((entry.type == CallLog.Calls.MISSED_TYPE || entry.type == 5) && entry.date > missedResetTime) 1 else 0
+                    }
+                }
+            }
+            val outgoingToday = remember(todayLogs) {
+                todayLogs.sumOf { entry ->
+                    if (entry.types.isNotEmpty()) {
+                        entry.types.count { it == CallLog.Calls.OUTGOING_TYPE }
+                    } else {
+                        if (entry.type == CallLog.Calls.OUTGOING_TYPE) 1 else 0
+                    }
+                }
+            }
             val totalDurationToday = remember(todayLogs) {
                 todayLogs.filter { it.duration > 0 }.sumOf { it.duration }
             }

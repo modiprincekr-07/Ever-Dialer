@@ -37,7 +37,7 @@ fun CallLogTile(
     onClick: () -> Unit = {},
     displayNameOverride: String? = null
 ) {
-    val isMissed = log.types.any { it == CallLog.Calls.MISSED_TYPE } || (log.types.isEmpty() && log.type == CallLog.Calls.MISSED_TYPE)
+    val isMissed = log.types.any { it == CallLog.Calls.MISSED_TYPE || it == 5 } || (log.types.isEmpty() && (log.type == CallLog.Calls.MISSED_TYPE || log.type == 5))
     val isBlocked = log.types.any { it == CallLog.Calls.BLOCKED_TYPE } || (log.types.isEmpty() && log.type == CallLog.Calls.BLOCKED_TYPE)
     val prefs = koinInject<PreferenceManager>()
     val settingsVer by prefs.settingsChanged.collectAsState()
@@ -94,13 +94,13 @@ fun CallLogTile(
 
                 iconsToShow.forEach { type ->
                     val icon = when (type) {
-                        CallLog.Calls.INCOMING_TYPE -> Icons.AutoMirrored.Filled.CallReceived
+                        CallLog.Calls.INCOMING_TYPE, 7 -> Icons.AutoMirrored.Filled.CallReceived
                         CallLog.Calls.OUTGOING_TYPE -> Icons.AutoMirrored.Filled.CallMade
-                        CallLog.Calls.MISSED_TYPE -> Icons.AutoMirrored.Filled.CallMissed
+                        CallLog.Calls.MISSED_TYPE, 5 -> Icons.AutoMirrored.Filled.CallMissed
                         CallLog.Calls.BLOCKED_TYPE -> Icons.Default.Block
                         else -> Icons.Rounded.Call
                     }
-                    val tint = if (type == CallLog.Calls.MISSED_TYPE || type == CallLog.Calls.BLOCKED_TYPE) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    val tint = if (type == CallLog.Calls.MISSED_TYPE || type == 5 || type == CallLog.Calls.BLOCKED_TYPE) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                     Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = tint)
                 }
 

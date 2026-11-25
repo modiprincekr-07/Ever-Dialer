@@ -73,6 +73,17 @@ fun CallLogFullScreen(
     var showSimPicker by remember { mutableStateOf(false) }
     var pendingNumber by remember { mutableStateOf<String?>(null) }
 
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshLogs()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
 
     val matchedContact = remember(contactId, phoneNumber, contacts) {
         if (contactId != null && contactId != "null") contacts.find { it.id == contactId }
@@ -202,9 +213,9 @@ fun CallLogFullScreen(
                                     }
                                 }
                                 "unknown" -> filteredLogsByContact.filter { it.contactId.isNullOrBlank() || it.name.isNullOrEmpty() || it.name == it.number || it.isCallerIdName }
-                                "missed" -> filteredLogsByContact.filter { it.type == CallLog.Calls.MISSED_TYPE }
-                                "incoming" -> filteredLogsByContact.filter { it.type == CallLog.Calls.INCOMING_TYPE }
-                                "outgoing" -> filteredLogsByContact.filter { it.type == CallLog.Calls.OUTGOING_TYPE }
+                                "missed" -> filteredLogsByContact.filter { it.type == CallLog.Calls.MISSED_TYPE || it.type == 5 /* REJECTED */ || it.types.any { t -> t == CallLog.Calls.MISSED_TYPE || t == 5 } }
+                                "incoming" -> filteredLogsByContact.filter { it.type == CallLog.Calls.INCOMING_TYPE || it.type == 7 /* ANSWERED_EXTERNALLY */ || it.types.any { t -> t == CallLog.Calls.INCOMING_TYPE || t == 7 } }
+                                "outgoing" -> filteredLogsByContact.filter { it.type == CallLog.Calls.OUTGOING_TYPE || it.types.any { t -> t == CallLog.Calls.OUTGOING_TYPE } }
                                 else -> filteredLogsByContact
                             }
                         }

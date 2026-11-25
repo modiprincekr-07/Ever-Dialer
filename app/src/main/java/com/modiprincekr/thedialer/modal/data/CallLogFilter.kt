@@ -18,9 +18,9 @@ enum class CallLogFilter(val displayName: String) {
                 Contacts -> logs.filter { it.name != null && it.name.isNotEmpty() && it.name != it.number && !it.isCallerIdName }
                 Favourites -> emptyList()
                 Unknown -> logs.filter { it.contactId.isNullOrBlank() || it.name.isNullOrEmpty() || it.name == it.number || it.isCallerIdName }
-                Incoming -> logs.filter { it.type == android.provider.CallLog.Calls.INCOMING_TYPE }
-                Outgoing -> logs.filter { it.type == android.provider.CallLog.Calls.OUTGOING_TYPE }
-                Missed -> logs.filter { it.type == android.provider.CallLog.Calls.MISSED_TYPE }
+                Incoming -> logs.filter { it.type == android.provider.CallLog.Calls.INCOMING_TYPE || it.type == 7 /* ANSWERED_EXTERNALLY */ || it.types.any { t -> t == android.provider.CallLog.Calls.INCOMING_TYPE || t == 7 } }
+                Outgoing -> logs.filter { it.type == android.provider.CallLog.Calls.OUTGOING_TYPE || it.types.any { t -> t == android.provider.CallLog.Calls.OUTGOING_TYPE } }
+                Missed -> logs.filter { it.type == android.provider.CallLog.Calls.MISSED_TYPE || it.type == 5 /* REJECTED */ || it.types.any { t -> t == android.provider.CallLog.Calls.MISSED_TYPE || t == 5 } }
             }
             return filteredList.groupBy { formatDateHeader(it.date) }.values.toList()
         }
