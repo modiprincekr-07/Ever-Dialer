@@ -375,7 +375,7 @@ fun DialPadScreen(
     // just translating the content) avoids the dim background cutting out abruptly the instant
     // the Dialog is torn down at the end, leaving the same (quicker) swipe-to-dismiss untouched.
     val closeProgress = remember { Animatable(0f) }
-    val slowSlideSpec = tween<Float>(durationMillis = 650, easing = FastOutSlowInEasing)
+    val slowSlideSpec = tween<Float>(durationMillis = 150, easing = FastOutLinearInEasing)
     // Fixed dp offsets don't clear the screen on taller devices, so the sheet gets torn down
     // mid-slide and appears to vanish abruptly. Basing it on the actual screen height (plus a
     // buffer for the status/nav bars) guarantees it's fully off-screen before removal.
@@ -1480,10 +1480,10 @@ fun DialPadContent(
                 ) {
                     AnimatedVisibility(
                         visible = isUssdQuery && matchingUssdCodes.isNotEmpty(),
-                        enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                                expandVertically(tween(240, easing = FastOutSlowInEasing)),
-                        exit  = fadeOut(tween(180, easing = FastOutLinearInEasing)) +
-                                shrinkVertically(tween(200, easing = FastOutLinearInEasing))
+                        enter = fadeIn(tween(160)) +
+                                expandVertically(tween(200, easing = FastOutSlowInEasing)),
+                        exit  = fadeOut(tween(110)) +
+                                shrinkVertically(tween(150, easing = FastOutLinearInEasing))
                     ) {
                         UssdDialpadSuggestions(
                             matchingCodes = matchingUssdCodes,
@@ -1502,10 +1502,10 @@ fun DialPadContent(
                     }
                     AnimatedVisibility(
                         visible = showResultsPanelLandscape,
-                        enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                                expandVertically(tween(240, easing = FastOutSlowInEasing)),
-                        exit  = fadeOut(tween(180, easing = FastOutLinearInEasing)) +
-                                shrinkVertically(tween(200, easing = FastOutLinearInEasing))
+                        enter = fadeIn(tween(160)) +
+                                expandVertically(tween(200, easing = FastOutSlowInEasing)),
+                        exit  = fadeOut(tween(110)) +
+                                shrinkVertically(tween(150, easing = FastOutLinearInEasing))
                     ) {
                         Box(
                             modifier = Modifier
@@ -1637,8 +1637,8 @@ fun DialPadContent(
                     // Create contact / Add to contact chips when number entered & not searching
                     AnimatedVisibility(
                         visible = number.isNotEmpty() && !isUssdQuery && searchResults.isEmpty() && extraSearchResults.isEmpty() && searchQuery.isEmpty(),
-                        enter = fadeIn(tween(200)) + expandVertically(tween(220)),
-                        exit = fadeOut(tween(160)) + shrinkVertically(tween(180))
+                        enter = fadeIn(tween(160)) + expandVertically(tween(200, easing = FastOutSlowInEasing)),
+                        exit = fadeOut(tween(110)) + shrinkVertically(tween(150, easing = FastOutLinearInEasing))
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -2071,8 +2071,8 @@ fun DialPadContent(
         // Dialpad search history when focused and query is blank
         AnimatedVisibility(
             visible = searchQuery.isBlank() && searchFieldFocused && dialpadSearchHistory.isNotEmpty(),
-            enter = fadeIn(tween(200)) + expandVertically(tween(220)),
-            exit = fadeOut(tween(160)) + shrinkVertically(tween(180))
+            enter = fadeIn(tween(160)) + expandVertically(tween(200, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(110)) + shrinkVertically(tween(150, easing = FastOutLinearInEasing))
         ) {
             SearchHistorySection(
                 history = dialpadSearchHistory,
@@ -2099,10 +2099,10 @@ fun DialPadContent(
 
         AnimatedVisibility(
             visible = isUssdQuery && matchingUssdCodes.isNotEmpty(),
-            enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                    expandVertically(tween(240, easing = FastOutSlowInEasing)),
-            exit  = fadeOut(tween(180, easing = FastOutLinearInEasing)) +
-                    shrinkVertically(tween(200, easing = FastOutLinearInEasing))
+            enter = fadeIn(tween(160)) +
+                    expandVertically(tween(200, easing = FastOutSlowInEasing)),
+            exit  = fadeOut(tween(110)) +
+                    shrinkVertically(tween(150, easing = FastOutLinearInEasing))
         ) {
             UssdDialpadSuggestions(
                 matchingCodes = matchingUssdCodes,
@@ -2121,10 +2121,10 @@ fun DialPadContent(
         }
         AnimatedVisibility(
             visible = showResultsPanelPortrait,
-            enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                    expandVertically(tween(240, easing = FastOutSlowInEasing)),
-            exit  = fadeOut(tween(180, easing = FastOutLinearInEasing)) +
-                    shrinkVertically(tween(200, easing = FastOutLinearInEasing))
+            enter = fadeIn(tween(160)) +
+                    expandVertically(tween(200, easing = FastOutSlowInEasing)),
+            exit  = fadeOut(tween(110)) +
+                    shrinkVertically(tween(150, easing = FastOutLinearInEasing))
         ) {
             Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Box(
@@ -2257,8 +2257,8 @@ fun DialPadContent(
 
         AnimatedVisibility(
             visible = number.isNotEmpty() && !isUssdQuery && searchResults.isEmpty() && extraSearchResults.isEmpty() && searchQuery.isEmpty(),
-            enter = fadeIn(tween(200)) + expandVertically(tween(220)),
-            exit = fadeOut(tween(160)) + shrinkVertically(tween(180))
+            enter = fadeIn(tween(160)) + expandVertically(tween(200, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(110)) + shrinkVertically(tween(150, easing = FastOutLinearInEasing))
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -2314,8 +2314,8 @@ fun DialPadContent(
         // Clipboard banner
         AnimatedVisibility(
             visible = showClipboardBanner,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
+            enter = fadeIn(tween(160)) + expandVertically(tween(200, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(110)) + shrinkVertically(tween(150, easing = FastOutLinearInEasing))
         ) {
             Box(
                 modifier = Modifier
@@ -2349,16 +2349,16 @@ fun DialPadContent(
             visible = showDialpad,
             enter = slideInVertically(
                 initialOffsetY = { it },
-                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
             ) + expandVertically(
-                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
-            ) + fadeIn(animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)),
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+            ) + fadeIn(animationSpec = tween(durationMillis = 160)),
             exit = slideOutVertically(
                 targetOffsetY = { it },
-                animationSpec = tween(durationMillis = 240, easing = FastOutLinearInEasing)
+                animationSpec = tween(durationMillis = 140, easing = FastOutLinearInEasing)
             ) + shrinkVertically(
-                animationSpec = tween(durationMillis = 240, easing = FastOutLinearInEasing)
-            ) + fadeOut(animationSpec = tween(durationMillis = 180, easing = FastOutLinearInEasing))
+                animationSpec = tween(durationMillis = 150, easing = FastOutLinearInEasing)
+            ) + fadeOut(animationSpec = tween(durationMillis = 110))
         ) {
 
         Spacer(modifier = Modifier.height(2.dp))
@@ -3433,7 +3433,11 @@ private fun playDtmf(context: Context, key: String, soundPool: SoundPool, prefs:
 @Composable
 private fun FadeScaleBox(visible: Boolean, content: @Composable () -> Unit) {
     Box(modifier = Modifier.size(72.dp), contentAlignment = Alignment.Center) {
-        AnimatedVisibility(visible = visible, enter = fadeIn() + scaleIn(), exit = fadeOut() + scaleOut()) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(160)) + scaleIn(spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy)),
+            exit = fadeOut(tween(110)) + scaleOut(tween(140, easing = FastOutLinearInEasing))
+        ) {
             content()
         }
     }

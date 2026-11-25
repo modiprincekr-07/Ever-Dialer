@@ -54,25 +54,28 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Smooth, expressive animation curves and durations tuned to 0.8x (~340ms) with FastOutSlowInEasing.
+ * Smooth, expressive animation curves and durations tuned to 200ms enter and fast 140ms exit.
  */
-val SettingsSmoothEase = FastOutSlowInEasing
-val SettingsSmoothEaseIn = FastOutSlowInEasing
-val SettingsSmoothEaseOut = FastOutSlowInEasing
+val NavEnterEasing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
+val NavFastClosingEasing = FastOutLinearInEasing
 
-const val SETTINGS_ANIM_DURATION_ENTER = 340
-const val SETTINGS_ANIM_DURATION_EXIT = 340
+val SettingsSmoothEase = NavEnterEasing
+val SettingsSmoothEaseIn = NavFastClosingEasing
+val SettingsSmoothEaseOut = NavEnterEasing
 
-const val CHAT_ANIM_DURATION_ENTER = 340
-const val CHAT_ANIM_DURATION_EXIT = 340
-val ChatSmoothEase = FastOutSlowInEasing
-val ChatSmoothEaseOut = FastOutSlowInEasing
-val ChatSmoothEaseIn = FastOutSlowInEasing
+const val SETTINGS_ANIM_DURATION_ENTER = 200
+const val SETTINGS_ANIM_DURATION_EXIT = 140
 
-const val CONTACT_DETAILS_ANIM_DURATION_ENTER = 340
-const val CONTACT_DETAILS_ANIM_DURATION_EXIT = 340
-val ContactDetailsSmoothEase = FastOutSlowInEasing
-val ContactDetailsSmoothEaseExit = FastOutSlowInEasing
+const val CHAT_ANIM_DURATION_ENTER = 200
+const val CHAT_ANIM_DURATION_EXIT = 140
+val ChatSmoothEase = NavEnterEasing
+val ChatSmoothEaseOut = NavEnterEasing
+val ChatSmoothEaseIn = NavFastClosingEasing
+
+const val CONTACT_DETAILS_ANIM_DURATION_ENTER = 200
+const val CONTACT_DETAILS_ANIM_DURATION_EXIT = 140
+val ContactDetailsSmoothEase = NavEnterEasing
+val ContactDetailsSmoothEaseExit = NavFastClosingEasing
 
 const val SETTINGS_SCALE_ENTER_FROM = 0.88f
 const val SETTINGS_SCALE_EXIT_TO = 0.96f
@@ -96,8 +99,8 @@ fun isContactOrChatRoute(route: String?): Boolean {
  * Windows Phone Metro-style turnstile page transition specifications.
  */
 val MetroSlideInEasing = FastOutSlowInEasing
-const val SETTINGS_WP_ANIM_DURATION_ENTER = 340
-const val SETTINGS_WP_ANIM_DURATION_EXIT = 340
+const val SETTINGS_WP_ANIM_DURATION_ENTER = 200
+const val SETTINGS_WP_ANIM_DURATION_EXIT = 140
 
 fun isWindowsPhoneAnimation(): Boolean {
     return try {
@@ -111,9 +114,9 @@ fun isWindowsPhoneAnimation(): Boolean {
 val PetalM3EmphasizedEasing = FastOutSlowInEasing
 val PetalPopSlideEasing = FastOutSlowInEasing
 val PetalPopExitSlideEasing = FastOutSlowInEasing
-const val CARDS_ANIM_DURATION = 340
-const val CARDS_PUSH_DURATION = 340
-const val CARDS_POP_DURATION = 340
+const val CARDS_ANIM_DURATION = 200
+const val CARDS_PUSH_DURATION = 200
+const val CARDS_POP_DURATION = 140
 
 fun isCardsAnimation(): Boolean {
     return try {
@@ -401,7 +404,7 @@ object SettingsTransitionStyle : NavHostAnimatedDestinationStyle() {
                 animationSpec = tween(duration, easing = easing),
                 initialScale = initialScale,
                 transformOrigin = origin
-            ) + fadeIn(tween(duration, easing = easingOut))
+            ) + fadeIn(tween(160, easing = easingOut))
         }
     }
 
@@ -435,7 +438,7 @@ object SettingsTransitionStyle : NavHostAnimatedDestinationStyle() {
                 animationSpec = tween(duration, easing = easing),
                 targetScale = SETTINGS_SCALE_EXIT_TO,
                 transformOrigin = TransformOrigin.Center
-            ) + fadeOut(tween(duration, easing = easingIn))
+            ) + fadeOut(tween(110, easing = easingIn))
         }
     }
 
@@ -443,7 +446,7 @@ object SettingsTransitionStyle : NavHostAnimatedDestinationStyle() {
         val isContact = isContactOrChatRoute(targetState.destination.route)
         val duration = when {
             isContact -> CONTACT_DETAILS_ANIM_DURATION_ENTER
-            else -> SETTINGS_ANIM_DURATION_EXIT
+            else -> SETTINGS_ANIM_DURATION_ENTER
         }
         val easing = when {
             isContact -> ContactDetailsSmoothEase
@@ -476,7 +479,7 @@ object SettingsTransitionStyle : NavHostAnimatedDestinationStyle() {
                 initialScale = SETTINGS_SCALE_EXIT_TO,
                 transformOrigin = TransformOrigin.Center
             ) + fadeIn(
-                animationSpec = tween(duration, easing = easingOut),
+                animationSpec = tween(160, easing = easingOut),
                 initialAlpha = 0.95f
             )
         }
@@ -534,7 +537,7 @@ object SettingsTransitionStyle : NavHostAnimatedDestinationStyle() {
                 animationSpec = tween(duration, easing = easing),
                 targetScale = targetScale,
                 transformOrigin = origin
-            ) + fadeOut(tween(duration, easing = fadeEasing))
+            ) + fadeOut(tween(110, easing = fadeEasing))
         }
     }
 }

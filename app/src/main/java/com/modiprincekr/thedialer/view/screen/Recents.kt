@@ -513,13 +513,14 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
     ) {
                 AnimatedVisibility(
                     visible = selectionMode,
-                    enter = slideInVertically(initialOffsetY = { -it }, animationSpec = tween(320, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(280, easing = FastOutSlowInEasing)),
-                    exit  = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(420, easing = FastOutLinearInEasing)) + fadeOut(animationSpec = tween(380, easing = FastOutLinearInEasing))
+                    enter = slideInVertically(initialOffsetY = { -it }, animationSpec = tween(200, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(160)),
+                    exit  = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(140, easing = FastOutLinearInEasing)) + fadeOut(animationSpec = tween(110))
                 ) {
                     Surface(
                         color = MaterialTheme.colorScheme.primaryContainer,
                         modifier = Modifier.fillMaxWidth(),
-                        shadowElevation = 4.dp
+                        tonalElevation = 2.dp,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth()
@@ -740,8 +741,8 @@ private fun FavouritesSection(
 
         AnimatedVisibility(
             visible = isExpanded,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
+            enter = expandVertically(animationSpec = tween(200, easing = FastOutSlowInEasing)) + fadeIn(tween(160)),
+            exit = shrinkVertically(animationSpec = tween(150, easing = FastOutLinearInEasing)) + fadeOut(tween(110))
         ) {
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
@@ -1751,7 +1752,10 @@ private fun AnimatedStatCard(
     LaunchedEffect(Unit) { delay(delayMs); visible = true }
     val cardAlpha by animateFloatAsState(if (visible) 1f else 0f, tween(350), label = "statAlpha")
     val cardOffset by animateDpAsState(if (visible) 0.dp else 16.dp, spring(stiffness = Spring.StiffnessMediumLow), label = "statOffset")
-    Box(modifier = Modifier.alpha(cardAlpha).offset(y = cardOffset)) {
+    Box(modifier = Modifier.graphicsLayer {
+        alpha = cardAlpha
+        translationY = cardOffset.toPx()
+    }) {
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = containerColor,

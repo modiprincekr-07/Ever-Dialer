@@ -3,6 +3,8 @@ package com.modiprincekr.thedialer.view.theme
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -14,18 +16,18 @@ import com.ramcosta.composedestinations.animations.NavHostAnimatedDestinationSty
 object SlideTransitionStyle : NavHostAnimatedDestinationStyle() {
 
     override val enterTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
-        slideInHorizontally(tween(280)) { it } + fadeIn(tween(280))
+        slideInHorizontally(tween(200, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f))) { it } + fadeIn(tween(160))
     }
 
     override val exitTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
-        slideOutHorizontally(tween(280)) { -it } + fadeOut(tween(280))
+        slideOutHorizontally(tween(140, easing = FastOutLinearInEasing)) { -it } + fadeOut(tween(110))
     }
 
     override val popEnterTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
-        slideInHorizontally(tween(280)) { -it } + fadeIn(tween(280))
+        slideInHorizontally(tween(200, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f))) { -it } + fadeIn(tween(160))
     }
 
     override val popExitTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
-        slideOutHorizontally(tween(280)) { it } + fadeOut(tween(280))
+        slideOutHorizontally(tween(140, easing = FastOutLinearInEasing)) { it } + fadeOut(tween(110))
     }
 }

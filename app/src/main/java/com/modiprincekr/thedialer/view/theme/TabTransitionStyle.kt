@@ -148,17 +148,17 @@ object TabTransitionStyle : NavHostAnimatedDestinationStyle() {
             fromTab && toTab && !isLandscapeMode -> {
                 val goRight = toIdx > fromIdx
                 slideInHorizontally(
-                    animationSpec = tween(550, easing = EaseOutQuart),
+                    animationSpec = tween(200, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)),
                     initialOffsetX = { if (goRight) (it * 0.25f).toInt() else -(it * 0.25f).toInt() }
-                ) + fadeIn(tween(400, easing = EaseOutQuart))
+                ) + fadeIn(tween(160))
             }
             !toTab && !isLandscapeMode -> {
                 slideInHorizontally(
-                    animationSpec = tween(600, easing = EaseOutExpo),
+                    animationSpec = tween(200, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)),
                     initialOffsetX = { (it * 0.35f).toInt() }
-                ) + fadeIn(tween(500, easing = EaseOutExpo))
+                ) + fadeIn(tween(160))
             }
-            else -> fadeIn(tween(450, easing = EaseOutQuart))
+            else -> fadeIn(tween(160))
         }
     }
 
@@ -196,7 +196,7 @@ object TabTransitionStyle : NavHostAnimatedDestinationStyle() {
                         animationSpec = tween(exitDuration, easing = exitEasing),
                         targetScale = SETTINGS_SCALE_EXIT_TO,
                         transformOrigin = TransformOrigin.Center
-                    ) + fadeOut(tween(exitDuration, easing = exitEasingIn))
+                    ) + fadeOut(tween(110, easing = exitEasingIn))
                 }
             }
             fromSettings || toSettings -> {
@@ -207,23 +207,23 @@ object TabTransitionStyle : NavHostAnimatedDestinationStyle() {
                         animationSpec = tween(exitDuration, easing = exitEasing),
                         targetScale = SETTINGS_SCALE_EXIT_TO,
                         transformOrigin = TransformOrigin.Center
-                    ) + fadeOut(tween(exitDuration, easing = exitEasingIn))
+                    ) + fadeOut(tween(110, easing = exitEasingIn))
                 }
             }
             fromTab && toTab && !isLandscapeMode -> {
                 val goRight = toIdx > fromIdx
                 slideOutHorizontally(
-                    animationSpec = tween(550, easing = EaseOutQuart),
+                    animationSpec = tween(140, easing = FastOutLinearInEasing),
                     targetOffsetX = { if (goRight) -(it * 0.25f).toInt() else (it * 0.25f).toInt() }
-                ) + fadeOut(tween(350, easing = EaseOutQuart))
+                ) + fadeOut(tween(110))
             }
             !toTab && !isLandscapeMode -> {
                 slideOutHorizontally(
-                    animationSpec = tween(600, easing = EaseOutExpo),
+                    animationSpec = tween(140, easing = FastOutLinearInEasing),
                     targetOffsetX = { -(it * 0.12f).toInt() }
-                ) + fadeOut(tween(400, easing = EaseOutExpo))
+                ) + fadeOut(tween(110))
             }
-            else -> fadeOut(tween(380, easing = EaseOutQuart))
+            else -> fadeOut(tween(110))
         }
     }
 
@@ -293,17 +293,17 @@ object TabTransitionStyle : NavHostAnimatedDestinationStyle() {
             fromTab && toTab && !isLandscapeMode -> {
                 val goRight = toIdx > fromIdx
                 slideInHorizontally(
-                    animationSpec = tween(550, easing = EaseOutQuart),
+                    animationSpec = tween(200, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)),
                     initialOffsetX = { if (goRight) (it * 0.25f).toInt() else -(it * 0.25f).toInt() }
-                ) + fadeIn(tween(400, easing = EaseOutQuart))
+                ) + fadeIn(tween(160))
             }
             toTab && !isLandscapeMode -> {
                 slideInHorizontally(
-                    animationSpec = tween(600, easing = EaseOutExpo),
+                    animationSpec = tween(200, easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)),
                     initialOffsetX = { -(it * 0.12f).toInt() }
-                ) + fadeIn(tween(450, easing = EaseOutExpo))
+                ) + fadeIn(tween(160))
             }
-            else -> fadeIn(tween(450, easing = EaseOutQuart))
+            else -> fadeIn(tween(160))
         }
     }
 
@@ -345,7 +345,7 @@ object TabTransitionStyle : NavHostAnimatedDestinationStyle() {
                         animationSpec = tween(exitDuration, easing = exitEasing),
                         targetScale = 0.04f,
                         transformOrigin = SettingsClickTracker.lastOrigin
-                    ) + fadeOut(tween(exitDuration, easing = fadeEasing))
+                    ) + fadeOut(tween(110, easing = fadeEasing))
                 }
             }
             fromSettings || toSettings -> {
@@ -359,23 +359,23 @@ object TabTransitionStyle : NavHostAnimatedDestinationStyle() {
                         animationSpec = tween(exitDuration, easing = exitEasing),
                         targetScale = SETTINGS_SCALE_EXIT_TO,
                         transformOrigin = TransformOrigin.Center
-                    ) + fadeOut(tween(exitDuration, easing = exitEasingIn))
+                    ) + fadeOut(tween(110, easing = exitEasingIn))
                 }
             }
             fromTab && toTab && !isLandscapeMode -> {
                 val goRight = toIdx > fromIdx
                 slideOutHorizontally(
-                    animationSpec = tween(550, easing = EaseOutQuart),
+                    animationSpec = tween(140, easing = FastOutLinearInEasing),
                     targetOffsetX = { if (goRight) -(it * 0.25f).toInt() else (it * 0.25f).toInt() }
-                ) + fadeOut(tween(350, easing = EaseOutQuart))
+                ) + fadeOut(tween(110))
             }
             fromTab && !isLandscapeMode -> {
                 slideOutHorizontally(
-                    animationSpec = tween(600, easing = EaseOutExpo),
+                    animationSpec = tween(140, easing = FastOutLinearInEasing),
                     targetOffsetX = { (it * 0.35f).toInt() }
-                ) + fadeOut(tween(450, easing = EaseOutExpo))
+                ) + fadeOut(tween(110))
             }
-            else -> fadeOut(tween(380, easing = EaseOutQuart))
+            else -> fadeOut(tween(110))
         }
     }
 }

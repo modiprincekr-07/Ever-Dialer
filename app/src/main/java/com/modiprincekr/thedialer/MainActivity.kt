@@ -270,9 +270,9 @@ class MainActivity : FragmentActivity() {
                 }
                 val shouldAnimatePfp = animatePfpShape && isExpressivePfp
 
-                val globalPfpRotationAngle = if (shouldAnimatePfp) {
+                val rot = if (shouldAnimatePfp) {
                     val transition = rememberInfiniteTransition(label = "globalPfpRotation")
-                    val rot by transition.animateFloat(
+                    transition.animateFloat(
                         initialValue = 0f,
                         targetValue = 360f,
                         animationSpec = infiniteRepeatable(
@@ -281,8 +281,11 @@ class MainActivity : FragmentActivity() {
                         ),
                         label = "globalPfpAngle"
                     )
-                    rot
-                } else 0f
+                } else null
+
+                val globalPfpRotationAngle: () -> Float = remember(rot) {
+                    if (rot != null) { { rot.value } } else { { 0f } }
+                }
 
                 CompositionLocalProvider(LocalPfpRotationAngle provides globalPfpRotationAngle) {
                 val biometricType = remember(settingsVer) {

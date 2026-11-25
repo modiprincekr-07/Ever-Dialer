@@ -40,7 +40,7 @@ import kotlin.math.abs
  * Single shared rotation angle ticker provided at the root of the app (`MainActivity`).
  * Ensures 120fps smooth scrolling with zero lag across all lists without per-item animation transitions.
  */
-val LocalPfpRotationAngle = compositionLocalOf { 0f }
+val LocalPfpRotationAngle = compositionLocalOf<() -> Float> { { 0f } }
 
 /**
  * Reusable Expressive Avatar Composable.
@@ -80,9 +80,8 @@ fun ExpressiveAvatar(
         }
     }
 
-    val sharedAngle = LocalPfpRotationAngle.current
-    val effectiveAngle = if (allowAnimation && isExpressive) sharedAngle else 0f
-    val shouldRotate = effectiveAngle != 0f
+    val rotationAngleProvider = LocalPfpRotationAngle.current
+    val shouldAnimate = allowAnimation && isExpressive
 
     val localConfig = LocalAvatarDisplayConfig.current
 
@@ -220,12 +219,12 @@ fun ExpressiveAvatar(
         }
     }
 
-    if (shouldRotate) {
+    if (shouldAnimate) {
         Box(
             modifier = modifier
                 .size(size)
                 .graphicsLayer {
-                    rotationZ = effectiveAngle
+                    rotationZ = rotationAngleProvider()
                     this.shape = effectiveShape
                     this.clip = true
                 }
@@ -237,7 +236,7 @@ fun ExpressiveAvatar(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        rotationZ = -effectiveAngle
+                        rotationZ = -rotationAngleProvider()
                         scaleX = 1.18f
                         scaleY = 1.18f
                     },

@@ -2952,15 +2952,15 @@ fun ExpressiveCallScreen(
                         if (!isIncomingMode) {
                             androidx.compose.animation.AnimatedVisibility(
                                 visible = showNoteWindow,
-                                enter = fadeIn(tween(250, easing = FastOutSlowInEasing)) +
+                                enter = fadeIn(tween(160)) +
                                         scaleIn(
                                             initialScale = 0.92f,
-                                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                                            animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy)
                                         ),
-                                exit = fadeOut(tween(200, easing = FastOutLinearInEasing)) +
+                                exit = fadeOut(tween(110, easing = FastOutLinearInEasing)) +
                                        scaleOut(
                                            targetScale = 0.92f,
-                                           animationSpec = tween(200)
+                                           animationSpec = tween(140, easing = FastOutLinearInEasing)
                                        ),
                                 modifier = Modifier
                                     .align(Alignment.Center)
@@ -3545,15 +3545,15 @@ fun ExpressiveCallScreen(
                     if (!isIncomingMode) {
                         androidx.compose.animation.AnimatedVisibility(
                             visible = showNoteWindow,
-                            enter = fadeIn(tween(250, easing = FastOutSlowInEasing)) +
+                            enter = fadeIn(tween(160)) +
                                     scaleIn(
                                         initialScale = 0.88f,
-                                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioLowBouncy)
+                                        animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioNoBouncy)
                                     ),
-                            exit = fadeOut(tween(200, easing = FastOutLinearInEasing)) +
+                            exit = fadeOut(tween(110, easing = FastOutLinearInEasing)) +
                                    scaleOut(
                                        targetScale = 0.88f,
-                                       animationSpec = tween(200)
+                                       animationSpec = tween(140, easing = FastOutLinearInEasing)
                                    ),
                             modifier = Modifier
                                 .align(Alignment.Center)

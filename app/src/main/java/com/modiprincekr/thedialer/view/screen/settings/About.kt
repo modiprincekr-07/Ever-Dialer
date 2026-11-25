@@ -352,8 +352,8 @@ fun AboutAppScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
 
                         AnimatedVisibility(
                             visible = socialExpanded,
-                            enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
-                            exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(250))
+                            enter = expandVertically(animationSpec = tween(200, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(160)),
+                            exit = shrinkVertically(animationSpec = tween(150, easing = FastOutLinearInEasing)) + fadeOut(animationSpec = tween(110))
                         ) {
                             Row(
                                 modifier = Modifier
@@ -411,8 +411,8 @@ fun AboutAppScreen(navigator: DestinationsNavigator, highlightKey: String? = nul
 
                         AnimatedVisibility(
                             visible = whatsNewExpanded,
-                            enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
-                            exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(250))
+                            enter = expandVertically(animationSpec = tween(200, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(160)),
+                            exit = shrinkVertically(animationSpec = tween(150, easing = FastOutLinearInEasing)) + fadeOut(animationSpec = tween(110))
                         ) {
                             Column(
                                 modifier = Modifier
