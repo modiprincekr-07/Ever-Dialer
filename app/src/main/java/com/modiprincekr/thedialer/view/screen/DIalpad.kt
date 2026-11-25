@@ -38,9 +38,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
@@ -2148,44 +2145,19 @@ fun DialPadContent(
         }
 
         // ── Middle section: results / pills / clipboard (scrollable, fills space) ──
-        // Swallow leftover scroll delta while the list is mid-scroll so a fast fling back up to
-        // the top result doesn't bleed residual velocity into the parent ModalBottomSheet and
-        // get misread as swipe-to-dismiss on that same gesture. Only once the finger is lifted
-        // and a fresh gesture starts while already resting at the top do we allow that next
-        // gesture's overscroll to reach the sheet again — so a second, deliberate pull is needed
-        // to close it, exactly like before.
         val dialpadResultsScrollState = rememberScrollState()
-        var canDismissAtTop by remember { mutableStateOf(true) }
-        val resultsNestedScroll = remember {
-            object : NestedScrollConnection {
-                override fun onPreScroll(
-                    available: Offset,
-                    source: NestedScrollSource
-                ): Offset {
-                    if (isDialpadExpanded && kotlin.math.abs(available.y) > 8f) {
-                        isDialpadExpanded = false
-                        keyboardController?.hide()
-                    }
-                    return Offset.Zero
-                }
 
-                override fun onPostScroll(
-                    consumed: Offset,
-                    available: Offset,
-                    source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
-                ): Offset {
-                    if (dialpadResultsScrollState.value > 0) return available
-                    return if (canDismissAtTop) Offset.Zero else available
-                }
-            }
-        }
-
-        LaunchedEffect(dialpadResultsScrollState.isScrollInProgress) {
-            if (dialpadResultsScrollState.isScrollInProgress) {
-                if (isDialpadExpanded) {
+        // Safe coroutine-based scroll-to-collapse observer: avoids mutating layout state
+        // synchronously inside NestedScrollConnection mid-scroll-dispatch.
+        LaunchedEffect(dialpadResultsScrollState) {
+            snapshotFlow {
+                dialpadResultsScrollState.isScrollInProgress to dialpadResultsScrollState.value
+            }.collect { (isScrolling, scrollOffset) ->
+                if (isScrolling && isDialpadExpanded && scrollOffset > 24) {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
                     isDialpadExpanded = false
                 }
-                keyboardController?.hide()
             }
         }
 
@@ -2194,17 +2166,6 @@ fun DialPadContent(
                 .weight(1f)
                 .fillMaxWidth()
                 .heightIn(max = screenHeight)
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            if (event.changes.any { it.changedToDown() }) {
-                                canDismissAtTop = dialpadResultsScrollState.value == 0
-                            }
-                        }
-                    }
-                }
-                .nestedScroll(resultsNestedScroll)
                 .verticalScroll(dialpadResultsScrollState),
             verticalArrangement = Arrangement.Top
         ) {
