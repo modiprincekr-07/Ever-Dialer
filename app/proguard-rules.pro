@@ -41,3 +41,8 @@
 
 # Coroutines
 -dontwarn kotlinx.coroutines.**
+
+# R8 rules for hidden telephony APIs used by networkswitch
+-dontwarn android.os.ServiceManager
+-dontwarn com.android.internal.telephony.**
+-keep class com.supernova.networkswitch.** { *; }
