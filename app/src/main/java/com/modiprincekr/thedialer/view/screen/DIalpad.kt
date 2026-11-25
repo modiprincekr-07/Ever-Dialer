@@ -1,6 +1,7 @@
 package com.modiprincekr.thedialer.view.screen
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -97,6 +98,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.view.WindowManager
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -363,12 +365,30 @@ fun DialPadScreen(
     // WindowCompat.setDecorFitsSystemWindows(false) in MainActivity normally causes
     // the sheet to resize with the IME; overriding softInputMode here prevents that.
     val view = LocalView.current
-    DisposableEffect(Unit) {
-        val window = (view.context as? android.app.Activity)?.window
+    val isDarkTheme = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
+    DisposableEffect(isDarkTheme) {
+        val activity = view.context as? Activity
+        val window = activity?.window
         val prevMode = window?.attributes?.softInputMode ?: 0
         window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+        if (!isDarkTheme && window != null) {
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            controller.isAppearanceLightStatusBars = true
+            controller.isAppearanceLightNavigationBars = true
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
+            window.navigationBarColor = android.graphics.Color.TRANSPARENT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                window.isStatusBarContrastEnforced = false
+                window.isNavigationBarContrastEnforced = false
+            }
+        }
         onDispose {
             window?.setSoftInputMode(prevMode)
+            if (!isDarkTheme && window != null) {
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                controller.isAppearanceLightStatusBars = !isDarkTheme
+                controller.isAppearanceLightNavigationBars = !isDarkTheme
+            }
         }
     }
 
@@ -433,7 +453,7 @@ fun DialPadScreen(
         // offset Box (below) means the background now moves together with the content as one
         // unit during the slide.
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = Color.Transparent,
+        containerColor = if (!isDarkTheme) Color(0xFFFFFFFF) else Color.Transparent,
         tonalElevation = 0.dp,
         // No dim behind the sheet.
         scrimColor = Color.Transparent,
@@ -449,7 +469,30 @@ fun DialPadScreen(
         val themeMode = remember(prefs.settingsChanged.collectAsState().value) {
             prefs.getString(PreferenceManager.KEY_THEME_MODE, "auto") ?: "auto"
         }
-        val isDarkTheme = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
+        val sheetView = LocalView.current
+        SideEffect {
+            var parent = sheetView.parent
+            var dialogWindow: android.view.Window? = null
+            while (parent != null) {
+                if (parent is DialogWindowProvider) {
+                    dialogWindow = parent.window
+                    break
+                }
+                parent = parent.parent
+            }
+            val targetWindow = dialogWindow ?: (sheetView.context as? Activity)?.window
+            if (!isDarkTheme && targetWindow != null) {
+                val controller = WindowCompat.getInsetsController(targetWindow, targetWindow.decorView)
+                controller.isAppearanceLightStatusBars = true
+                controller.isAppearanceLightNavigationBars = true
+                targetWindow.statusBarColor = android.graphics.Color.TRANSPARENT
+                targetWindow.navigationBarColor = android.graphics.Color.TRANSPARENT
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    targetWindow.isStatusBarContrastEnforced = false
+                    targetWindow.isNavigationBarContrastEnforced = false
+                }
+            }
+        }
         val sheetScreenHeight = dialpadConfiguration.screenHeightDp.dp
         com.modiprincekr.thedialer.view.theme.ProvideScaledDensity(prefs = prefs) {
             Surface(
@@ -500,7 +543,11 @@ fun DialPadScreen(
                     label = "handleHeight"
                 )
                 val handleColor by animateColorAsState(
-                    targetValue = if (isDraggingHandle) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                    targetValue = if (!isDarkTheme) {
+                        if (isDraggingHandle) Color(0xFF1F1F1F) else Color(0xFF74777F).copy(alpha = 0.4f)
+                    } else {
+                        if (isDraggingHandle) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                    },
                     animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                     label = "handleColor"
                 )
@@ -514,7 +561,13 @@ fun DialPadScreen(
                     }
                 }
 
-                Column(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(if (!isDarkTheme) Color(0xFFFFFFFF) else Color.Transparent)
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -751,6 +804,23 @@ fun DialPadContent(
     }
     val searchFilterState = remember(settingsVerForFilter) { prefs.getSearchFilterState() }
     val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
+    DisposableEffect(isDark, view) {
+        if (!isDark) {
+            val window = (view.context as? Activity)?.window
+            if (window != null) {
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                controller.isAppearanceLightStatusBars = true
+                controller.isAppearanceLightNavigationBars = true
+                window.statusBarColor = android.graphics.Color.TRANSPARENT
+                window.navigationBarColor = android.graphics.Color.TRANSPARENT
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    window.isStatusBarContrastEnforced = false
+                    window.isNavigationBarContrastEnforced = false
+                }
+            }
+        }
+        onDispose {}
+    }
     val isSaturatedActive = remember(settingsVerForFilter, isDark) { prefs.isSaturatedForTheme(isDark) }
     val isBackgroundTarget = remember(settingsVerForFilter) { prefs.getSaturatedTarget() == PreferenceManager.SATURATED_TARGET_BACKGROUND }
     val isSaturatedBackground = isSaturatedActive && isBackgroundTarget
@@ -1362,7 +1432,8 @@ fun DialPadContent(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(),
+                    .fillMaxHeight()
+                    .background(if (!isDark) Color(0xFFFFFFFF) else Color.Transparent),
                 verticalAlignment = Alignment.CenterVertically
             ) {
             // Left panel: search bar + results only

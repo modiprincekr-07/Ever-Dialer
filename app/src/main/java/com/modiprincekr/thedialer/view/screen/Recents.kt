@@ -1,5 +1,6 @@
 package com.modiprincekr.thedialer.view.screen
 
+import android.app.Activity
 import android.Manifest
 import android.content.res.Configuration
 import com.modiprincekr.thedialer.view.theme.TabTransitionStyle
@@ -62,6 +63,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.graphics.TransformOrigin
@@ -220,6 +223,25 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
     }
 
     val isDialpadOpen = showDialpad && !dialpadClosing
+    val isLight = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) >= 0.5
+    val currentView = LocalView.current
+    DisposableEffect(isDialpadOpen, isLight) {
+        if (isDialpadOpen && isLight) {
+            val window = (currentView.context as? Activity)?.window
+            if (window != null) {
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                controller.isAppearanceLightStatusBars = true
+                controller.isAppearanceLightNavigationBars = true
+                window.statusBarColor = android.graphics.Color.TRANSPARENT
+                window.navigationBarColor = android.graphics.Color.TRANSPARENT
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    window.isStatusBarContrastEnforced = false
+                    window.isNavigationBarContrastEnforced = false
+                }
+            }
+        }
+        onDispose {}
+    }
     val dialpadExpandScale by animateFloatAsState(
         targetValue = if (isDialpadOpen) 2.6f else 1f,
         animationSpec = tween(
@@ -617,15 +639,16 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
                     shape = RoundedCornerShape(
                         topStart = if (p < 0.96f) 28.dp else 0.dp,
                         topEnd = if (p < 0.96f) 28.dp else 0.dp,
-                        bottomStart = if (p < 0.96f) 28.dp else 0.dp,
-                        bottomEnd = if (p < 0.96f) 28.dp else 0.dp
+                        bottomStart = 0.dp,
+                        bottomEnd = 0.dp
                     ),
-                    color = if (androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) >= 0.5) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.surface,
-                    tonalElevation = 4.dp
+                    color = if (isLight) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.surface,
+                    tonalElevation = if (isLight) 0.dp else 4.dp
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
+                            .background(if (isLight) Color(0xFFFFFFFF) else Color.Transparent)
                             .statusBarsPadding()
                             .navigationBarsPadding()
                     ) {
@@ -634,17 +657,17 @@ fun RecentScreen(navController: NavController, navigator: DestinationsNavigator)
                                 .fillMaxWidth()
                                 .padding(top = 12.dp, bottom = 4.dp)
                                 .pointerInput(Unit) {
-                                    detectVerticalDragGestures { _, dragAmount ->
-                                        if (dragAmount > 15f) {
-                                            closeDialpad(null)
-                                        }
-                                    }
+                                     detectVerticalDragGestures { _, dragAmount ->
+                                         if (dragAmount > 15f) {
+                                             closeDialpad(null)
+                                         }
+                                     }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(3.dp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                color = if (isLight) Color(0xFF74777F).copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                                 modifier = Modifier.size(width = 36.dp, height = 4.dp)
                             ) {}
                         }
