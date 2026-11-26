@@ -38,6 +38,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
@@ -702,6 +705,9 @@ fun DialPadContent(
         mutableStateOf(initialNumber ?: if (dialpadMemoryEnabled) DialpadDraftHolder.pendingNumber else "")
     }
     var isDialpadExpanded by rememberSaveable { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        isDialpadExpanded = true
+    }
     LaunchedEffect(initialNumber) {
         if (!initialNumber.isNullOrEmpty()) {
             isDialpadExpanded = true
@@ -2144,31 +2150,49 @@ fun DialPadContent(
             }
         }
 
-        // ── Middle section: results / pills / clipboard (scrollable, fills space) ──
+        // ── Middle section: results / pills / clipboard + collapsible keypad overlay ──
         val dialpadResultsScrollState = rememberScrollState()
 
+        // Stateless NestedScrollConnection consuming vertical onPostScroll deltas so residual
+        // fling/overscroll does not propagate into ModalBottomSheet's AnchoredDraggableState.
+        val resultsNestedScroll = remember {
+            object : NestedScrollConnection {
+                override fun onPostScroll(
+                    consumed: Offset,
+                    available: Offset,
+                    source: NestedScrollSource
+                ): Offset {
+                    return available.copy(x = 0f)
+                }
+            }
+        }
+
         // Safe coroutine-based scroll-to-collapse observer: avoids mutating layout state
-        // synchronously inside NestedScrollConnection mid-scroll-dispatch.
+        // synchronously inside NestedScrollConnection or invalidating focus mid-scroll.
         LaunchedEffect(dialpadResultsScrollState) {
             snapshotFlow {
                 dialpadResultsScrollState.isScrollInProgress to dialpadResultsScrollState.value
             }.collect { (isScrolling, scrollOffset) ->
                 if (isScrolling && isDialpadExpanded && scrollOffset > 24) {
-                    focusManager.clearFocus()
                     keyboardController?.hide()
                     isDialpadExpanded = false
                 }
             }
         }
 
-        Column(
+        Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .heightIn(max = screenHeight)
-                .verticalScroll(dialpadResultsScrollState),
-            verticalArrangement = Arrangement.Top
         ) {
+            // Layer 1 (Results List): stable, unchanging height viewport
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(resultsNestedScroll)
+                    .verticalScroll(dialpadResultsScrollState),
+                verticalArrangement = Arrangement.Top
+            ) {
 
         // Dialpad search history when focused and query is blank
         AnimatedVisibility(
@@ -2443,17 +2467,21 @@ fun DialPadContent(
             }
         }
 
-        } // end scrollable middle Column
+            // Bottom padding so items scroll cleanly above the keypad when expanded or above the FAB when collapsed
+            Spacer(modifier = Modifier.height(if (showDialpad) 540.dp else 96.dp))
+        } // end Layer 1 Column
 
-        // ── Dialpad card — collapses on scroll, hides when search is active ──
-        AnimatedVisibility(
+        // ── Layer 2 (Collapsible Keypad Overlay at Alignment.BottomCenter) ──
+        // Pure GPU translation with slideInVertically / slideOutVertically so the scroll viewport does not resize mid-fling.
+        androidx.compose.animation.AnimatedVisibility(
             visible = showDialpad && isDialpadExpanded,
-            enter = expandVertically(
+            enter = slideInVertically(
                 animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-            ) + fadeIn(animationSpec = tween(durationMillis = 150)),
-            exit = shrinkVertically(
-                animationSpec = tween(durationMillis = 160, easing = FastOutLinearInEasing)
-            ) + fadeOut(animationSpec = tween(durationMillis = 120))
+            ) { it } + fadeIn(animationSpec = tween(durationMillis = 150)),
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 150, easing = FastOutLinearInEasing)
+            ) { it } + fadeOut(animationSpec = tween(durationMillis = 110)),
+            modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             val dialpadBorderColor = if (!isDark) Color(0xFFE0E3E8) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
             val dialpadContainerShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
@@ -2840,6 +2868,7 @@ fun DialPadContent(
 
                                                 DialerActionExpressive(
                                                     onClick = {
+                                                        isDialpadExpanded = true
                                                         if (number.isNotEmpty()) {
                                                             backspaceAtCursor()
                                                         }
@@ -2863,7 +2892,8 @@ fun DialPadContent(
                     } // end CompositionLocalProvider (LocalDensity)
                 } // end Box (dialpad card container)
             } // end Column (shadow + container)
-        } // end AnimatedVisibility (dialpad card)
+        } // end AnimatedVisibility (keypad overlay)
+        } // end layered Box
 
         Spacer(modifier = Modifier.height(4.dp))
         } // end outer Column
