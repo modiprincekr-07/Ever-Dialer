@@ -67,7 +67,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.graphics.RectangleShape
-import com.modiprincekr.thedialer.view.components.LocalExpressiveAvatarRotationEnabled
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -225,7 +224,6 @@ private fun DialpadExtraResultTile(
             subtitle = if (result.entry.name.isNullOrEmpty() || result.entry.name == result.entry.number) null else result.entry.number,
             icon = Icons.Default.Person,
             phoneNumber = result.entry.number,
-            enableRotation = false,
             onAvatarClick = { onOpenContactInfo(result.entry.number) },
             onClick = { onCallNumber(result.entry.number) }
         )
@@ -234,7 +232,6 @@ private fun DialpadExtraResultTile(
             subtitle = "${result.item.phoneNumber} • ${result.item.categoryTag}",
             icon = Icons.Outlined.ContactPhone,
             phoneNumber = result.item.phoneNumber,
-            enableRotation = false,
             titleTrailing = {
                 Box(
                     modifier = Modifier
@@ -261,7 +258,6 @@ private fun DialpadExtraResultTile(
             subtitle = result.item.phoneNumber,
             icon = Icons.Default.Mic,
             phoneNumber = result.item.phoneNumber,
-            enableRotation = false,
             onAvatarClick = { if (result.item.phoneNumber.isNotBlank()) onOpenContactInfo(result.item.phoneNumber) },
             onClick = { if (result.item.phoneNumber.isNotBlank()) onCallNumber(result.item.phoneNumber) }
         )
@@ -270,7 +266,6 @@ private fun DialpadExtraResultTile(
             subtitle = result.note.content,
             icon = Icons.Default.StickyNote2,
             phoneNumber = result.note.phoneNumber,
-            enableRotation = false,
             onAvatarClick = { if (result.note.phoneNumber.isNotBlank()) onOpenContactInfo(result.note.phoneNumber) },
             onClick = { if (result.note.phoneNumber.isNotBlank()) onCallNumber(result.note.phoneNumber) }
         )
@@ -279,7 +274,6 @@ private fun DialpadExtraResultTile(
             subtitle = result.item.noteText,
             icon = Icons.Default.Mic,
             phoneNumber = result.item.phoneNumber,
-            enableRotation = false,
             onAvatarClick = { if (result.item.phoneNumber.isNotBlank()) onOpenContactInfo(result.item.phoneNumber) },
             onClick = { if (result.item.phoneNumber.isNotBlank()) onCallNumber(result.item.phoneNumber) }
         )
@@ -2203,14 +2197,13 @@ fun DialPadContent(
         ) {
             val resultsCardBg = if (!isDark) Color(0xFFF2F3F5) else MaterialTheme.colorScheme.surfaceContainerLow
             // Layer 1 (Results List): stable, unchanging height viewport
-            CompositionLocalProvider(LocalExpressiveAvatarRotationEnabled provides false) {
-                LazyColumn(
-                    state = resultsListState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .nestedScroll(resultsNestedScroll),
-                    verticalArrangement = Arrangement.Top
-                ) {
+            LazyColumn(
+                state = resultsListState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(resultsNestedScroll),
+                verticalArrangement = Arrangement.Top
+            ) {
 
                     // Dialpad search history when focused and query is blank
                     if (searchQuery.isBlank() && searchFieldFocused && dialpadSearchHistory.isNotEmpty()) {
@@ -2289,7 +2282,6 @@ fun DialPadContent(
                                         title    = contact.name,
                                         subtitle = contactNum,
                                         photoUri = contact.photoUri,
-                                        enableRotation = false,
                                         onAvatarClick = {
                                             saveDialpadSearchQuery()
                                             navigateToContact(contactId = contact.id)
@@ -2508,7 +2500,6 @@ fun DialPadContent(
                         Spacer(modifier = Modifier.height(if (showDialpad && isDialpadExpanded) 540.dp else 96.dp))
                     }
                 } // end Layer 1 LazyColumn
-            } // end CompositionLocalProvider
 
             // ── Layer 2 (Collapsible Keypad Overlay at Alignment.BottomCenter) ──
             if (showDialpad && isDialpadExpanded) {
