@@ -2999,22 +2999,6 @@ fun DialPadContent(
         Spacer(modifier = Modifier.height(4.dp))
         } // end outer Column
 
-        val liquidGlass = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_LIQUID_GLASS, false) }
-        val lgRecentsFab = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_LG_RECENTS_FAB, true) }
-        val blurEffects = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_BLUR_EFFECTS, false) }
-        val blurRecentsFab = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_BLUR_RECENTS_FAB, true) }
-        val lgRecentsConfig = remember(settingsState) { prefs.getLiquidGlassConfig(PreferenceManager.KEY_LG_RECENTS_FAB) }
-        val blurRecentsConfig = remember(settingsState) { prefs.getBlurConfig(PreferenceManager.KEY_BLUR_RECENTS_FAB) }
-        val isDynamic = remember(settingsState) { prefs.getBoolean(PreferenceManager.KEY_DYNAMIC_COLORS, true) }
-        val usePrimary = isSaturatedActive || !isDynamic
-        val fabBg = if (usePrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer
-        val fabFg = if (isSaturatedActive && isDark) Color.Black else if (usePrimary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
-        val fabShape = RoundedCornerShape(17.dp)
-        val useLiquidGlass = liquidGlass && lgRecentsFab && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-        val useBlur = blurEffects && blurRecentsFab && !useLiquidGlass && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-        val globalBackdrop = LocalLiquidGlassBackdrop.current
-        val fabDensity = LocalDensity.current.density
-
         // ── Floating Reopen Dialpad FAB ──
         AnimatedVisibility(
             visible = !isDialpadExpanded && showDialpad,
@@ -3035,97 +3019,28 @@ fun DialPadContent(
                 isDialpadExpanded = true
             }
 
-            if (useLiquidGlass && globalBackdrop != null) {
-                FloatingActionButton(
-                    onClick = onReopenDialpad,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.35f),
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    shape = fabShape,
-                    elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
-                    modifier = Modifier.size(56.dp).drawBackdrop(
-                        backdrop = globalBackdrop,
-                        shape = { fabShape },
-                        effects = {
-                            colorControls(brightness = lgRecentsConfig.brightness, saturation = lgRecentsConfig.saturation)
-                            if (lgRecentsConfig.blurRadiusDp > 0f) blur(lgRecentsConfig.blurRadiusDp * fabDensity)
-                            lens(
-                                refractionHeight = lgRecentsConfig.refractionHeightDp * fabDensity,
-                                refractionAmount = lgRecentsConfig.refractionAmountDp * fabDensity,
-                                chromaticAberration = lgRecentsConfig.chromaticAberration,
-                                depthEffect = lgRecentsConfig.depthEffect
-                            )
-                        },
-                        highlight = { Highlight.Default }
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (!isDark) Color(0xFFF2F3F5).copy(alpha = 0.94f)
+                        else Color(0xFF1E2025).copy(alpha = 0.92f)
                     )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Dialpad,
-                        contentDescription = "Open Dialpad",
-                        modifier = Modifier.size(26.dp)
+                    .border(
+                        1.dp,
+                        if (!isDark) Color(0xFFD8DCE3) else Color.White.copy(alpha = 0.16f),
+                        CircleShape
                     )
-                }
-            } else if (useLiquidGlass) {
-                FloatingActionButton(
-                    onClick = onReopenDialpad,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    shape = fabShape,
-                    elevation = FloatingActionButtonDefaults.elevation(2.dp, 4.dp),
-                    modifier = Modifier.size(56.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Dialpad,
-                        contentDescription = "Open Dialpad",
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
-            } else if (useBlur && globalBackdrop != null) {
-                Box(
-                    modifier = Modifier.size(56.dp).drawBackdrop(
-                        backdrop = globalBackdrop,
-                        shape = { fabShape },
-                        effects = {
-                            colorControls(saturation = blurRecentsConfig.saturation)
-                            blur(blurRecentsConfig.blurRadiusDp * fabDensity)
-                        },
-                        highlight = { Highlight.Default }
-                    )
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(fabBg.copy(alpha = 0.35f), fabShape)
-                    )
-                    FloatingActionButton(
-                        onClick = onReopenDialpad,
-                        containerColor = Color.Transparent,
-                        contentColor = fabFg,
-                        shape = fabShape,
-                        elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Dialpad,
-                            contentDescription = "Open Dialpad",
-                            modifier = Modifier.size(26.dp)
-                        )
-                    }
-                }
-            } else {
-                FloatingActionButton(
-                    onClick = onReopenDialpad,
-                    containerColor = fabBg,
-                    contentColor = fabFg,
-                    shape = fabShape,
-                    elevation = FloatingActionButtonDefaults.elevation(6.dp, 10.dp),
-                    modifier = Modifier.size(56.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Dialpad,
-                        contentDescription = "Open Dialpad",
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
+                    .clickable(onClick = onReopenDialpad),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Dialpad,
+                    contentDescription = "Open Dialpad",
+                    tint = if (!isDark) Color(0xFF1A1A1C) else Color.White,
+                    modifier = Modifier.size(26.dp)
+                )
             }
         }
         } // end BoxWithConstraints (screen)
