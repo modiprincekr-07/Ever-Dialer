@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -62,6 +63,10 @@ fun AuthLockScreen(
     val expectedPassword = remember { prefs.getString(PreferenceManager.KEY_BIOMETRICS_PASSWORD, "") ?: "" }
     val expectedPattern = remember { prefs.getString(PreferenceManager.KEY_BIOMETRICS_PATTERN, "") ?: "" }
     val isPatternVisible = remember { prefs.isPatternVisible() }
+    val pinPadScramble = remember { prefs.isPinPadScramble() }
+    val scrambledDigits = remember(pinPadScramble) {
+        if (pinPadScramble) (0..9).shuffled() else null
+    }
 
     // Active credential state: null means showing biometric prompt / fallback view;
     // "pin", "pattern", "password" means displaying the respective credential UI.
@@ -114,6 +119,8 @@ fun AuthLockScreen(
         }
     }
 
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -123,13 +130,21 @@ fun AuthLockScreen(
             ) {},
         contentAlignment = Alignment.Center
     ) {
-        // Blurred translucent background overlay
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(16.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
-                .background(Color.Black.copy(alpha = 0.72f))
-        )
+        // Pure White background in Light Theme, blurred translucent overlay in Dark Theme
+        if (isDark) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(16.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+                    .background(Color.Black.copy(alpha = 0.72f))
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFFFFFFF))
+            )
+        }
 
         AnimatedContent(
             targetState = activeCredential,
@@ -153,6 +168,7 @@ fun AuthLockScreen(
                             expectedPin = expectedPin,
                             title = "Enter PIN",
                             showCloseButton = canDismiss,
+                            scrambledDigits = scrambledDigits,
                             onConfirm = { onSuccess() },
                             onDismiss = {
                                 if (biometricType == "system") {
@@ -310,6 +326,7 @@ fun AuthLockScreen(
                                 text = title,
                                 style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.Bold,
+                                color = if (!isDark) Color(0xFF111318) else MaterialTheme.colorScheme.onSurface,
                                 textAlign = TextAlign.Center
                             )
 
@@ -320,7 +337,7 @@ fun AuthLockScreen(
                                     subtitle
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (!isDark) Color(0xFF44474E) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center
                             )
 

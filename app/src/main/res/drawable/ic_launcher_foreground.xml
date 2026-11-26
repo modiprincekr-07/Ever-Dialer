@@ -1,3 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
-    android:src="@mipmap/ic_launcher_foreground" />
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:strokeColor="#111111"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M 18,85 C 22,81 24,84 28,84 C 32,84 33,79 36,75 C 33,73 30,68 32,64 L 36,60 C 38,58 41,58 43,60 L 46,63 C 50,59 55,54 59,50 L 62,47 C 64,45 64,42 62,40 L 66,36 C 70,32 75,34 77,37 C 80,41 78,46 74,49 C 66,41 53,54 45,62 C 42,65 39,70 36,75" />
+</vector>

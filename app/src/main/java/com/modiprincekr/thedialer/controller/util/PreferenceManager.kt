@@ -125,6 +125,23 @@ class PreferenceManager(context: Context) {
 
     fun isPatternVisible(): Boolean = getBoolean(KEY_BIOMETRICS_PATTERN_VISIBLE, true)
 
+    fun isPinPadScramble(): Boolean = getBoolean(KEY_PIN_PAD_SCRAMBLE, false)
+    fun setPinPadScramble(enabled: Boolean) = setBoolean(KEY_PIN_PAD_SCRAMBLE, enabled)
+
+    fun getDialpadHeightScale(): Float = getFloat(KEY_DIALPAD_HEIGHT_SCALE, 1.0f)
+    fun setDialpadHeightScale(scale: Float) = setFloat(KEY_DIALPAD_HEIGHT_SCALE, scale)
+
+    fun getDialpadButtonStyle(): String {
+        val stored = getString(KEY_DIALPAD_BUTTON_STYLE, null)
+        if (!stored.isNullOrBlank()) return stored
+        val legacyCircle = getBoolean(KEY_DIALPAD_CIRCLE_BUTTONS, false)
+        return if (legacyCircle) DIALPAD_BUTTON_STYLE_CIRCLE else DIALPAD_BUTTON_STYLE_SQUIRCLE
+    }
+    fun setDialpadButtonStyle(style: String) {
+        setString(KEY_DIALPAD_BUTTON_STYLE, style)
+        setBoolean(KEY_DIALPAD_CIRCLE_BUTTONS, style == DIALPAD_BUTTON_STYLE_CIRCLE)
+    }
+
     fun getBiometricsBackupType(): String {
         val stored = getString(KEY_BIOMETRICS_BACKUP_TYPE, "") ?: ""
         if (stored == "pattern" && (getString(KEY_BIOMETRICS_PATTERN, "") ?: "").isNotEmpty()) return "pattern"
@@ -1148,7 +1165,12 @@ class PreferenceManager(context: Context) {
         const val KEY_BLOCK_UNKNOWN         = "block_unknown_callers"
         const val KEY_BLOCK_HIDDEN          = "block_hidden_callers"
         const val KEY_OPEN_DIALPAD_DEFAULT  = "open_dialpad_default"
+        const val KEY_DIALPAD_HEIGHT_SCALE  = "dialpad_height_scale"
         const val KEY_DIALPAD_CIRCLE_BUTTONS = "dialpad_circle_buttons"
+        const val KEY_DIALPAD_BUTTON_STYLE  = "dialpad_button_style"
+        const val DIALPAD_BUTTON_STYLE_CIRCLE   = "circle"
+        const val DIALPAD_BUTTON_STYLE_SQUIRCLE = "squircle"
+        const val DIALPAD_BUTTON_STYLE_GRID     = "grid"
         const val KEY_HIDE_RATE_AND_REVIEW  = "hide_rate_and_review"
         const val KEY_RATE_REVIEW_HIDDEN_SECRET = "rate_review_hidden_secret"
         // Written by the bundled Ever Call Recorder module (:recorder) directly into this same
@@ -1377,6 +1399,7 @@ class PreferenceManager(context: Context) {
         const val KEY_BIOMETRICS_PASSWORD      = "biometrics_password"
         const val KEY_BIOMETRICS_PATTERN       = "biometrics_pattern"
         const val KEY_BIOMETRICS_PATTERN_VISIBLE = "biometrics_pattern_visible"
+        const val KEY_PIN_PAD_SCRAMBLE         = "pin_pad_scramble"
         const val KEY_BIOMETRICS_BACKUP_TYPE   = "biometrics_backup_type" // "pin" | "pattern" | "password"
         const val KEY_BIOMETRICS_APP_LOCK      = "biometrics_app_lock"
         const val KEY_BIOMETRICS_CALL_LOCK     = "biometrics_call_lock"

@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -142,10 +143,11 @@ fun PatternLockCanvas(
     var currentDragOffset by remember { mutableStateOf<Offset?>(null) }
     var dotCenters by remember { mutableStateOf(List(9) { Offset.Zero }) }
 
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val primaryColor = MaterialTheme.colorScheme.primary
     val errorColor = MaterialTheme.colorScheme.error
     val outlineColor = MaterialTheme.colorScheme.outlineVariant
-    val dotInactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+    val dotInactiveColor = if (!isDark) Color(0xFF9AA0A6) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
     val ringColor = if (isError) errorColor.copy(alpha = 0.25f) else primaryColor.copy(alpha = 0.25f)
     val activePathColor = if (isError) errorColor else primaryColor
 
@@ -374,6 +376,10 @@ fun PatternCredentialView(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
+        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+        val textPrimary = if (!isDark) Color(0xFF111318) else MaterialTheme.colorScheme.onSurface
+        val textSecondary = if (!isDark) Color(0xFF44474E) else MaterialTheme.colorScheme.onSurfaceVariant
+
         if (showCloseButton) {
             IconButton(
                 onClick = onDismiss,
@@ -385,7 +391,7 @@ fun PatternCredentialView(
                 Icon(
                     Icons.Default.Close,
                     contentDescription = "Close",
-                    tint = MaterialTheme.colorScheme.onSurface
+                    tint = textPrimary
                 )
             }
         }
@@ -423,6 +429,7 @@ fun PatternCredentialView(
                 },
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
+                color = textPrimary,
                 textAlign = TextAlign.Center
             )
 
@@ -431,7 +438,7 @@ fun PatternCredentialView(
             Text(
                 text = statusText,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (isError) MaterialTheme.colorScheme.error else textSecondary,
                 textAlign = TextAlign.Center
             )
 
@@ -485,6 +492,8 @@ fun PinDotsRow(
     isError: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val unfilledDotColor = if (!isDark) Color(0xFFDDE2EA) else MaterialTheme.colorScheme.surfaceContainerHighest
     val totalDots = pinLength.coerceAtLeast(4).coerceAtMost(8)
     Row(
         modifier = modifier,
@@ -505,7 +514,7 @@ fun PinDotsRow(
                 targetValue = when {
                     isError -> MaterialTheme.colorScheme.error
                     filled -> MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                    else -> unfilledDotColor
                 },
                 animationSpec = tween(140),
                 label = "dotColor$index"
@@ -527,24 +536,54 @@ fun PinNumpad(
     onDigit: (String) -> Unit,
     onBackspace: () -> Unit,
     onSubmit: () -> Unit,
+    scrambledDigits: List<Int>? = null,
     modifier: Modifier = Modifier
 ) {
-    val keys = listOf(
-        listOf("1" to "", "2" to "ABC", "3" to "DEF"),
-        listOf("4" to "GHI", "5" to "JKL", "6" to "MNO"),
-        listOf("7" to "PQRS", "8" to "TUV", "9" to "WXYZ"),
-        listOf("⌫" to "", "0" to "+", "✓" to "")
-    )
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
+    fun getSubText(d: String): String = when (d) {
+        "2" -> "ABC"
+        "3" -> "DEF"
+        "4" -> "GHI"
+        "5" -> "JKL"
+        "6" -> "MNO"
+        "7" -> "PQRS"
+        "8" -> "TUV"
+        "9" -> "WXYZ"
+        "0" -> "+"
+        else -> ""
+    }
+
+    val keys = if (scrambledDigits != null && scrambledDigits.size == 10) {
+        val d = scrambledDigits.map { it.toString() }
+        listOf(
+            listOf(d[0] to getSubText(d[0]), d[1] to getSubText(d[1]), d[2] to getSubText(d[2])),
+            listOf(d[3] to getSubText(d[3]), d[4] to getSubText(d[4]), d[5] to getSubText(d[5])),
+            listOf(d[6] to getSubText(d[6]), d[7] to getSubText(d[7]), d[8] to getSubText(d[8])),
+            listOf("⌫" to "", d[9] to getSubText(d[9]), "✓" to "")
+        )
+    } else {
+        listOf(
+            listOf("1" to "", "2" to "ABC", "3" to "DEF"),
+            listOf("4" to "GHI", "5" to "JKL", "6" to "MNO"),
+            listOf("7" to "PQRS", "8" to "TUV", "9" to "WXYZ"),
+            listOf("⌫" to "", "0" to "+", "✓" to "")
+        )
+    }
+
+    val keyBgColor = if (!isDark) Color(0xFFF2F3F5) else MaterialTheme.colorScheme.surfaceContainerHigh
+    val keyFgColor = if (!isDark) Color(0xFF111318) else MaterialTheme.colorScheme.onSurface
+    val subTextColor = if (!isDark) Color(0xFF74777F) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
 
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         keys.forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 row.forEach { (key, subText) ->
@@ -559,76 +598,73 @@ fun PinNumpad(
                         label = "keyScale$key"
                     )
 
-                    Box(
-                        modifier = Modifier.weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        when (key) {
-                            "⌫" -> Surface(
-                                onClick = onBackspace,
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                modifier = Modifier
-                                    .size(68.dp)
-                                    .scale(scale),
-                                interactionSource = interaction
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Default.Backspace,
-                                        contentDescription = "Backspace",
-                                        modifier = Modifier.size(22.dp),
-                                        tint = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
+                    when (key) {
+                        "⌫" -> Surface(
+                            onClick = onBackspace,
+                            shape = CircleShape,
+                            color = keyBgColor,
+                            modifier = Modifier
+                                .size(78.dp)
+                                .scale(scale),
+                            interactionSource = interaction
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Backspace,
+                                    contentDescription = "Backspace",
+                                    modifier = Modifier.size(24.dp),
+                                    tint = keyFgColor
+                                )
                             }
-                            "✓" -> Surface(
-                                onClick = onSubmit,
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .size(68.dp)
-                                    .scale(scale),
-                                interactionSource = interaction
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = "Confirm",
-                                        modifier = Modifier.size(26.dp),
-                                        tint = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                }
+                        }
+                        "✓" -> Surface(
+                            onClick = onSubmit,
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .size(78.dp)
+                                .scale(scale),
+                            interactionSource = interaction
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = "Confirm",
+                                    modifier = Modifier.size(28.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimary
+                                )
                             }
-                            else -> Surface(
-                                onClick = { onDigit(key) },
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                modifier = Modifier
-                                    .size(68.dp)
-                                    .scale(scale),
-                                interactionSource = interaction
+                        }
+                        else -> Surface(
+                            onClick = { onDigit(key) },
+                            shape = CircleShape,
+                            color = keyBgColor,
+                            modifier = Modifier
+                                .size(78.dp)
+                                .scale(scale),
+                            interactionSource = interaction
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Column(
-                                    modifier = Modifier.fillMaxSize(),
-                                    verticalArrangement = Arrangement.Center,
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
+                                Text(
+                                    text = key,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 30.sp,
+                                    color = keyFgColor,
+                                    lineHeight = 32.sp
+                                )
+                                if (subText.isNotEmpty()) {
                                     Text(
-                                        text = key,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 24.sp
+                                        text = subText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = subTextColor,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        letterSpacing = 1.sp
                                     )
-                                    if (subText.isNotEmpty()) {
-                                        Text(
-                                            text = subText,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -646,10 +682,14 @@ fun PinCredentialView(
     expectedPin: String = "",
     title: String = if (isVerify) "Enter PIN" else "Set PIN",
     showCloseButton: Boolean = true,
+    scrambledDigits: List<Int>? = null,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val textPrimary = if (!isDark) Color(0xFF111318) else MaterialTheme.colorScheme.onSurface
+    val textSecondary = if (!isDark) Color(0xFF44474E) else MaterialTheme.colorScheme.onSurfaceVariant
     var phase by remember { mutableIntStateOf(if (isVerify) 2 else 0) }
     var pin by remember { mutableStateOf("") }
     var firstPin by remember { mutableStateOf("") }
@@ -736,7 +776,7 @@ fun PinCredentialView(
                 Icon(
                     Icons.Default.Close,
                     contentDescription = "Close",
-                    tint = MaterialTheme.colorScheme.onSurface
+                    tint = textPrimary
                 )
             }
         }
@@ -774,6 +814,7 @@ fun PinCredentialView(
                 },
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
+                color = textPrimary,
                 textAlign = TextAlign.Center
             )
 
@@ -782,7 +823,7 @@ fun PinCredentialView(
             Text(
                 text = subtitleText,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (isError) MaterialTheme.colorScheme.error else textSecondary,
                 textAlign = TextAlign.Center
             )
 
@@ -808,7 +849,8 @@ fun PinCredentialView(
                 PinNumpad(
                     onDigit = ::onDigit,
                     onBackspace = ::onBackspace,
-                    onSubmit = ::onSubmit
+                    onSubmit = ::onSubmit,
+                    scrambledDigits = scrambledDigits
                 )
             }
         }
@@ -830,6 +872,27 @@ fun PasswordCredentialView(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val textPrimary = if (!isDark) Color(0xFF111318) else MaterialTheme.colorScheme.onSurface
+    val textSecondary = if (!isDark) Color(0xFF44474E) else MaterialTheme.colorScheme.onSurfaceVariant
+
+    val textFieldColors = if (!isDark) {
+        OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Color(0xFF111318),
+            unfocusedTextColor = Color(0xFF111318),
+            focusedContainerColor = Color.White,
+            unfocusedContainerColor = Color(0xFFF8F9FA),
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = Color(0xFF74777F),
+            focusedLabelColor = MaterialTheme.colorScheme.primary,
+            unfocusedLabelColor = Color(0xFF44474E),
+            focusedTrailingIconColor = Color(0xFF111318),
+            unfocusedTrailingIconColor = Color(0xFF44474E)
+        )
+    } else {
+        OutlinedTextFieldDefaults.colors()
+    }
+
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
@@ -891,7 +954,7 @@ fun PasswordCredentialView(
                 Icon(
                     Icons.Default.Close,
                     contentDescription = "Close",
-                    tint = MaterialTheme.colorScheme.onSurface
+                    tint = textPrimary
                 )
             }
         }
@@ -926,6 +989,7 @@ fun PasswordCredentialView(
                 text = if (isVerify) title else "Set Password",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
+                color = textPrimary,
                 textAlign = TextAlign.Center
             )
 
@@ -934,7 +998,7 @@ fun PasswordCredentialView(
             Text(
                 text = if (isVerify) "Enter your alphanumeric password" else "Letters, numbers & symbols",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = textSecondary,
                 textAlign = TextAlign.Center
             )
 
@@ -952,6 +1016,7 @@ fun PasswordCredentialView(
                     onValueChange = { password = it; errorText = "" },
                     label = { Text(if (isVerify) "Password" else "New Password") },
                     singleLine = true,
+                    colors = textFieldColors,
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Password,
@@ -976,6 +1041,7 @@ fun PasswordCredentialView(
                         onValueChange = { confirmPassword = it; errorText = "" },
                         label = { Text("Confirm Password") },
                         singleLine = true,
+                        colors = textFieldColors,
                         visualTransformation = if (showConfirm) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Password,
@@ -1014,7 +1080,7 @@ fun PasswordCredentialView(
                             modifier = Modifier.weight(1f).height(50.dp),
                             shape = RoundedCornerShape(14.dp)
                         ) {
-                            Text("Cancel")
+                            Text("Cancel", color = textPrimary)
                         }
                     }
                     Button(
@@ -1050,19 +1116,23 @@ fun CredentialSetupDialog(
             decorFitsSystemWindows = false
         )
     ) {
+        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.72f)),
+                .background(if (isDark) Color.Black.copy(alpha = 0.72f) else Color.White),
             contentAlignment = Alignment.Center
         ) {
-            // Blurred background overlay
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .blur(16.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
-                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.65f))
-            )
+            if (isDark) {
+                // Blurred background overlay
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .blur(16.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.65f))
+                )
+            }
 
             Box(
                 modifier = Modifier
