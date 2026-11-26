@@ -43,6 +43,12 @@ import kotlin.math.abs
 val LocalPfpRotationAngle = compositionLocalOf<() -> Float> { { 0f } }
 
 /**
+ * CompositionLocal to disable rotation animations on ExpressiveAvatar (e.g. in dialpad search
+ * results) to prevent deep nested RenderNode recursions in Android 17 libhwui SkiaDisplayList.
+ */
+val LocalDisableAvatarRotation = compositionLocalOf { false }
+
+/**
  * Reusable Expressive Avatar Composable.
  * Clips the outer container to the user's active PFP Shape (from [PreferenceManager.getSelectedPfpShape]),
  * rotates the outer shape container by [LocalPfpRotationAngle], and applies exact counter-rotation
@@ -69,7 +75,8 @@ fun ExpressiveAvatar(
     val settingsState by prefs.settingsChanged.collectAsState()
 
     val activeShapeKey = shapeKey ?: remember(settingsState) { prefs.getSelectedPfpShape() }
-    val allowAnimation = animateRotation ?: remember(settingsState) { prefs.isAnimatePfpShapeRotation() }
+    val disableRotation = LocalDisableAvatarRotation.current
+    val allowAnimation = if (disableRotation) false else (animateRotation ?: remember(settingsState) { prefs.isAnimatePfpShapeRotation() })
     val isExpressive = PfpShapeRegistry.isExpressive(activeShapeKey) && activeShapeKey != "circle" && activeShapeKey != "square"
 
     val effectiveShape = remember(activeShapeKey, size) {

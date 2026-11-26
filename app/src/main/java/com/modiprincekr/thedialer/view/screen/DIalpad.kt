@@ -60,7 +60,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.graphicsLayer
+import com.modiprincekr.thedialer.view.components.LocalDisableAvatarRotation
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -167,7 +167,6 @@ import org.koin.compose.viewmodel.koinActivityViewModel
 import java.util.Locale
 import com.modiprincekr.thedialer.liquidglass.drawBackdrop
 import com.modiprincekr.thedialer.liquidglass.drawPlainBackdrop
-import com.modiprincekr.thedialer.liquidglass.effects.blur
 import com.modiprincekr.thedialer.liquidglass.effects.lens
 import com.modiprincekr.thedialer.liquidglass.effects.colorControls
 import com.modiprincekr.thedialer.liquidglass.highlight.Highlight
@@ -293,39 +292,41 @@ private fun DialpadRecentCallLogsList(
     onShowSimPickerForNumber: (String) -> Unit,
     navigator: DestinationsNavigator? = null
 ) {
-    recentLogs.forEachIndexed { index, log ->
-        CallLogTile(
-            log = log,
-            navigator = navigator,
-            onTileClick = { clickedLog ->
-                if (showSimButtons && clickedLog.number.isNotEmpty()) {
-                    replaceNumber(clickedLog.number)
-                    clearSearch()
-                } else if (directCallOnTap) {
+    CompositionLocalProvider(LocalDisableAvatarRotation provides true) {
+        recentLogs.forEachIndexed { index, log ->
+            CallLogTile(
+                log = log,
+                navigator = navigator,
+                onTileClick = { clickedLog ->
+                    if (showSimButtons && clickedLog.number.isNotEmpty()) {
+                        replaceNumber(clickedLog.number)
+                        clearSearch()
+                    } else if (directCallOnTap) {
+                        val recentSlot = if (clickedLog.simSlot in 0..1) clickedLog.simSlot else null
+                        placeCallHonoringContactSim(context, prefs, clickedLog.contactId ?: clickedLog.number, clickedLog.number, recentSlot) {
+                            onShowSimPickerForNumber(clickedLog.number)
+                        }
+                    } else {
+                        navigateToContact(clickedLog.contactId, clickedLog.number)
+                    }
+                },
+                onButtonClick = { clickedLog ->
                     val recentSlot = if (clickedLog.simSlot in 0..1) clickedLog.simSlot else null
                     placeCallHonoringContactSim(context, prefs, clickedLog.contactId ?: clickedLog.number, clickedLog.number, recentSlot) {
                         onShowSimPickerForNumber(clickedLog.number)
                     }
-                } else {
+                },
+                onAvatarClick = { clickedLog ->
                     navigateToContact(clickedLog.contactId, clickedLog.number)
                 }
-            },
-            onButtonClick = { clickedLog ->
-                val recentSlot = if (clickedLog.simSlot in 0..1) clickedLog.simSlot else null
-                placeCallHonoringContactSim(context, prefs, clickedLog.contactId ?: clickedLog.number, clickedLog.number, recentSlot) {
-                    onShowSimPickerForNumber(clickedLog.number)
-                }
-            },
-            onAvatarClick = { clickedLog ->
-                navigateToContact(clickedLog.contactId, clickedLog.number)
-            }
-        )
-        if (index < recentLogs.size - 1) {
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                thickness = 0.5.dp
             )
+            if (index < recentLogs.size - 1) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    thickness = 0.5.dp
+                )
+            }
         }
     }
 }
@@ -1676,7 +1677,8 @@ fun DialPadContent(
                                         label = "DialpadSearchResultsItemsAnimationLandscape",
                                         modifier = Modifier.fillMaxWidth()
                                     ) { (contacts, extras) ->
-                                        Column(
+                                        CompositionLocalProvider(LocalDisableAvatarRotation provides true) {
+                                            Column(
                                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                                         ) {
                                             contacts.forEach { contact ->
@@ -1722,6 +1724,7 @@ fun DialPadContent(
                                                     }
                                                 )
                                             }
+                                        }
                                         }
                                     }
                                 } else if (showCallLogsInDialpadSearchList) {
@@ -2198,7 +2201,8 @@ fun DialPadContent(
         ) {
             val resultsCardBg = if (!isDark) Color(0xFFF2F3F5) else MaterialTheme.colorScheme.surfaceContainerLow
             // Layer 1 (Results List): stable, unchanging height viewport
-            LazyColumn(
+            CompositionLocalProvider(LocalDisableAvatarRotation provides true) {
+                LazyColumn(
                 state = resultsListState,
                 modifier = Modifier
                     .fillMaxSize()
@@ -2501,6 +2505,7 @@ fun DialPadContent(
                         Spacer(modifier = Modifier.height(if (showDialpad && isDialpadExpanded) 540.dp * dialpadHeightScale else 96.dp))
                     }
                 } // end Layer 1 LazyColumn
+            }
 
             // ── Layer 2 (Collapsible Keypad Overlay at Alignment.BottomCenter) ──
             if (showDialpad && isDialpadExpanded) {

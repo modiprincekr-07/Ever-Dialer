@@ -61,6 +61,7 @@ fun SingleTile(
     phoneNumber: String? = null,
     forcePersonIcon: Boolean = false,
     showAvatar: Boolean = true,
+    animateRotation: Boolean? = null,
     onAvatarClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     isMenuOpen: Boolean = false,
@@ -108,10 +109,8 @@ fun SingleTile(
     val numberForMenu = phoneNumber ?: subtitle?.filter { it.isDigit() || it == '+' }
         ?.takeIf { it.length >= 5 } ?: subtitle
 
-    Surface(
-        color           = Color.Transparent,
-        modifier        = modifier.fillMaxWidth().scale(scale),
-        shadowElevation = 0.dp
+    Box(
+        modifier = modifier.fillMaxWidth().scale(scale)
     ) {
         Row(
             modifier = Modifier
@@ -173,6 +172,7 @@ fun SingleTile(
                     forcePersonIcon    = forcePersonIcon,
                     icon               = icon,
                     iconContainerColor = iconContainerColor,
+                    animateRotation    = animateRotation,
                     modifier           = Modifier
                         .size(42.dp)
                         .onGloballyPositioned { avatarCoords = it }

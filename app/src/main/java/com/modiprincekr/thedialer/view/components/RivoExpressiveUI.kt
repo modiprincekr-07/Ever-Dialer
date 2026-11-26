@@ -949,15 +949,13 @@ fun RivoListItem(
     var lastClickTime by remember { mutableLongStateOf(0L) }
     val itemCornerRadius = if (isExpressive) 20.dp else (LocalCardCornerRadius.current.value.coerceAtLeast(0f) * (16f / 28f)).dp
 
-    Surface(
-        color = Color.Transparent,
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
-            },
-        shadowElevation = 0.dp
+            }
     ) {
         Row(
             modifier = Modifier

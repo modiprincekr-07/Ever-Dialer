@@ -113,7 +113,8 @@ fun RivoAvatar(
     obeySolidIcons: Boolean = true,
     modifier: Modifier = Modifier,
     shape: Shape = CircleShape,
-    size: androidx.compose.ui.unit.Dp? = null
+    size: androidx.compose.ui.unit.Dp? = null,
+    animateRotation: Boolean? = null
 ) {
     if (shape == CircleShape) {
         ExpressiveAvatar(
@@ -125,7 +126,8 @@ fun RivoAvatar(
             iconContainerColor = iconContainerColor,
             forcePersonIcon = forcePersonIcon,
             autoColorAvatars = autoColorAvatars,
-            obeySolidIcons = obeySolidIcons
+            obeySolidIcons = obeySolidIcons,
+            animateRotation = animateRotation
         )
         return
     }
