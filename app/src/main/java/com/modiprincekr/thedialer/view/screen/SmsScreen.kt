@@ -279,7 +279,7 @@ fun SmsScreen(
     // Midnight rollover ticker while on finance tab
     LaunchedEffect(selectedFilter) {
         if (selectedFilter == "finance") {
-            while (kotlinx.coroutines.isActive) {
+            while (isActive) {
                 kotlinx.coroutines.delay(30_000L)
                 val todayKey = com.modiprincekr.thedialer.controller.util.FinanceLedgerRepository.getTodayDateKey()
                 if (todayKey != com.modiprincekr.thedialer.controller.util.FinanceLedgerRepository.dailyLedgerState.value.dateKey) {
