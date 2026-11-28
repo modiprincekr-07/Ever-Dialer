@@ -877,9 +877,8 @@ fun SmsChatScreen(
                                         showMenu = false
                                         navigator.navigate(
                                             SmsChatCustomizationScreenDestination(
-                                                address = address,
-                                                threadId = effectiveThreadId,
-                                                contactName = contactName
+                                                initialAddress = address,
+                                                initialContactName = contactName ?: ""
                                             )
                                         )
                                     }

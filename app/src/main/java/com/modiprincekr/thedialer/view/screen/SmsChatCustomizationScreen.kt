@@ -47,10 +47,11 @@ import kotlin.math.roundToInt
 @Composable
 fun SmsChatCustomizationScreen(
     navigator: DestinationsNavigator,
-    address: String = "",
-    threadId: Long = -1L,
-    contactName: String? = null
+    initialAddress: String = "",
+    initialContactName: String = ""
 ) {
+    val address = initialAddress
+    val contactName = initialContactName.ifBlank { null }
     val context = LocalContext.current
     val prefs = koinInject<PreferenceManager>()
     val settingsVer by prefs.settingsChanged.collectAsState()
