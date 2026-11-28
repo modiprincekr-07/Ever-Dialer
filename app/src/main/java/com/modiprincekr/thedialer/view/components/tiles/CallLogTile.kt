@@ -37,8 +37,8 @@ fun CallLogTile(
     onClick: () -> Unit = {},
     displayNameOverride: String? = null
 ) {
-    val isMissed = log.types.any { it == CallLog.Calls.MISSED_TYPE || it == 5 } || (log.types.isEmpty() && (log.type == CallLog.Calls.MISSED_TYPE || log.type == 5))
-    val isBlocked = log.types.any { it == CallLog.Calls.BLOCKED_TYPE } || (log.types.isEmpty() && log.type == CallLog.Calls.BLOCKED_TYPE)
+    val isMissed = log.type == CallLog.Calls.MISSED_TYPE || log.type == 5
+    val isBlocked = log.type == CallLog.Calls.BLOCKED_TYPE
     val prefs = koinInject<PreferenceManager>()
     val settingsVer by prefs.settingsChanged.collectAsState()
     val use24HourTime = remember(settingsVer) { prefs.getBoolean(PreferenceManager.KEY_CALL_TIME_FORMAT_24H, false) }

@@ -51,12 +51,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import org.koin.android.ext.android.inject
+
+enum class InputSource {
+    SYSTEM,
+    EXTERNAL
+}
 
 data class CallSession(
     val call: Call,
@@ -444,6 +452,65 @@ class CallService : InCallService() {
 
         private val _audioState = MutableStateFlow<CallAudioState?>(null)
         val audioState = _audioState.asStateFlow()
+
+        val callEndedEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+        fun emitCallEnded() {
+            callEndedEvents.tryEmit(Unit)
+        }
+
+        private val _currentInputSource = MutableStateFlow(InputSource.EXTERNAL)
+        val currentInputSource: StateFlow<InputSource> = _currentInputSource.asStateFlow()
+
+        fun setMicrophoneInputSource(context: Context, source: InputSource) {
+            _currentInputSource.value = source
+            val prefs = PreferenceManager(context)
+            prefs.setString(
+                PreferenceManager.KEY_LAST_USED_MIC_ROUTE,
+                if (source == InputSource.SYSTEM) PreferenceManager.MIC_ROUTE_SYSTEM else PreferenceManager.MIC_ROUTE_EXTERNAL
+            )
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            try {
+                if (source == InputSource.SYSTEM) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        val micDev = am.availableCommunicationDevices.firstOrNull {
+                            it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC
+                        }
+                        if (micDev != null) {
+                            am.setCommunicationDevice(micDev)
+                        }
+                    }
+                    try {
+                        am.stopBluetoothSco()
+                        am.isBluetoothScoOn = false
+                    } catch (_: Throwable) {}
+                    instance?.let { s ->
+                        try { s.setAudioRoute(CallAudioState.ROUTE_BLUETOOTH) } catch (_: Throwable) {}
+                    }
+                } else {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        val btDev = am.availableCommunicationDevices.firstOrNull {
+                            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                            it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER)
+                        }
+                        if (btDev != null) {
+                            am.setCommunicationDevice(btDev)
+                        }
+                    }
+                    try {
+                        am.startBluetoothSco()
+                        am.isBluetoothScoOn = true
+                    } catch (_: Throwable) {}
+                    instance?.let { s ->
+                        try { s.setAudioRoute(CallAudioState.ROUTE_BLUETOOTH) } catch (_: Throwable) {}
+                    }
+                }
+            } catch (t: Throwable) {
+                android.util.Log.e("CallService", "Failed to setMicrophoneInputSource $source", t)
+            }
+        }
 
         val isAutoRedialActive = MutableStateFlow(false)
         @Volatile
@@ -1024,6 +1091,7 @@ class CallService : InCallService() {
             }
 
             if (state == Call.STATE_DISCONNECTED) {
+                emitCallEnded()
                 com.modiprincekr.thedialer.haptics.RingHapticManager.stopIncomingCallHaptics()
                 defaultAudioAppliedForCall.remove(call)
                 recordMissedCallDurationIfNeeded(call)
@@ -1124,6 +1192,7 @@ class CallService : InCallService() {
             }
             _heldCallSession.value = CallSession(call, state)
             if (state == Call.STATE_DISCONNECTED) {
+                emitCallEnded()
                 recordMissedCallDurationIfNeeded(call)
                 _heldCallSession.value = null
             } else {
@@ -1159,6 +1228,7 @@ class CallService : InCallService() {
                 _currentCallSession.value = CallSession(call, state)
                 updateNotification(call)
             } else if (state == Call.STATE_DISCONNECTED) {
+                emitCallEnded()
                 com.modiprincekr.thedialer.haptics.RingHapticManager.stopIncomingCallHaptics()
                 recordMissedCallDurationIfNeeded(call)
                 _incomingCallSession.value = null
@@ -1169,6 +1239,7 @@ class CallService : InCallService() {
 
     override fun onCallRemoved(call: Call) {
         super.onCallRemoved(call)
+        emitCallEnded()
         com.modiprincekr.thedialer.haptics.RingHapticManager.stopIncomingCallHaptics()
         RaiseToAnswerManager.stop(this)
         RainModeManager.onCallStateChanged(this, call)

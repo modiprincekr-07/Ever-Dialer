@@ -118,6 +118,7 @@ fun CallLogsSettingsScreen(
 
     // Call UI section checkboxes dialog
     var showCallUIDialog   by remember { mutableStateOf(false) }
+    var showCallOverviewCard by remember { mutableStateOf(prefs.getBoolean(PreferenceManager.KEY_SHOW_CALL_OVERVIEW_CARD, true)) }
     var showCategoriesDialog by remember { mutableStateOf(false) }
     var showDefaultCategoryDialog by remember { mutableStateOf(false) }
     var defaultCallCategory by remember { mutableStateOf(prefs.getDefaultCallCategory()) }
@@ -525,6 +526,22 @@ fun CallLogsSettingsScreen(
                             trailingIcon = Icons.Default.ChevronRight,
                             modifier = Modifier.settingsSearchHighlight("call_default_category", highlightedKey) { highlightedKey = null },
                             onClick = { showDefaultCategoryDialog = true }
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                        )
+                        RivoSwitchListItem(
+                            headline = "Call Overview Card",
+                            supporting = "Show call summary cards at the top of call logs",
+                            leadingIcon = Icons.Default.DashboardCustomize,
+                            iconContainerColor = ColorOrange,
+                            checked = showCallOverviewCard,
+                            modifier = Modifier.settingsSearchHighlight("call_overview_card", highlightedKey) { highlightedKey = null },
+                            onCheckedChange = {
+                                showCallOverviewCard = it
+                                prefs.setBoolean(PreferenceManager.KEY_SHOW_CALL_OVERVIEW_CARD, it)
+                            }
                         )
                     }
                 }

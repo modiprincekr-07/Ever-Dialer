@@ -537,7 +537,9 @@ fun RivoStatCard(
     icon: ImageVector,
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
-    iconTint: Color = MaterialTheme.colorScheme.primary
+    iconTint: Color = MaterialTheme.colorScheme.primary,
+    badgeBgColor: Color? = null,
+    badgeContentColor: Color? = null
 ) {
     val prefs = koinInject<PreferenceManager>()
     val settingsVer by prefs.settingsChanged.collectAsState()
@@ -550,6 +552,7 @@ fun RivoStatCard(
     val adjustedTint = adjustIconColorForTheme(iconTint, isDark)
 
     val actualContainerColor = when {
+        containerColor != MaterialTheme.colorScheme.surfaceContainerLow -> containerColor
         !solidIcons -> {
             if (containerColor == Color.Transparent) Color.Transparent
             else adjustedTint.copy(alpha = if (isDark) 0.18f else 0.12f)
@@ -566,7 +569,7 @@ fun RivoStatCard(
     val valueTextColor = if (isSaturatedSolidBrightDark) Color.Black else if (solidIcons && solidIconsDynamic && isSaturatedActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
     val labelTextColor = if (isSaturatedSolidBrightDark) Color.Black.copy(alpha = 0.78f) else if (solidIcons && solidIconsDynamic && isSaturatedActive) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f) else MaterialTheme.colorScheme.onSurfaceVariant
 
-    val (iconBgColor, iconContentColor) = when {
+    val (computedIconBg, computedIconContent) = when {
         solidIcons -> {
             if (solidIconsDynamic) {
                 if (isSaturatedActive) {
@@ -600,9 +603,16 @@ fun RivoStatCard(
         }
     }
 
+    val (iconBgColor, iconContentColor) = if (badgeBgColor != null && badgeContentColor != null) {
+        badgeBgColor to badgeContentColor
+    } else {
+        computedIconBg to computedIconContent
+    }
+
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = actualContainerColor,
+        border = null,
         modifier = modifier
     ) {
         Box(

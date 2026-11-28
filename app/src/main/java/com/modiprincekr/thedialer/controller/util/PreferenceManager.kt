@@ -1243,6 +1243,7 @@ class PreferenceManager(context: Context) {
         const val KEY_SCROLL_HAPTICS_PER_CM = "scroll_haptics_per_cm"  // haptic ticks per cm
         const val KEY_SCROLL_HAPTIC_STRENGTH = "scroll_haptic_strength" // vibration amplitude 1–255
         const val KEY_HAPTICS_STRENGTH      = "app_haptics_strength"
+        const val KEY_SHOW_CALL_OVERVIEW_CARD = "show_call_overview_card"
         const val KEY_CALL_UI_SHOW_TODAY    = "call_ui_show_today"
         const val KEY_CALL_UI_SHOW_INCOMING = "call_ui_show_incoming"
         const val KEY_CALL_UI_SHOW_MISSED   = "call_ui_show_missed"

@@ -294,6 +294,12 @@ class CallLogRepository(
     ): List<CallLogEntry> {
         if (callLogs.size < 2) return callLogs
 
+        fun isConnectedCall(entry: CallLogEntry): Boolean {
+            val isAnsweredType = entry.type == CallLog.Calls.INCOMING_TYPE || entry.type == CallLog.Calls.OUTGOING_TYPE || entry.type == 7 /* ANSWERED_EXTERNALLY */
+            val isMissedOrRejected = entry.type == CallLog.Calls.MISSED_TYPE || entry.type == 5 /* REJECTED */ || entry.type == CallLog.Calls.BLOCKED_TYPE
+            return entry.duration > 0 && isAnsweredType && !isMissedOrRejected
+        }
+
         val result = mutableListOf<CallLogEntry>()
         val consumed = mutableSetOf<Int>()
 
@@ -302,52 +308,78 @@ class CallLogRepository(
             val entryA = callLogs[i]
             var combinedEntry: CallLogEntry? = null
 
-            for (j in (i + 1) until minOf(i + 10, callLogs.size)) {
-                if (j in consumed) continue
-                val entryB = callLogs[j]
+            // Never merge missed, rejected, blocked, or unconnected calls into active calls
+            if (isConnectedCall(entryA)) {
+                for (j in (i + 1) until minOf(i + 10, callLogs.size)) {
+                    if (j in consumed) continue
+                    val entryB = callLogs[j]
 
-                if (entryA.number == entryB.number) continue
-                if (!isSameCalendarDay(entryA.date, entryB.date)) continue
+                    if (entryA.number == entryB.number) continue
+                    if (!isSameCalendarDay(entryA.date, entryB.date)) continue
+                    if (!isConnectedCall(entryB)) continue
 
-                // Check 1: MultiCallRecordStore
-                val matchedRecord = multiRecords.firstOrNull { rec ->
-                    val numMatch = (com.modiprincekr.thedialer.controller.call.MultiCallRecordStore.numbersMatch(rec.number1, entryA.number) &&
-                            com.modiprincekr.thedialer.controller.call.MultiCallRecordStore.numbersMatch(rec.number2, entryB.number)) ||
-                            (com.modiprincekr.thedialer.controller.call.MultiCallRecordStore.numbersMatch(rec.number1, entryB.number) &&
-                            com.modiprincekr.thedialer.controller.call.MultiCallRecordStore.numbersMatch(rec.number2, entryA.number))
-                    if (!numMatch) return@firstOrNull false
-                    val recEnd = if (rec.endTime > 0L) rec.endTime else rec.startTime + 1_800_000L
-                    (entryA.date in (rec.startTime - 600_000L)..(recEnd + 600_000L)) ||
-                        (entryB.date in (rec.startTime - 600_000L)..(recEnd + 600_000L))
-                }
+                    // Check 1: MultiCallRecordStore
+                    val matchedRecord = multiRecords.firstOrNull { rec ->
+                        val numMatch = (com.modiprincekr.thedialer.controller.call.MultiCallRecordStore.numbersMatch(rec.number1, entryA.number) &&
+                                com.modiprincekr.thedialer.controller.call.MultiCallRecordStore.numbersMatch(rec.number2, entryB.number)) ||
+                                (com.modiprincekr.thedialer.controller.call.MultiCallRecordStore.numbersMatch(rec.number1, entryB.number) &&
+                                com.modiprincekr.thedialer.controller.call.MultiCallRecordStore.numbersMatch(rec.number2, entryA.number))
+                        if (!numMatch) return@firstOrNull false
+                        val recEnd = if (rec.endTime > 0L) rec.endTime else rec.startTime + 1_800_000L
+                        (entryA.date in (rec.startTime - 600_000L)..(recEnd + 600_000L)) ||
+                            (entryB.date in (rec.startTime - 600_000L)..(recEnd + 600_000L))
+                    }
 
-                // Check 2: Direct call timing overlap (active call intervals overlap)
-                val isTimeOverlapping = if (entryA.duration > 0 && entryB.duration > 0) {
+                    // Check 2: Direct call timing overlap (active call intervals overlap)
                     val startA = entryA.date
                     val endA = entryA.date + entryA.duration * 1000L
                     val startB = entryB.date
                     val endB = entryB.date + entryB.duration * 1000L
                     val overlapStart = maxOf(startA, startB)
                     val overlapEnd = minOf(endA, endB)
-                    overlapEnd - overlapStart >= 3000L
-                } else false
+                    val isTimeOverlapping = (overlapEnd - overlapStart) >= 3000L
 
-                if (matchedRecord != null || isTimeOverlapping) {
-                    consumed.add(j)
-                    val isMerged = matchedRecord?.isMerged ?: false
-                    combinedEntry = entryA.copy(
-                        duration = maxOf(entryA.duration, entryB.duration),
-                        types = entryA.types + entryB.types,
-                        callIds = (entryA.callIds + entryB.callIds).distinct(),
-                        dates = (entryA.dates + entryB.dates).distinct(),
-                        isMultiCall = true,
-                        isMergedCall = isMerged,
-                        secondNumber = entryB.number,
-                        secondName = entryB.name,
-                        secondContactId = entryB.contactId,
-                        secondPhotoUri = entryB.photoUri
-                    )
-                    break
+                    if (matchedRecord != null || isTimeOverlapping) {
+                        consumed.add(j)
+                        val isMerged = matchedRecord?.isMerged ?: false
+
+                        // Order participants chronologically by call start time (or by recorded Telecom STATE_ACTIVE vs STATE_HOLDING state)
+                        // Primary/earlier active call appears first with "Active line", and secondary/later call appears second with "On hold".
+                        val (primary, secondary) = when {
+                            matchedRecord != null && com.modiprincekr.thedialer.controller.call.MultiCallRecordStore.numbersMatch(matchedRecord.number1, entryA.number) -> {
+                                entryA to entryB
+                            }
+                            matchedRecord != null && com.modiprincekr.thedialer.controller.call.MultiCallRecordStore.numbersMatch(matchedRecord.number1, entryB.number) -> {
+                                entryB to entryA
+                            }
+                            entryA.date <= entryB.date -> {
+                                entryA to entryB
+                            }
+                            else -> {
+                                entryB to entryA
+                            }
+                        }
+
+                        val latestDate = maxOf(entryA.date, entryB.date)
+                        combinedEntry = primary.copy(
+                            date = latestDate,
+                            duration = maxOf(entryA.duration, entryB.duration),
+                            types = primary.types + secondary.types,
+                            callIds = (entryA.callIds + entryB.callIds).distinct(),
+                            dates = (entryA.dates + entryB.dates).distinct(),
+                            isMultiCall = true,
+                            isMergedCall = isMerged,
+                            number = primary.number,
+                            name = primary.name,
+                            contactId = primary.contactId,
+                            photoUri = primary.photoUri,
+                            secondNumber = secondary.number,
+                            secondName = secondary.name,
+                            secondContactId = secondary.contactId,
+                            secondPhotoUri = secondary.photoUri
+                        )
+                        break
+                    }
                 }
             }
 

@@ -356,6 +356,7 @@ val globalSettingsSearchEntries: List<GlobalSettingsSearchEntry> by lazy {
         GlobalSettingsSearchEntry("Incoming Call UI", "Call UI: Customize the incoming call screen appearance", "incoming_call_ui_link", Icons.Outlined.CallReceived, GsColorGreen) { it.navigate(IncomingCallUIScreenDestination()) },
         GlobalSettingsSearchEntry("Ongoing Call UI", "Call UI: Customize the in-call screen layout and controls", "caller_ui_link", Icons.Outlined.Person, GsColorBlue) { it.navigate(CallerUIScreenDestination()) },
         GlobalSettingsSearchEntry("Calls Section Elements", "Call Logs: Toggle and drag to reorder Today, Missed, Outgoing, Call Time, Contacts, Groups cards", "calls_section_elements", Icons.Default.Dashboard, GsColorOrange) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "calls_section_elements")) },
+        GlobalSettingsSearchEntry("Call Overview Card", "Call Logs: Show call summary cards at the top of call logs", "call_overview_card", Icons.Default.DashboardCustomize, GsColorOrange) { it.navigate(CallLogsSettingsScreenDestination(highlightKey = "call_overview_card")) },
 
         // ── UI Elements ──────────────────────────────────────────────────────────
         GlobalSettingsSearchEntry("UI Elements", "Call Logs, Dialpad, Contact info, Favourites, Navigation, Context Menu and Contact Info Elements", "ui_elements_section", Icons.Outlined.Widgets, GsColorPurple) { it.navigate(InterfaceScreenDestination(highlightKey = "call_logs_settings_link")) },

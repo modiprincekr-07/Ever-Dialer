@@ -69,7 +69,7 @@ class CallLogViewModel(
         override fun onChange(selfChange: Boolean, uri: Uri?) {
             debounceJob?.cancel()
             debounceJob = viewModelScope.launch(Dispatchers.IO) {
-                delay(100)
+                delay(150)
                 fetchLogsInternal()
             }
         }
@@ -169,6 +169,12 @@ class CallLogViewModel(
             }
         }
 
+        viewModelScope.launch {
+            CallService.callEndedEvents.collect {
+                triggerImmediateAndStaggeredRefresh()
+            }
+        }
+
         // Watching CallService's call-session state means we refetch both when a call starts
         // and when it ends (both incoming and outgoing, including call waiting).
         viewModelScope.launch {
@@ -187,21 +193,26 @@ class CallLogViewModel(
                         }
                     } else if (wasInCall) {
                         wasInCall = false
-                        callEndRefreshJob?.cancel()
-                        callEndRefreshJob = viewModelScope.launch(Dispatchers.IO) {
-                            // Telecom writes the finished call row asynchronously after disconnect.
-                            // Fast sequence of retries with pendingRefresh protection ensures
-                            // the row is picked up the moment Telecom commits it to the provider.
-                            fetchLogsInternal()
-                            delay(250)
-                            fetchLogsInternal()
-                            delay(350)
-                            fetchLogsInternal()
-                            delay(600)
-                            fetchLogsInternal()
-                        }
+                        triggerImmediateAndStaggeredRefresh()
                     }
                 }
+        }
+    }
+
+    fun triggerImmediateAndStaggeredRefresh() {
+        callEndRefreshJob?.cancel()
+        callEndRefreshJob = viewModelScope.launch(Dispatchers.IO) {
+            // Immediate refresh signal
+            fetchLogsInternal()
+            // Staggered follow-up query at 250ms
+            delay(250)
+            fetchLogsInternal()
+            // Staggered follow-up query at 900ms (250 + 650 = 900ms)
+            delay(650)
+            fetchLogsInternal()
+            // Staggered follow-up query at 2000ms (900 + 1100 = 2000ms)
+            delay(1100)
+            fetchLogsInternal()
         }
     }
 
@@ -245,7 +256,7 @@ class CallLogViewModel(
 
     fun refreshLogs() {
         ensureObservers()
-        fetchLogs(forceRefresh = true)
+        triggerImmediateAndStaggeredRefresh()
     }
 
     fun refreshIfStale() {

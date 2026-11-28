@@ -975,7 +975,7 @@ fun CallLogFullContent(
             if (groupCallsByLatest) {
                 val groupedByNumber = LinkedHashMap<String, MutableList<CallLogEntry>>()
                 for (entry in filteredLogs) {
-                    val isMissed = entry.type == CallLog.Calls.MISSED_TYPE || entry.type == 5 || entry.types.any { it == CallLog.Calls.MISSED_TYPE || it == 5 }
+                    val isMissed = entry.type == CallLog.Calls.MISSED_TYPE || entry.type == 5
                     val typeGroup = if (isMissed) "missed" else "normal"
                     val baseKey = entry.contactId?.takeIf { it.isNotBlank() }
                         ?: entry.number.filter { it.isDigit() }.ifEmpty { null }
@@ -989,9 +989,9 @@ fun CallLogFullContent(
                         first
                     } else {
                         first.copy(
-                            types = list.flatMap { it.types },
-                            callIds = list.flatMap { it.callIds },
-                            dates = list.flatMap { it.dates }
+                            types = listOf(first.type) + list.flatMap { it.types }.filter { it != first.type },
+                            callIds = list.flatMap { it.callIds }.distinct(),
+                            dates = list.flatMap { it.dates }.distinct()
                         )
                     }
                 }
@@ -1205,6 +1205,9 @@ fun CallLogFullContent(
             Column(modifier = Modifier.fillMaxSize()) {
 
                 // Stat cards – visibility and order controlled by Call UI settings
+                val showCallOverviewCard = remember(settingsVersion) {
+                    prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_SHOW_CALL_OVERVIEW_CARD, true)
+                }
                 val showToday    = remember(settingsVersion) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_CALL_UI_SHOW_TODAY, true) }
                 val showIncoming = remember(settingsVersion) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_CALL_UI_SHOW_INCOMING, true) }
                 val showMissed   = remember(settingsVersion) { prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_CALL_UI_SHOW_MISSED, true) }
@@ -1247,17 +1250,40 @@ fun CallLogFullContent(
 
                 @Composable
                 fun StatCardItem(cardKey: String, delayMs: Long) {
+                    val isDarkCard = androidx.core.graphics.ColorUtils.calculateLuminance(MaterialTheme.colorScheme.surface.toArgb()) < 0.5
                     when (cardKey) {
-                        "today" -> AnimatedStatCard(delayMs, com.modiprincekr.thedialer.controller.util.tr("Today"), totalToday.toString(), Icons.Rounded.Call, ColorBlue, Modifier.size(110.dp)) { viewModel.setFilter(CallLogFilter.All) }
-                        "incoming" -> AnimatedStatCard(delayMs, com.modiprincekr.thedialer.controller.util.tr("Incoming"), incomingToday.toString(), Icons.Rounded.CallReceived, Color(0xFF2196F3), Modifier.size(110.dp)) { viewModel.setFilter(CallLogFilter.Incoming) }
+                        "today" -> AnimatedStatCard(
+                            delayMs = delayMs,
+                            label = com.modiprincekr.thedialer.controller.util.tr("Today"),
+                            value = totalToday.toString(),
+                            icon = Icons.Rounded.Call,
+                            iconTint = Color(0xFF1976D2),
+                            containerColor = if (isDarkCard) Color(0xFF1B263B) else Color(0xFFEAF2FE),
+                            badgeBgColor = if (isDarkCard) Color(0xFF263550) else Color(0xFFD3E4FD),
+                            badgeContentColor = if (isDarkCard) Color(0xFF90CAF9) else Color(0xFF1565C0),
+                            modifier = Modifier.size(110.dp)
+                        ) { viewModel.setFilter(CallLogFilter.All) }
+                        "incoming" -> AnimatedStatCard(
+                            delayMs = delayMs,
+                            label = com.modiprincekr.thedialer.controller.util.tr("Incoming"),
+                            value = incomingToday.toString(),
+                            icon = Icons.Rounded.CallReceived,
+                            iconTint = Color(0xFF0288D1),
+                            containerColor = if (isDarkCard) Color(0xFF152A32) else Color(0xFFE6F4FA),
+                            badgeBgColor = if (isDarkCard) Color(0xFF1F3A45) else Color(0xFFCEECF8),
+                            badgeContentColor = if (isDarkCard) Color(0xFF81D4FA) else Color(0xFF0288D1),
+                            modifier = Modifier.size(110.dp)
+                        ) { viewModel.setFilter(CallLogFilter.Incoming) }
                         "missed" -> AnimatedStatCard(
                             delayMs = delayMs,
                             label = com.modiprincekr.thedialer.controller.util.tr("Missed"),
                             value = missedToday.toString(),
                             icon = Icons.AutoMirrored.Filled.CallMissed,
-                            iconTint = ColorRed,
+                            iconTint = Color(0xFFD32F2F),
+                            containerColor = if (isDarkCard) Color(0xFF2E1922) else Color(0xFFFCE8EE),
+                            badgeBgColor = if (isDarkCard) Color(0xFF421D28) else Color(0xFFF9D0DC),
+                            badgeContentColor = if (isDarkCard) Color(0xFFEF9A9A) else Color(0xFFD32F2F),
                             modifier = Modifier.size(110.dp),
-                            containerColor = if (missedToday > 0) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.surfaceContainerLow,
                             onClick = { viewModel.setFilter(CallLogFilter.Missed) },
                             onLongClick = {
                                 if (prefs.getBoolean(com.modiprincekr.thedialer.controller.util.PreferenceManager.KEY_APP_HAPTICS, true)) {
@@ -1267,16 +1293,56 @@ fun CallLogFullContent(
                                 com.modiprincekr.thedialer.controller.util.MissedCallBadgeManager.markMissedCallsAsRead(context)
                             }
                         )
-                        "outgoing" -> AnimatedStatCard(delayMs, com.modiprincekr.thedialer.controller.util.tr("Outgoing"), outgoingToday.toString(), Icons.AutoMirrored.Filled.CallMade, ColorGreen, Modifier.size(110.dp)) { viewModel.setFilter(CallLogFilter.Outgoing) }
-                        "call_time" -> AnimatedStatCard(delayMs, com.modiprincekr.thedialer.controller.util.tr("Call Time"), if (totalDurationToday > 0) formatDuration(totalDurationToday) else "0s", Icons.Default.Timer, ColorOrange, Modifier.size(110.dp)) { viewModel.setFilter(CallLogFilter.Incoming) }
-                        "contacts" -> AnimatedStatCard(delayMs, com.modiprincekr.thedialer.controller.util.tr("Contacts"), if (contactsCount > 0) contactsCount.toString() else "Open", Icons.Default.People, ColorPurple, Modifier.size(110.dp)) {
+                        "outgoing" -> AnimatedStatCard(
+                            delayMs = delayMs,
+                            label = com.modiprincekr.thedialer.controller.util.tr("Outgoing"),
+                            value = outgoingToday.toString(),
+                            icon = Icons.AutoMirrored.Filled.CallMade,
+                            iconTint = Color(0xFF2E7D32),
+                            containerColor = if (isDarkCard) Color(0xFF16291C) else Color(0xFFE7F6EC),
+                            badgeBgColor = if (isDarkCard) Color(0xFF203B26) else Color(0xFFCEF0D8),
+                            badgeContentColor = if (isDarkCard) Color(0xFFA5D6A7) else Color(0xFF2E7D32),
+                            modifier = Modifier.size(110.dp)
+                        ) { viewModel.setFilter(CallLogFilter.Outgoing) }
+                        "call_time" -> AnimatedStatCard(
+                            delayMs = delayMs,
+                            label = com.modiprincekr.thedialer.controller.util.tr("Call Time"),
+                            value = if (totalDurationToday > 0) formatDuration(totalDurationToday) else "0s",
+                            icon = Icons.Default.Timer,
+                            iconTint = ColorOrange,
+                            containerColor = if (isDarkCard) Color(0xFF2C2016) else Color(0xFFFFF3E0),
+                            badgeBgColor = if (isDarkCard) Color(0xFF3E2B1D) else Color(0xFFFFE0B2),
+                            badgeContentColor = if (isDarkCard) Color(0xFFFFCC80) else Color(0xFFE65100),
+                            modifier = Modifier.size(110.dp)
+                        ) { viewModel.setFilter(CallLogFilter.Incoming) }
+                        "contacts" -> AnimatedStatCard(
+                            delayMs = delayMs,
+                            label = com.modiprincekr.thedialer.controller.util.tr("Contacts"),
+                            value = if (contactsCount > 0) contactsCount.toString() else "Open",
+                            icon = Icons.Default.People,
+                            iconTint = ColorPurple,
+                            containerColor = if (isDarkCard) Color(0xFF2A1B30) else Color(0xFFF3E5F5),
+                            badgeBgColor = if (isDarkCard) Color(0xFF3B2544) else Color(0xFFE1BEE7),
+                            badgeContentColor = if (isDarkCard) Color(0xFFCE93D8) else Color(0xFF7B1FA2),
+                            modifier = Modifier.size(110.dp)
+                        ) {
                             navController.navigate(ContactScreenDestination.route) {
                                 popUpTo(navController.graph.findStartDestination().id) { saveState = true }
                                 launchSingleTop = true
                                 restoreState = true
                             }
                         }
-                        "groups" -> AnimatedStatCard(delayMs, com.modiprincekr.thedialer.controller.util.tr("Groups"), if (groupsCount > 0) groupsCount.toString() else "Open", Icons.Default.Group, Color(0xFF00897B), Modifier.size(110.dp)) {
+                        "groups" -> AnimatedStatCard(
+                            delayMs = delayMs,
+                            label = com.modiprincekr.thedialer.controller.util.tr("Groups"),
+                            value = if (groupsCount > 0) groupsCount.toString() else "Open",
+                            icon = Icons.Default.Group,
+                            iconTint = Color(0xFF00897B),
+                            containerColor = if (isDarkCard) Color(0xFF142926) else Color(0xFFE0F2F1),
+                            badgeBgColor = if (isDarkCard) Color(0xFF1E3A36) else Color(0xFFB2DFDB),
+                            badgeContentColor = if (isDarkCard) Color(0xFF80CBC4) else Color(0xFF00695C),
+                            modifier = Modifier.size(110.dp)
+                        ) {
                             navController.navigate(GroupsScreenDestination.route) {
                                 popUpTo(navController.graph.findStartDestination().id) { saveState = true }
                                 launchSingleTop = true
@@ -1289,7 +1355,7 @@ fun CallLogFullContent(
                 // In portrait, render stat cards and pills above the list (sticky)
                 // In landscape, they go inside the LazyColumn so they scroll with content
                 if (!isLandscape) {
-                    if (visibleStatCards.isNotEmpty()) {
+                    if (showCallOverviewCard && visibleStatCards.isNotEmpty()) {
                         LazyRow(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1493,7 +1559,7 @@ fun CallLogFullContent(
                                         .padding(horizontal = 16.dp, vertical = 8.dp)
                                 )
                             }
-                            if (visibleStatCards.isNotEmpty()) {
+                            if (showCallOverviewCard && visibleStatCards.isNotEmpty()) {
                                 item(key = "stat_cards", contentType = "statCards") {
                                     LazyRow(
                                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -1794,6 +1860,8 @@ private fun AnimatedStatCard(
     iconTint: Color,
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    badgeBgColor: Color? = null,
+    badgeContentColor: Color? = null,
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null
 ) {
@@ -1805,10 +1873,7 @@ private fun AnimatedStatCard(
         alpha = cardAlpha
         translationY = cardOffset.toPx()
     }) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = containerColor,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        Box(
             modifier = modifier
                 .clip(RoundedCornerShape(20.dp))
                 .combinedClickable(
@@ -1816,7 +1881,16 @@ private fun AnimatedStatCard(
                     onLongClick = onLongClick
                 )
         ) {
-            RivoStatCard(label = label, value = value, icon = icon, iconTint = iconTint, containerColor = containerColor, modifier = Modifier.fillMaxSize())
+            RivoStatCard(
+                label = label,
+                value = value,
+                icon = icon,
+                iconTint = iconTint,
+                containerColor = containerColor,
+                badgeBgColor = badgeBgColor,
+                badgeContentColor = badgeContentColor,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }

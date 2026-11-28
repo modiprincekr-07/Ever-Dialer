@@ -351,7 +351,7 @@ fun BottomBar(navController: NavController) {
                     key = key, route = AlternateNumbersScreenDestination.route, label = com.modiprincekr.thedialer.controller.util.AppStrings.get("Alternate", appLang),
                     selectedIcon = Icons.Filled.ContactPhone, unselectedIcon = Icons.Outlined.ContactPhone,
                     selected = isAlternateSelected,
-                    onClick = { doHaptic(); navigate(AlternateNumbersScreenDestination.route) }
+                    onClick = { doHaptic(); navigate(AlternateNumbersScreenDestination().route) }
                 ) else null
                 "dialpad" -> if (showDialpadTab) TabSpec(
                     key = key, route = DialPadScreenDestination().route, label = com.modiprincekr.thedialer.controller.util.AppStrings.get("Dialpad", appLang),

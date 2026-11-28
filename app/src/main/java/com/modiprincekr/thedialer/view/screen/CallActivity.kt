@@ -83,6 +83,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.modiprincekr.thedialer.controller.CallService
+import com.modiprincekr.thedialer.controller.InputSource
 import com.modiprincekr.thedialer.controller.CallSession
 import com.modiprincekr.thedialer.controller.util.CallButtonPrefs
 import com.modiprincekr.thedialer.controller.util.NoteManager
@@ -1855,7 +1856,12 @@ fun ExpressiveCallScreen(
                 when (intent.action) {
                     BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED -> {
                         val state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, BluetoothProfile.STATE_DISCONNECTED)
-                        isBluetoothConnected = state == BluetoothProfile.STATE_CONNECTED
+                        val connected = state == BluetoothProfile.STATE_CONNECTED
+                        isBluetoothConnected = connected
+                        if (connected) {
+                            selectedMicRoute = PreferenceManager.MIC_ROUTE_EXTERNAL
+                            CallService.setMicrophoneInputSource(ctx, InputSource.EXTERNAL)
+                        }
                     }
                     BluetoothAdapter.ACTION_STATE_CHANGED -> {
                         val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.STATE_OFF)
@@ -1881,6 +1887,10 @@ fun ExpressiveCallScreen(
     LaunchedEffect(audioState) {
         val supportedMask = audioState?.supportedRouteMask ?: 0
         if ((supportedMask and CallAudioState.ROUTE_BLUETOOTH) != 0) {
+            if (!isBluetoothConnected) {
+                selectedMicRoute = PreferenceManager.MIC_ROUTE_EXTERNAL
+                CallService.setMicrophoneInputSource(context, InputSource.EXTERNAL)
+            }
             isBluetoothConnected = true
         }
         if ((supportedMask and CallAudioState.ROUTE_WIRED_HEADSET) != 0) {
@@ -3953,7 +3963,7 @@ fun ExpressiveCallScreen(
                         isSelected = selectedMicRoute == PreferenceManager.MIC_ROUTE_SYSTEM,
                         onClick = {
                             selectedMicRoute = PreferenceManager.MIC_ROUTE_SYSTEM
-                            prefs?.setString(PreferenceManager.KEY_LAST_USED_MIC_ROUTE, PreferenceManager.MIC_ROUTE_SYSTEM)
+                            CallService.setMicrophoneInputSource(context, InputSource.SYSTEM)
                             showMicSwitcherPopup = false
                         }
                     )
@@ -3966,11 +3976,7 @@ fun ExpressiveCallScreen(
                         isSelected = selectedMicRoute == PreferenceManager.MIC_ROUTE_EXTERNAL,
                         onClick = {
                             selectedMicRoute = PreferenceManager.MIC_ROUTE_EXTERNAL
-                            prefs?.setString(PreferenceManager.KEY_LAST_USED_MIC_ROUTE, PreferenceManager.MIC_ROUTE_EXTERNAL)
-                            if (audioState?.route != CallAudioState.ROUTE_BLUETOOTH && audioState?.route != CallAudioState.ROUTE_WIRED_HEADSET) {
-                                val route = if (isBluetoothConnected) CallAudioState.ROUTE_BLUETOOTH else CallAudioState.ROUTE_WIRED_HEADSET
-                                CallService.setAudioRoute(route)
-                            }
+                            CallService.setMicrophoneInputSource(context, InputSource.EXTERNAL)
                             showMicSwitcherPopup = false
                         }
                     )

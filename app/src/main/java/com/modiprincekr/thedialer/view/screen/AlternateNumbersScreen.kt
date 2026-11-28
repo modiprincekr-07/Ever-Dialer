@@ -45,20 +45,21 @@ import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Destination<RootGraph>(style = SettingsTransitionStyle::class)
+@Destination<RootGraph>(route = "alternate_numbers", style = SettingsTransitionStyle::class)
 @Composable
 fun AlternateNumbersScreen(
     navigator: DestinationsNavigator,
-    prefillNumber: String? = null
+    prefillNumber: String? = ""
 ) {
     val context = LocalContext.current
     val allNumbers by AlternateNumberRepository.alternateNumbersFlow.collectAsState()
 
+    val sanitizedPrefill = if (prefillNumber.isNullOrBlank() || prefillNumber == "{prefillNumber}" || prefillNumber == "null") null else prefillNumber.trim()
     var searchQuery by remember { mutableStateOf("") }
     var selectedTag by remember { mutableStateOf(AlternateNumber.TAG_ALL) }
 
     var editingItem by remember { mutableStateOf<AlternateNumber?>(null) }
-    var showAddEditDialog by remember { mutableStateOf(!prefillNumber.isNullOrBlank()) }
+    var showAddEditDialog by remember { mutableStateOf(!sanitizedPrefill.isNullOrBlank()) }
     var itemToDelete by remember { mutableStateOf<AlternateNumber?>(null) }
 
     val filteredList = remember(allNumbers, searchQuery, selectedTag) {
@@ -281,7 +282,7 @@ fun AlternateNumbersScreen(
     if (showAddEditDialog) {
         AddEditAlternateNumberDialog(
             initialItem = editingItem,
-            initialNumber = if (editingItem == null) prefillNumber else null,
+            initialNumber = if (editingItem == null) sanitizedPrefill else null,
             onDismiss = {
                 showAddEditDialog = false
                 editingItem = null
@@ -524,8 +525,9 @@ fun AddEditAlternateNumberDialog(
     onDismiss: () -> Unit,
     onSave: (name: String, number: String, tag: String, note: String) -> Unit
 ) {
+    val cleanInitialNumber = if (initialNumber.isNullOrBlank() || initialNumber == "{prefillNumber}" || initialNumber == "null") "" else initialNumber.trim()
     var name by remember { mutableStateOf(initialItem?.name ?: "") }
-    var phoneNumber by remember { mutableStateOf(initialItem?.phoneNumber ?: (initialNumber ?: "")) }
+    var phoneNumber by remember { mutableStateOf(initialItem?.phoneNumber ?: cleanInitialNumber) }
     var selectedTag by remember { mutableStateOf(initialItem?.categoryTag ?: AlternateNumber.TAG_OTHER) }
     var note by remember { mutableStateOf(initialItem?.note ?: "") }
 
