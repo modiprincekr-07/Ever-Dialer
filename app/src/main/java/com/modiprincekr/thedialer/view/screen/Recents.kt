@@ -995,7 +995,7 @@ fun CallLogFullContent(
                         )
                     }
                 }
-                mapOf("" to mergedList)
+                mergedList.sortedByDescending { it.date }.groupBy { formatDateHeader(it.date) }
             } else {
                 filteredLogs.groupBy { formatDateHeader(it.date) }
             }

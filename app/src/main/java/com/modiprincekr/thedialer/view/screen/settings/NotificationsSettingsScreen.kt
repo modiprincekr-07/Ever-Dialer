@@ -121,7 +121,7 @@ fun NotificationsSettingsScreen(
                             headline = "Missed Call Notification",
                             supporting = if (missedCallNotification) {
                                 if (missedCallProvider == PreferenceManager.MISSED_CALL_PROVIDER_EVER_DIALER) {
-                                    "Prompted by Ever Dialer notification"
+                                    "Prompted by The Dialer notification"
                                 } else {
                                     "Prompted by Android System"
                                 }
@@ -199,7 +199,7 @@ fun NotificationsSettingsScreen(
                                                 MissedCallBadgeManager.cancelSystemMissedCallNotification(context)
                                                 MissedCallBadgeManager.updateBadge(context)
                                             },
-                                            label = { Text("Ever Dialer") },
+                                            label = { Text("The Dialer") },
                                             leadingIcon = if (missedCallProvider == PreferenceManager.MISSED_CALL_PROVIDER_EVER_DIALER) {
                                                 { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                                             } else null,

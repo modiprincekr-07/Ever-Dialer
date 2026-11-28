@@ -60,6 +60,7 @@ import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.generated.destinations.BlockedSmsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.CreateSmsCategoryScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.SmsAppIconScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.SmsChatCustomizationScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinActivityViewModel
@@ -279,7 +280,6 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = 
     var showMmsSizeDialog by remember { mutableStateOf(false) }
     var showSwipeRightDialog by remember { mutableStateOf(false) }
     var showSwipeLeftDialog by remember { mutableStateOf(false) }
-    var showReorderFilterDialog by remember { mutableStateOf(false) }
 
     com.modiprincekr.thedialer.view.theme.ExpandingScreenContainer(onClose = { navigator.navigateUp() }) { closeWithAnimation ->
         Scaffold(
@@ -457,14 +457,14 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = 
                                 )
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
-                                // Filter Tabs Order
+                                // SMS chat customization
                                 RivoListItem(
-                                    headline = "Filter tabs order",
-                                    supporting = "Customize and reorder filter pills on the messages screen",
-                                    leadingIcon = Icons.Outlined.FilterList,
+                                    headline = "SMS chat customization",
+                                    supporting = "Wallpaper, bubble colors, text size & animated PFP shapes",
+                                    leadingIcon = Icons.Outlined.Palette,
                                     iconContainerColor = ColorTeal,
                                     trailingIcon = Icons.Default.ChevronRight,
-                                    onClick = { showReorderFilterDialog = true }
+                                    onClick = { navigator.navigate(SmsChatCustomizationScreenDestination()) }
                                 )
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
@@ -983,13 +983,6 @@ fun SmsSettingsScreen(navigator: DestinationsNavigator, highlightKey: String? = 
             confirmButton = {
                 TextButton(onClick = { showSwipeLeftDialog = false }) { Text("Cancel") }
             }
-        )
-    }
-
-    if (showReorderFilterDialog) {
-        ReorderSmsTabsDialog(
-            onDismissRequest = { showReorderFilterDialog = false },
-            smsVM = smsVM
         )
     }
 

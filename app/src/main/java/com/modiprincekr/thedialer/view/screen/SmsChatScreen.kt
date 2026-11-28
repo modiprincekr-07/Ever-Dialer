@@ -84,6 +84,8 @@ import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.generated.destinations.ContactDetailsScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.SmsSettingsScreenDestination
+import com.ramcosta.composedestinations.generated.destinations.SmsChatCustomizationScreenDestination
+import com.modiprincekr.thedialer.controller.util.SmsChatCustomizationManager
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -168,8 +170,23 @@ fun SmsChatScreen(
     }
 
     val settingsVer by prefs.settingsChanged.collectAsState()
-    val chatFontSize = remember(settingsVer) {
-        prefs.getFloat(PreferenceManager.KEY_SMS_CHAT_TEXT_SIZE, PreferenceManager.DEFAULT_SMS_CHAT_TEXT_SIZE)
+    val chatFontSize = remember(settingsVer, address) {
+        SmsChatCustomizationManager.getTextSize(prefs, address)
+    }
+    val customWallpaperUri = remember(settingsVer, address) {
+        SmsChatCustomizationManager.getWallpaperUri(prefs, address)
+    }
+    val customBgColorInt = remember(settingsVer, address) {
+        SmsChatCustomizationManager.getBackgroundColor(prefs, address)
+    }
+    val customOutgoingColorInt = remember(settingsVer, address) {
+        SmsChatCustomizationManager.getOutgoingBubbleColor(prefs, address)
+    }
+    val customIncomingColorInt = remember(settingsVer, address) {
+        SmsChatCustomizationManager.getIncomingBubbleColor(prefs, address)
+    }
+    val customPfpShape = remember(settingsVer, address) {
+        SmsChatCustomizationManager.getPfpShape(prefs, address)
     }
     val sendDelaySeconds = remember(settingsVer) {
         prefs.getInt(PreferenceManager.KEY_SMS_SEND_DELAY_SECONDS, 0)
@@ -342,13 +359,13 @@ fun SmsChatScreen(
     val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
 
     // Scheduled SMS state
-    var showScheduleMenu by remember { mutableStateOf(false) }
+    var showScheduleDialog by remember { mutableStateOf(false) }
     var scheduledVersion by remember { mutableIntStateOf(0) }
     val scheduledMessages = remember(scheduledVersion, effectiveThreadId, address) {
         ScheduledSmsManager.getEntriesForThreadOrAddress(prefs, effectiveThreadId, address)
     }
 
-    fun scheduleMessageAt(timestamp: Long) {
+    fun scheduleMessageAt(timestamp: Long, subIdToUse: Int? = selectedSubId) {
         if (messageText.isBlank()) return
         val textToSchedule = messageText.trim()
         messageText = ""
@@ -357,38 +374,16 @@ fun SmsChatScreen(
             threadId = effectiveThreadId,
             address = address,
             body = textToSchedule,
-            subId = selectedSubId,
+            subId = subIdToUse,
             scheduledTime = timestamp
         )
         ScheduledSmsManager.addEntry(context, prefs, entry)
         scheduledVersion++
-        Toast.makeText(context, "Message scheduled", Toast.LENGTH_SHORT).show()
+        val formattedTime = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(timestamp))
+        Toast.makeText(context, "Message scheduled for $formattedTime", Toast.LENGTH_SHORT).show()
     }
 
-    fun openClockPicker() {
-        val c = Calendar.getInstance()
-        val timePicker = TimePickerDialog(
-            context,
-            { _, hourOfDay, minute ->
-                val targetCal = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, hourOfDay)
-                    set(Calendar.MINUTE, minute)
-                    set(Calendar.SECOND, 0)
-                    set(Calendar.MILLISECOND, 0)
-                }
-                if (targetCal.timeInMillis <= System.currentTimeMillis()) {
-                    targetCal.add(Calendar.DAY_OF_YEAR, 1)
-                }
-                scheduleMessageAt(targetCal.timeInMillis)
-            },
-            c.get(Calendar.HOUR_OF_DAY),
-            c.get(Calendar.MINUTE),
-            false
-        )
-        timePicker.show()
-    }
-
-    fun openDatePicker() {
+    fun openDatePicker(subIdToUse: Int? = selectedSubId) {
         val c = Calendar.getInstance()
         val datePicker = DatePickerDialog(
             context,
@@ -406,7 +401,7 @@ fun SmsChatScreen(
                             set(Calendar.MILLISECOND, 0)
                         }
                         if (targetCal.timeInMillis > System.currentTimeMillis()) {
-                            scheduleMessageAt(targetCal.timeInMillis)
+                            scheduleMessageAt(targetCal.timeInMillis, subIdToUse)
                         } else {
                             Toast.makeText(context, "Cannot schedule in the past", Toast.LENGTH_SHORT).show()
                         }
@@ -659,6 +654,7 @@ fun SmsChatScreen(
                                     photoUri = resolvedPhotoUri,
                                     autoColorAvatars = autoColor,
                                     obeySolidIcons = false,
+                                    shapeKey = customPfpShape,
                                     size = 36.dp
                                 )
                                 Column(modifier = Modifier.padding(end = 12.dp)) {
@@ -874,12 +870,18 @@ fun SmsChatScreen(
                                     }
                                 )
                                 RivoDropdownMenuItem(
-                                    text = "Settings",
-                                    icon = Icons.Outlined.Settings,
-                                    iconTint = Color(0xFF607D8B),
+                                    text = "SMS chat customization",
+                                    icon = Icons.Outlined.Palette,
+                                    iconTint = MaterialTheme.colorScheme.primary,
                                     onClick = {
                                         showMenu = false
-                                        navigator.navigate(SmsSettingsScreenDestination())
+                                        navigator.navigate(
+                                            SmsChatCustomizationScreenDestination(
+                                                address = address,
+                                                threadId = effectiveThreadId,
+                                                contactName = contactName
+                                            )
+                                        )
                                     }
                                 )
                                 HorizontalDivider(
@@ -997,7 +999,22 @@ fun SmsChatScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .then(
+                        if (customBgColorInt != null && customWallpaperUri.isNullOrBlank()) {
+                            Modifier.background(Color(customBgColorInt))
+                        } else {
+                            Modifier
+                        }
+                    )
             ) {
+                if (!customWallpaperUri.isNullOrBlank()) {
+                    AsyncImage(
+                        model = Uri.parse(customWallpaperUri),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
                 if (messages.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -1055,6 +1072,8 @@ fun SmsChatScreen(
                                         message = message,
                                         timeStr = timeFormat.format(Date(message.date)),
                                         fontSize = chatFontSize.sp,
+                                        outgoingCustomColor = customOutgoingColorInt?.let { Color(it) },
+                                        incomingCustomColor = customIncomingColorInt?.let { Color(it) },
                                         isSelected = selectedMessageIds.contains(message.id),
                                         isSelectionMode = isSelectionMode,
                                         onBubbleClick = {
@@ -1308,9 +1327,17 @@ fun SmsChatScreen(
                                     }
                                     .clip(CircleShape)
                                     .combinedClickable(
-                                        enabled = canSend,
-                                        onClick = { initiateSend() },
-                                        onLongClick = { showScheduleMenu = true }
+                                        enabled = true,
+                                        onClick = {
+                                            if (canSend) initiateSend()
+                                        },
+                                        onLongClick = {
+                                            if (canSend) {
+                                                showScheduleDialog = true
+                                            } else {
+                                                Toast.makeText(context, "Enter a message to schedule", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
                                     )
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -1329,25 +1356,24 @@ fun SmsChatScreen(
                                 }
                             }
 
-                            RivoDropdownMenu(
-                                expanded = showScheduleMenu,
-                                onDismissRequest = { showScheduleMenu = false }
-                            ) {
-                                RivoDropdownMenuItem(
-                                    text = "Schedule with Clock",
-                                    icon = Icons.Default.AccessTime,
-                                    iconTint = Color(0xFF00ACC1),
-                                    onClick = {
-                                        showScheduleMenu = false
-                                        openClockPicker()
-                                    }
-                                )
-                                RivoDropdownMenuItem(
-                                    text = "Schedule with Date",
-                                    icon = Icons.Default.CalendarToday,
-                                    iconTint = Color(0xFF4CAF50),
-                                    onClick = {
-                                        showScheduleMenu = false
+                            if (showScheduleDialog) {
+                                TextScheduleDialog(
+                                    onDismissRequest = { showScheduleDialog = false },
+                                    onSchedule = { timestamp, subId ->
+                                        showScheduleDialog = false
+                                        scheduleMessageAt(timestamp, subId)
+                                    },
+                                    selectedSubId = selectedSubId,
+                                    sortedSims = sortedSims,
+                                    onSubIdSelected = { subId ->
+                                        selectedSubId = subId
+                                        prefs.setInt("last_used_sms_sub_id", subId)
+                                        if (address.isNotBlank()) {
+                                            prefs.setInt("last_used_sms_sub_id_$address", subId)
+                                        }
+                                    },
+                                    onPickCustom = {
+                                        showScheduleDialog = false
                                         openDatePicker()
                                     }
                                 )
@@ -1577,6 +1603,8 @@ private fun ChatBubble(
     message: SmsMessage,
     timeStr: String,
     fontSize: TextUnit,
+    outgoingCustomColor: Color? = null,
+    incomingCustomColor: Color? = null,
     isSelected: Boolean,
     isSelectionMode: Boolean,
     onBubbleClick: () -> Unit,
@@ -1585,7 +1613,11 @@ private fun ChatBubble(
     onDeleteClick: () -> Unit
 ) {
     val isOut = message.isOutgoing
-    val baseBubbleColor = if (isOut) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+    val baseBubbleColor = if (isOut) {
+        outgoingCustomColor ?: MaterialTheme.colorScheme.primaryContainer
+    } else {
+        incomingCustomColor ?: MaterialTheme.colorScheme.surfaceVariant
+    }
     val bubbleColor by animateColorAsState(
         targetValue = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.25f) else baseBubbleColor,
         animationSpec = tween(250),
@@ -1596,7 +1628,12 @@ private fun ChatBubble(
         animationSpec = tween(250),
         label = "RowBg"
     )
-    val textColor = if (isOut) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    val textColor = if (outgoingCustomColor != null || incomingCustomColor != null) {
+        val lum = 0.299f * baseBubbleColor.red + 0.587f * baseBubbleColor.green + 0.114f * baseBubbleColor.blue
+        if (lum > 0.55f) Color(0xFF1C1B1F) else Color(0xFFF4EFF4)
+    } else {
+        if (isOut) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    }
     val timeColor = textColor.copy(alpha = 0.7f)
 
     var showMessageMenu by remember { mutableStateOf(false) }
@@ -1823,4 +1860,191 @@ private fun ChatBubble(
             )
         }
     }
+}
+
+@Composable
+fun TextScheduleDialog(
+    onDismissRequest: () -> Unit,
+    onSchedule: (timestamp: Long, subId: Int?) -> Unit,
+    selectedSubId: Int?,
+    sortedSims: List<android.telephony.SubscriptionInfo>,
+    onSubIdSelected: (Int) -> Unit,
+    onPickCustom: () -> Unit
+) {
+    val now = System.currentTimeMillis()
+    val timeFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
+
+    // Preset 1: In 30 mins
+    val time30m = remember(now) { now + 30 * 60 * 1000L }
+    val label30m = remember(time30m) { timeFormat.format(Date(time30m)) }
+
+    // Preset 2: In 1 hr
+    val time1h = remember(now) { now + 60 * 60 * 1000L }
+    val label1h = remember(time1h) { timeFormat.format(Date(time1h)) }
+
+    // Preset 3: Tonight 9 PM (or tomorrow 9 PM if already past)
+    val calTonight9 = remember(now) {
+        Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 21)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            if (timeInMillis <= now) {
+                add(Calendar.DAY_OF_YEAR, 1)
+            }
+        }
+    }
+    val timeTonight9 = remember(calTonight9) { calTonight9.timeInMillis }
+    val labelTonight9 = remember(timeTonight9) {
+        val isToday = Calendar.getInstance().get(Calendar.DAY_OF_YEAR) == calTonight9.get(Calendar.DAY_OF_YEAR)
+        if (isToday) "Tonight, 9:00 PM" else "Tomorrow, 9:00 PM"
+    }
+
+    // Preset 4: Tomorrow 8 AM
+    val calTomorrow8 = remember(now) {
+        Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, 1)
+            set(Calendar.HOUR_OF_DAY, 8)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+    }
+    val timeTomorrow8 = remember(calTomorrow8) { calTomorrow8.timeInMillis }
+    val labelTomorrow8 = remember(timeTomorrow8) { "Tomorrow, 8:00 AM" }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        icon = { Icon(Icons.Outlined.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+        title = {
+            Text(
+                text = "Text schedule",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Dual SIM selector if available
+                if (sortedSims.size > 1) {
+                    Text(
+                        text = "Send using SIM:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        sortedSims.forEach { sim ->
+                            val isSel = selectedSubId == sim.subscriptionId
+                            val slotName = "SIM ${sim.simSlotIndex + 1}"
+                            val carrierName = sim.displayName?.toString() ?: slotName
+                            FilterChip(
+                                selected = isSel,
+                                onClick = { onSubIdSelected(sim.subscriptionId) },
+                                label = { Text(carrierName.take(12), style = MaterialTheme.typography.labelSmall) },
+                                leadingIcon = if (isSel) {
+                                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                                } else null,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+
+                // Presets list
+                val presets = listOf(
+                    Triple("In 30 mins", label30m, time30m),
+                    Triple("In 1 hr", label1h, time1h),
+                    Triple(if (labelTonight9.startsWith("Tonight")) "Tonight" else "Tomorrow night", labelTonight9, timeTonight9),
+                    Triple("Tomorrow morning", labelTomorrow8, timeTomorrow8),
+                )
+
+                presets.forEach { (title, subtitle, timestamp) ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSchedule(timestamp, selectedSubId) }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    text = title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = subtitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Outlined.AccessTime,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Custom date & time picker
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPickCustom() }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text = "Pick custom date & time",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "Set exact date and minute",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Outlined.EditCalendar,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text("Cancel")
+            }
+        }
+    )
 }
