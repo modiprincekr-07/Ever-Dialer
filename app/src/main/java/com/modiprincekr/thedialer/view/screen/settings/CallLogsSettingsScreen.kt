@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.DashboardCustomize
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -534,7 +535,7 @@ fun CallLogsSettingsScreen(
                         RivoSwitchListItem(
                             headline = "Call Overview Card",
                             supporting = "Show call summary cards at the top of call logs",
-                            leadingIcon = Icons.Default.DashboardCustomize,
+                            leadingIcon = Icons.Outlined.DashboardCustomize,
                             iconContainerColor = ColorOrange,
                             checked = showCallOverviewCard,
                             modifier = Modifier.settingsSearchHighlight("call_overview_card", highlightedKey) { highlightedKey = null },

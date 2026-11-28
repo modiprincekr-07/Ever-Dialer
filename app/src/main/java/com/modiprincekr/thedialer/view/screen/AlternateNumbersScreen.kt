@@ -45,16 +45,16 @@ import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Destination<RootGraph>(route = "alternate_numbers", style = SettingsTransitionStyle::class)
+@Destination<RootGraph>(style = SettingsTransitionStyle::class)
 @Composable
 fun AlternateNumbersScreen(
     navigator: DestinationsNavigator,
-    prefillNumber: String? = ""
+    prefillNumber: String = ""
 ) {
     val context = LocalContext.current
     val allNumbers by AlternateNumberRepository.alternateNumbersFlow.collectAsState()
 
-    val sanitizedPrefill = if (prefillNumber.isNullOrBlank() || prefillNumber == "{prefillNumber}" || prefillNumber == "null") null else prefillNumber.trim()
+    val sanitizedPrefill = if (prefillNumber.isBlank() || prefillNumber == "{prefillNumber}" || prefillNumber == "null") null else prefillNumber.trim()
     var searchQuery by remember { mutableStateOf("") }
     var selectedTag by remember { mutableStateOf(AlternateNumber.TAG_ALL) }
 
