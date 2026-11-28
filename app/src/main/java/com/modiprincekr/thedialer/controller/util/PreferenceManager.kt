@@ -376,7 +376,17 @@ class PreferenceManager(context: Context) {
     fun getSmsCategoryOrder(): List<String> {
         val raw = getString(KEY_SMS_CATEGORY_ORDER, null)
         if (raw.isNullOrBlank()) return DEFAULT_SMS_CATEGORY_ORDER
-        return raw.split(",").map { it.trim() }.filter { it.isNotBlank() }
+        val list = raw.split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
+        if (!list.contains("finance")) {
+            val otpIdx = list.indexOf("otp")
+            if (otpIdx >= 0) {
+                list.add(otpIdx + 1, "finance")
+            } else {
+                list.add("finance")
+            }
+            setSmsCategoryOrder(list)
+        }
+        return list
     }
 
     fun setSmsCategoryOrder(order: List<String>) {
@@ -482,11 +492,12 @@ class PreferenceManager(context: Context) {
         val custom = getCustomSmsCategories().associateBy { it.id }
         val builtin = mapOf(
             "all" to "All",
-            "favourites" to "Favourites",
+            "otp" to "OTP",
+            "finance" to "Finance",
+            "unknown" to "Unknown",
             "starred" to "Starred",
             "contacts" to "Contacts",
-            "unknown" to "Unknown",
-            "otp" to "OTP"
+            "favourites" to "Favourites"
         )
         val order = getSmsCategoryOrder()
         val result = mutableListOf<SmsCategoryItem>()
@@ -1651,7 +1662,7 @@ class PreferenceManager(context: Context) {
         const val KEY_SMS_CATEGORY_HIDDEN          = "sms_category_hidden"
         const val KEY_SMS_CUSTOM_CATEGORIES        = "sms_custom_categories"
         const val KEY_DEFAULT_SMS_CATEGORY         = "default_sms_category"
-        val DEFAULT_SMS_CATEGORY_ORDER             = listOf("all", "favourites", "starred", "contacts", "unknown", "otp")
+        val DEFAULT_SMS_CATEGORY_ORDER             = listOf("all", "otp", "finance", "unknown", "starred", "contacts", "favourites")
 
         // Call Categories
         const val KEY_CALL_CATEGORY_ORDER          = "call_category_order"

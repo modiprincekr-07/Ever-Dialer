@@ -416,6 +416,9 @@ class SmsViewModel(
             SmsFilterTab.OTP -> conversations.filter { conv ->
                 isOtpMessage(conv.snippet)
             }
+            SmsFilterTab.FINANCE -> conversations.filter { conv ->
+                com.modiprincekr.thedialer.controller.util.FinanceSmsParser.isFinancialSms(conv.snippet, conv.address)
+            }
         }
         return filtered.sortedByDescending { it.date }
     }

@@ -235,6 +235,9 @@ fun SmsScreen(
                 filter == "otp" -> rawConversations.filter { conv ->
                     OTP_REGEX.containsMatchIn(conv.snippet)
                 }
+                filter == "finance" -> rawConversations.filter { conv ->
+                    com.modiprincekr.thedialer.controller.util.FinanceSmsParser.isFinancialSms(conv.snippet, conv.address)
+                }
                 else -> rawConversations
             }
             byFilter.sortedByDescending { it.date }
@@ -266,8 +269,30 @@ fun SmsScreen(
     LaunchedEffect(selectedFilter) {
         if (selectedFilter == "starred") {
             smsVM.refreshStarredMessages(prefs.getStarredSmsMessages())
+        } else if (selectedFilter == "finance") {
+            com.modiprincekr.thedialer.controller.util.FinanceLedgerRepository.initialize(context)
+            com.modiprincekr.thedialer.controller.util.FinanceLedgerRepository.refresh(context, rawConversations)
         }
         listStates[selectedFilter]?.scrollToItem(0)
+    }
+
+    // Midnight rollover ticker while on finance tab
+    LaunchedEffect(selectedFilter) {
+        if (selectedFilter == "finance") {
+            while (kotlinx.coroutines.isActive) {
+                kotlinx.coroutines.delay(30_000L)
+                val todayKey = com.modiprincekr.thedialer.controller.util.FinanceLedgerRepository.getTodayDateKey()
+                if (todayKey != com.modiprincekr.thedialer.controller.util.FinanceLedgerRepository.dailyLedgerState.value.dateKey) {
+                    com.modiprincekr.thedialer.controller.util.FinanceLedgerRepository.refresh(context, rawConversations)
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(rawConversations, selectedFilter) {
+        if (selectedFilter == "finance") {
+            com.modiprincekr.thedialer.controller.util.FinanceLedgerRepository.refresh(context, rawConversations)
+        }
     }
 
     // Selection mode (Quik multi-select action mode)
@@ -303,7 +328,24 @@ fun SmsScreen(
             smsVM.refreshConversations()
             if (selectedFilter == "starred") {
                 smsVM.refreshStarredMessages(prefs.getStarredSmsMessages())
+            } else if (selectedFilter == "finance") {
+                com.modiprincekr.thedialer.controller.util.FinanceLedgerRepository.refresh(context, rawConversations)
             }
+        }
+    }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                if (selectedFilter == "finance") {
+                    com.modiprincekr.thedialer.controller.util.FinanceLedgerRepository.refresh(context, rawConversations)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -1037,6 +1079,25 @@ fun SmsScreen(
                         }
                     }
                 } else {
+                    if (currentFilter == "finance") {
+                        item(key = "finance_live_equation_card") {
+                            com.modiprincekr.thedialer.view.components.FinanceEquationCard(
+                                onTransactionClick = { tx ->
+                                    val targetIdx = currentConversations.indexOfFirst { conv ->
+                                        (tx.smsId != null && conv.threadId == tx.smsId) ||
+                                        (conv.address.isNotBlank() && tx.accountLabel.contains(conv.address, ignoreCase = true)) ||
+                                        conv.snippet.contains(com.modiprincekr.thedialer.controller.util.FinanceLedgerRepository.formatDelta(tx.amount))
+                                    }
+                                    if (targetIdx >= 0) {
+                                        coroutineScope.launch {
+                                            currentListState.animateScrollToItem(targetIdx + 1)
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+
                     // Empty or loading state for conversations
                     if (currentConversations.isEmpty()) {
                         if (isLoading || !hasInitialLoaded) {
@@ -1075,7 +1136,7 @@ fun SmsScreen(
                                         }
                                     }
                                     Text(
-                                        if (searchQuery.isNotBlank()) "No conversations match '$searchQuery'" else "No messages yet",
+                                        if (currentFilter == "finance") "No financial transactions detected yet" else if (searchQuery.isNotBlank()) "No conversations match '$searchQuery'" else "No messages yet",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onSurface
